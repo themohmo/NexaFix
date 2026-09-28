@@ -272,3 +272,23 @@ def test_rate_edit_rejects_breaking_changes(tmp_path):
     shutil.copy(SKILL / "rates.toml", p)
     with pytest.raises(SpecError):
         set_dotted(p, "materials", 1)
+
+
+# ------------------------------------------------------------------ PDFs
+def test_pdfs_render_and_quote_hides_internal_numbers(rates, tmp_path):
+    pytest.importorskip("reportlab")
+    from nexa_costing.costsheet_pdf import render_costsheet
+    from nexa_costing.quote_pdf import render_quote
+
+    spec = load_spec_file(SKILL / "examples" / "2br-marina-full-fitout.yaml")
+    est = run_estimate(spec, rates)
+    q = render_quote(est, str(tmp_path / "q.pdf"))
+    c = render_costsheet(est, str(tmp_path / "c.pdf"))
+    assert Path(q).stat().st_size > 20_000 and Path(c).stat().st_size > 20_000
+    fitz = pytest.importorskip("pymupdf")
+    text = "".join(p.get_text() for p in fitz.open(q)).lower()
+    assert f"{est['totals']['grand_total']:,.2f}" in text   # grand total is on the quote
+    for leak in ("margin", "placeholder", "cost sheet", "profit", "supplier", "markup"):
+        assert leak not in text, leak
+    direct = f"{est['internal']['direct_cost']:,.2f}"
+    assert direct not in text

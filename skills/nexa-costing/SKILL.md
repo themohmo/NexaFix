@@ -1,6 +1,6 @@
 ---
 name: nexa-costing
-description: NexaFix project costing and quotation engine for a Dubai furnishing, fit-out and bespoke joinery company. Turns property info (floor plans, room sizes, photos, a WhatsApp-style brief, or just "2BR in JVC, 110 m²") into a full cost build-up (materials take-off, joinery board and wood usage, hardware, LED drivers, labour hours by trade, preliminaries, margin) and a client quotation PDF in the NexaFix template, using the owner's saved rate book. Use whenever the user asks to cost, price, estimate, quote, BOQ, "how much would it be", or check margin on anything NexaFix supplies or installs — SPC / laminate / parquet flooring, tiles, wall cladding (WPC fluted, PVC marble, stone-finish panels), TV / media units, wardrobes, kitchens, vanities, dressers, nightstands, beds and headboards, mirrors, sockets and switches, gypsum partitions and ceilings, cove lighting, LED strips, painting, wallpaper, curtains, blinds, countertops, loose furniture. Also use when the user gives new supplier prices or labour rates ("SPC now costs 38", "carpenter costs me 25 an hour") so the rate book is updated, and when they ask which prices are still missing.
+description: NexaFix costing and quotation engine for a Dubai furnishing, fit-out and bespoke joinery company. Turns property info (floor plans, room sizes, photos, a WhatsApp brief, or just "2BR in JVC, 110 m²") into a full cost build-up (material take-off, board and wood usage, hardware, LED drivers, labour hours, preliminaries, margin) and a client quotation PDF in the NexaFix template, priced from the owner's saved rate book. Use whenever the user asks to cost, price, estimate, quote or check margin on anything NexaFix supplies or installs (SPC/laminate/parquet flooring, tiles, wall cladding, TV/media units, wardrobes, kitchens, vanities, dressers, beds, headboards, mirrors, sockets, gypsum partitions and ceilings, cove lighting, LED strips, painting, curtains, blinds, countertops, furniture). Also use when the user gives new supplier prices or labour rates ("SPC now costs 38") so the rate book is updated, or asks which prices are still missing.
 ---
 
 # NexaFix Costing
@@ -138,6 +138,16 @@ edits last only for the conversation: after updating, give the owner the
 new `rates.toml` and remind them to re-upload the skill (or keep the master
 copy in the repo). `NEXA_RATES=/path/rates.toml` or `--rates` points the
 engine at another rate book.
+
+## Calibrating against past jobs
+
+When the owner shares an old quotation or a job's actual costs, write the
+same scope as a spec, run it, and compare item by item. If the engine is
+consistently off for one kind of work (e.g. joinery 15% high, painting
+low), fix the cause in the rate book (the trade's `sell_per_hour`, a
+category markup, an `install_hours_per_m2`, or a `sell_rate` the owner
+always uses), not the individual quote. Tell the owner what you changed
+and why, and re-run to confirm.
 
 ## Pricing logic (explain it when asked)
 

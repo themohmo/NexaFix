@@ -20,7 +20,8 @@ rounded to 2 decimals. Quantities are floats unless noted.
     "letter": ["paragraph", "paragraph", "paragraph"],
     "cover_tiles": ["LIVING ROOM", "TV UNIT", "BEDROOM", "DRESSER"],  // up to 4, numbered 01..04 on cover
     "cover_images": [null, null, null, null],                          // optional image paths per tile
-    "show_unit_rates": false            // true -> quote shows qty x rate per scope item
+    "show_unit_rates": false,           // true -> quote shows qty x rate per scope item
+    "generated": "2026-09-28 15:55", "rates_file": ".../rates.toml"
   },
   "company": {
     "name": "NEXA FIX", "tagline": "Where craft meets quality", "division": "JOINERY & FIT-OUT",
@@ -40,9 +41,13 @@ rounded to 2 decimals. Quantities are floats unless noted.
       "qty": 1, "unit": "Set", "qty_display": "1 Set",
       "unit_rate": 12500.0,                 // amount / qty (for show_unit_rates)
       "amount": 12500.0,                    // FINAL client amount for this scope item (ex VAT, before discount)
-      "image": null,                        // optional reference image path
+      "image": null,                        // optional reference image path (absolute when found)
+      "tile": "LIVING ROOM",                // short label used on the cover grid
       "internal": {
-        "cost_materials": 3100.0, "cost_labour": 1450.0, "cost_other": 0.0, "cost_total": 4550.0,
+        "cost_materials": 3100.0, "cost_labour": 1450.0, "cost_other": 0.0,
+        "cost_project_share": 320.0,        // share of consumables, stock rounding, prelims, snagging reserve
+        "cost_total": 4870.0,
+        "fixed_price": false,               // true when the spec set a lump-sum `price`
         "sell_build_up": 11200.0,           // sum of line sells before prelims/contingency/rounding
         "amount": 12500.0,
         "profit": 7950.0, "margin_pct": 63.6,
@@ -76,7 +81,8 @@ rounded to 2 decimals. Quantities are floats unless noted.
   ],
   "internal": {
     "materials_cost": 0, "labour_cost": 0, "other_cost": 0,
-    "consumables_cost": 0, "stock_rounding_cost": 0, "prelims_cost": 0,
+    "consumables_cost": 0, "stock_rounding_cost": 0, "prelims_cost": 0, "snagging_reserve_cost": 0,
+    "consumables_pct": 3, "snagging_reserve_pct": 1.5,
     "direct_cost": 0,                       // everything we pay out for this job
     "overhead_pct": 10, "overhead_cost": 0,  // share of company running costs
     "total_cost": 0,
@@ -105,7 +111,9 @@ rounded to 2 decimals. Quantities are floats unless noted.
                  "weeks": 3.4, "notes": ["Workshop and site overlap is not assumed"]},
     "warnings": ["Margin on 'SPC Flooring' is 22% (below minimum 25%)"],
     "assumptions": ["Ceiling height 2.8 m (default)"],
-    "placeholders_used": ["wpc_fluted_panel"]
+    "placeholders_used": ["wpc_fluted_panel", "carpenter"],   // bare rate-book keys (materials or trades)
+    "rooms": [{"name": "Living Room", "area": 27.9, "perimeter": 21.4, "height": 2.8,
+               "wall_area": 51.9, "wet": false, "estimated": false}]
   }
 }
 ```
