@@ -17,13 +17,14 @@ parameters named here are in `rates.toml` and can be tuned.
 
 ## Wall cladding
 - Net area = width × height − openings.
-- **Strips** (fluted panels < 400 mm wide): columns = ⌈width ÷ panel width⌉ × ⌈height ÷ panel length⌉, × net/gross, + waste, rounded **per wall**.
+- **Strips** (fluted panels < 400 mm wide): columns = ⌈width ÷ panel width⌉; one full panel per column, and when the wall is taller than a panel the top-up pieces are cut from extra panels (⌊panel length ÷ top-up⌋ per panel); × net/gross, + waste, rounded **per wall**.
 - **Sheets** (PVC marble, stone panels): net × (1 + waste) ÷ sheet area, rounded per wall (pattern matching).
 - Trims = perimeter + opening perimeters, +10%. Adhesive 0.6 cartridge/m². Optional battens 2.5 lm/m².
 - Labour: WPC 0.65, PVC marble 0.55, stone 0.7 h/m²; trims 0.15 h/lm.
 
 ## LED strip / cove lighting
 - Strip m = length × runs × 1.05, bought in 5 m rolls.
+- Cove over several rooms: each room is its own circuit with its own driver(s).
 - Watts = length × runs × W/m. Drivers: n = ⌈W ÷ (largest driver × 80%)⌉, then the smallest size that carries W ÷ n at ≤ 80%.
 - Feed points = runs × ⌈length ÷ 10 m⌉ (24 V voltage-drop limit) → connector kits + 6 m cable each.
 - Profile (when used) = length × runs × 1.05 in 2 m bars.
@@ -63,8 +64,8 @@ Each cabinet is a panel model (`scripts/nexa_costing/joinery.py`):
 - Bed box: sides, ends, centre rail in carcass board; platform in 18 mm ply; 6 mm storage base; gas lift.
 
 ## Painting, wallpaper, curtains
-- Paint L = area × coats ÷ 9 m²/L × 1.05 (ceilings 10 m²/L); primer area ÷ 8; putty by prep level (light 0.2, full 1.0 kg/m²).
-  Labour = area × (0.08 × (coats + 1) + prep h) (ceilings × 1.25).
+- Paint L = area × coats ÷ 9 m²/L × 1.05 (ceilings 10 m²/L); primer (only for medium/full prep, or `primer: true`) area ÷ 8; putty by prep level (light 0.2, medium 0.5, full 1.0 kg/m²).
+  Labour = area × (0.06 h × coats incl. primer + prep h: light 0.04, medium 0.15, full 0.4) (ceilings × 1.25).
 - Wallpaper rolls = ⌈drops ÷ ⌊roll length ÷ (H + repeat + 0.1)⌋⌉; 1.25 h per roll.
 - Curtains: wide-width fabric railroaded = W × fullness (2.3) + 0.4 m; otherwise drops × (H + 0.4). Making-up per m of width; track W + 0.2.
 

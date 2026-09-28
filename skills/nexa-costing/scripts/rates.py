@@ -38,6 +38,9 @@ def _fmt(v) -> str:
 
 def cmd_show(rb: Ratebook, flt: str | None):
     f = (flt or "").lower()
+    if f in rb.data and f not in ("materials", "trades") and isinstance(rb.data[f], dict):
+        cmd_get(rb, f)          # e.g. `show pricing`, `show schedule`, `show preliminaries`
+        return
     rows = []
     for k, m in rb.materials.items():
         hay = f"{k} {m.get('name', '')} {m.get('category', '')}".lower()
@@ -48,11 +51,13 @@ def cmd_show(rb: Ratebook, flt: str | None):
         rows.append((m.get("category", ""), k, m.get("name", ""), m.get("unit", ""), _fmt(m.get("cost")), sell_txt,
                      "PLACEHOLDER" if rb.is_placeholder(m) else m.get("status", "")))
     rows.sort()
+    if f == "trades":
+        rows = []
     if rows:
         print(f"{'category':<17} {'key':<24} {'unit':<6} {'cost':>9} {'sell':>18}  status  name")
         for cat, k, name, unit, cost, sell, st in rows:
             print(f"{cat:<17} {k:<24} {unit:<6} {cost:>9} {sell:>18}  {st:<11} {name}")
-    trows = [(k, t) for k, t in rb.trades.items() if not f or f in f"{k} {t.get('label', '')} labour trade".lower()]
+    trows = [(k, t) for k, t in rb.trades.items() if not f or f in f"{k} {t.get('label', '')} labour trades".lower()]
     if trows:
         print(f"\n{'trade':<14} {'where':<9} {'cost/h':>7} {'sell/h':>7}  status       label")
         for k, t in trows:

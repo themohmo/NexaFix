@@ -50,7 +50,18 @@ def main(argv=None) -> int:
         return 2
 
     ref = est["meta"]["ref"]
-    out_dir = Path(args.out).expanduser() / ref
+    out_root = Path(args.out).expanduser()
+    if not (spec.get("project") or {}).get("ref"):
+        # auto ref (NF-yyyy-mmdd): don't overwrite another project's quote from the same day
+        base, n = ref, 1
+        while (out_root / ref / "estimate.json").exists():
+            prev = json.loads((out_root / ref / "estimate.json").read_text(encoding="utf-8"))["meta"]
+            if (prev.get("project"), prev.get("client")) == (est["meta"]["project"], est["meta"]["client"]):
+                break
+            n += 1
+            ref = f"{base}-{n}"
+        est["meta"]["ref"] = ref
+    out_dir = out_root / ref
     out_dir.mkdir(parents=True, exist_ok=True)
     files = {}
     (out_dir / "estimate.json").write_text(json.dumps(est, indent=2, ensure_ascii=False), encoding="utf-8")

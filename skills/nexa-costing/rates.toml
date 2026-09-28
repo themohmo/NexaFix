@@ -107,6 +107,17 @@ led_strip = 300
 curtains = 400
 blinds = 250
 
+[sanity_bands]                         # usual Dubai selling range per unit of measure (AED, ex VAT)
+flooring = [60, 220]                   # per m² (SPC, laminate, tiles incl. skirting)
+wall_cladding = [180, 450]             # per m²
+gypsum_partition = [80, 160]           # per m²
+gypsum_ceiling = [55, 130]             # per m²
+cove_lighting = [40, 280]              # per lm (LED only ~45-100; with new gypsum cove 150-250)
+led_strip = [50, 200]                  # per m
+painting = [8, 35]                     # per m²
+electrical_point = [60, 550]           # per point
+wallpaper = [40, 150]                  # per m²
+
 [quote]
 salutation = "Dear Sir / Madam,"
 show_unit_rates = false
@@ -139,6 +150,7 @@ text = "{warranty}"
 [[terms]]
 title = "Building Approvals"
 text = "Building management NOC, access permits and service-lift bookings are to be arranged by the client unless stated otherwise. Refundable deposits required by the building are not included."
+text_if_fees = "Building management NOC fees are included in this quotation. Nexa Fix will coordinate access permits and service-lift bookings with the building. Refundable deposits required by the building are not included."
 
 # =============================================================================
 #  LABOUR — cost_per_hour = your all-in cost (salary, visa, housing, transport,
@@ -1495,6 +1507,14 @@ handles = "standard"                   # standard | profile | push | none
 fab_trade = "carpenter"
 install_trade = "installer"
 hinge_rule = [[0.9, 2], [1.6, 3], [2.0, 4], [2.6, 5], [99, 6]]   # [max door height m, hinges]
+
+[assemblies.cabinet.finish_boards]     # `finish:` on a cabinet picks the front board unless front_board is given
+lacquer = "mdf_18"
+pu = "mdf_18"
+paint = "mdf_18"
+painted = "mdf_18"
+veneer = "veneer_mdf_18"
+acrylic = "acrylic_18"
 
 [assemblies.cabinet.hardware]
 hinge = "hinge_soft_close"

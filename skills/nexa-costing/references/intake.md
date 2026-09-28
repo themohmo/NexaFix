@@ -44,7 +44,8 @@ socket positions, window sizes for curtains.
 | Mirror | clear 5 mm, polished edge | size |
 | Sockets | new points, 13 A double | relocate vs new (price differs) |
 | Cove lighting | room perimeter, 24 V 10 W/m 3000K, no gypsum work | whether the gypsum cove exists or must be built |
-| Painting | walls only, light prep, 1 primer + 2 coats | ceilings too? occupied (furniture)? |
+| Painting | walls only, light prep (repaint), 2 coats; primer only for `prep: medium/full` (new gypsum, heavy repairs) | ceilings too? occupied (furniture)? |
+| Windows (towers) | none unless given — add `windows: [[w, h]]` for full-height glazing, it reduces paint and cladding area | — |
 | Finish board | Egger MFC 18 mm (laminate) | lacquer/acrylic/veneer requested (big cost swing) |
 
 ## 3. Questions worth asking (one message, only if missing)

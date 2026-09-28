@@ -23,6 +23,7 @@ skill/
   references/intake.md       what to pull out of floor plans / briefs, defaults, what to ask
   references/takeoff.md      the formulas behind each quantity (for explaining numbers)
   references/pitfalls.md     what estimators get wrong and how the engine covers it
+  references/estimate-json.md  structure of estimate.json (what the PDFs read)
   examples/*.yaml            complete worked specs
 ```
 
@@ -79,8 +80,10 @@ Read the summary and look at:
   defaults marked `placeholder`. Any quote using them is provisional —
   always tell the owner which ones were used (the summary lists them) and
   offer to replace them with their supplier prices.
-- **Plausibility**: SPC/cladding per m², wardrobes per linear metre, sockets
-  per point. If something looks off, open the cost sheet lines (`calc`
+- **Plausibility**: the engine warns when an item's price per m² / lm / point
+  falls outside the usual Dubai band (`[sanity_bands]` in the rate book).
+  Wardrobes per linear metre, TV units, mirrors: compare with `intake.md`
+  section 4. If something looks off, open the cost sheet lines (`calc`
   column shows every formula) and fix the input, not the output.
 - **Assumptions**: defaulted ceiling heights, rooms applied, typology sizes.
 
@@ -98,10 +101,17 @@ Then offer the obvious next moves: change an option ("3 shelves instead
 of 2", "PVC marble instead of WPC"), apply a discount, show unit rates,
 or replace placeholder prices.
 
+- **Wording**: skim the client-facing text in the summary / PDF (titles,
+  "scope includes", summary lines). Where the auto text doesn't fit the job,
+  set `description` / `includes` / `summary_line` on the package.
+
 ### 6. Iterate
 
-Edit `project.yaml` and re-run. Keep `project.ref` fixed once a quote has
-been sent, so revisions stay traceable (add `-R1`, `-R2` to the ref).
+Edit `project.yaml` and re-run. Set `project.ref` for every quote and keep it
+once the quote is sent, so revisions stay traceable (add `-R1`, `-R2`).
+Preliminaries and contingency are spread over the items by value, so
+changing one item nudges the others slightly; mention this if the owner
+compares revisions line by line.
 
 ## Updating rates (the owner feeds data once)
 

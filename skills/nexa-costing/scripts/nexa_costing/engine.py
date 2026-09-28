@@ -9,7 +9,11 @@ from .calculators import CATEGORY, REGISTRY
 from .lines import Builder, Line
 from .ratebook import Ratebook
 from .spec import Package, build_packages, build_room, rooms_from_typology
-from .util import SpecError, area as parse_area, as_bool, ceil_int, ceil_to, dim, num, r2
+import re
+
+from .util import SpecError, area as parse_area, as_bool, ceil_int, ceil_to, count_phrase, dim, num, r2
+
+_COUNT_RE = re.compile(r"\b([a-z]+) \((\d+)\) (points?|units?|pieces?)\b")
 
 # item types that measure floors/walls of rooms and default to a room set
 DEFAULT_ROOMS = {
@@ -76,6 +80,15 @@ class Context:
         return []
 
 
+def _canon(t) -> str:
+    """Canonical calculator name for an item type alias (first name registered)."""
+    fn = REGISTRY.get(t)
+    for name, f in REGISTRY.items():
+        if f is fn:
+            return name
+    return str(t)
+
+
 # ---------------------------------------------------------------- text helpers
 def _short_tile(title: str) -> str:
     t = title.upper()
@@ -121,10 +134,15 @@ def _auto_summary(categories: list[str]) -> str:
             "materials and finishes to an exacting standard of craftsmanship.")
 
 
+_SINGULAR = {"pcs": "pc", "Units": "Unit", "pts": "pt", "windows": "window"}
+
+
 def _qty_display(q: float, unit: str) -> str:
     qs = f"{q:,.0f}" if float(q).is_integer() else f"{q:,.1f}"
-    if unit in ("Unit",) and q == 1:
-        return "1"
+    if q == 1:
+        unit = _SINGULAR.get(unit, unit)
+        if unit == "Unit":
+            return "1"
     return f"{qs} {unit}"
 
 
@@ -359,7 +377,7 @@ def run_estimate(spec: dict, rates: Ratebook, base_dir: str | Path | None = None
     subtotal = sum(p["amount"] for p in packages)
     disc_pct = float(project.get("discount_pct", 0) or 0)
     disc_amt = float(project.get("discount_amount", 0) or 0) + subtotal * disc_pct / 100
-    disc_label = project.get("discount_label") or (f"Discount ({disc_pct:g}%)" if disc_pct else ("Discount" if disc_amt else ""))
+    disc_label = project.get("discount_label") or (f"{disc_pct:g}%" if disc_pct else "")
     net = subtotal - disc_amt
     vat_registered = as_bool(project.get("vat"), as_bool(pricing.get("vat_registered"), True))
     vat_pct = rates.price("vat_pct", 5) if vat_registered else 0.0
@@ -379,6 +397,7 @@ def run_estimate(spec: dict, rates: Ratebook, base_dir: str | Path | None = None
 
     warnings = []
     scope_out = []
+    bands = rates.data.get("sanity_bands", {})
     no = 0
     for p in packages:
         pkg = p["pkg"]
@@ -390,22 +409,40 @@ def run_estimate(spec: dict, rates: Ratebook, base_dir: str | Path | None = None
         comp_titles = []
         for c in comps:
             r_ = c["res"]
-            q_ = r_.measure_qty if r_.measure_unit in ("Units", "pcs", "windows") else 1
-            comp_titles.append((r_.title, q_))
+            countable = r_.measure_unit in ("Unit", "Units", "pcs", "windows", "window")
+            comp_titles.append((r_.title, r_.measure_qty if countable else 0))
         counted: dict[str, float] = {}
         for t_, q_ in comp_titles:
             counted[t_] = counted.get(t_, 0) + q_
         comp_names = [t_ + (f" x{q_:g}" if q_ > 1 else "") for t_, q_ in counted.items()]
+        made = {"Bespoke Joinery", "Wall Cladding", "Mirrors", "Countertops"}
+        fabricated = any(CATEGORY.get(c["item"].get("type"), "") in made for c in comps)
         if pkg.description:
             description = pkg.description
         elif len(comps) == 1:
             description = res0.description
         else:
             listed = comp_names[0] if len(comp_names) == 1 else ", ".join(comp_names[:-1]) + f" and {comp_names[-1]}"
-            description = (f"{title} supplied, fabricated, and installed as per the approved reference image, "
-                           f"comprising {listed.lower() if listed.isupper() else listed}.")
-        includes = pkg.includes if pkg.includes is not None else \
-            list(dict.fromkeys(i for c in comps for i in c["res"].includes))
+            if fabricated:
+                description = (f"{title} supplied, fabricated, and installed as per the approved reference image, "
+                               f"comprising {listed}.")
+            else:
+                description = f"Supply and installation of {title.lower()}, comprising {listed}, as per the agreed specification."
+        if pkg.includes is not None:
+            includes = pkg.includes
+        else:  # same line from several components: add up counted things, otherwise show once
+            includes, seen_ = [], {}
+            for c in comps:
+                for inc in c["res"].includes:
+                    m_ = _COUNT_RE.search(inc)
+                    key_ = (inc[:m_.start()] + "#" + m_.group(3).rstrip("s") + inc[m_.end():]) if m_ else inc
+                    if key_ not in seen_:
+                        seen_[key_] = [len(includes), int(m_.group(2)) if m_ else 0]
+                        includes.append(inc)
+                    elif m_:
+                        slot = seen_[key_]
+                        slot[1] += int(m_.group(2))
+                        includes[slot[0]] = inc[:m_.start()] + count_phrase(slot[1], m_.group(3).rstrip("s")) + inc[m_.end():]
         if pkg.summary_line or len(comps) == 1:
             summary_line = pkg.summary_line or (res0.summary_line if res0 else "")
         else:
@@ -416,6 +453,9 @@ def run_estimate(spec: dict, rates: Ratebook, base_dir: str | Path | None = None
             qty, unit = float(res0.measure_qty), res0.measure_unit
         elif p.get("prelims_line"):
             qty, unit = 1.0, "Lot"
+        elif len({c["res"].measure_unit for c in comps}) == 1 and \
+                comps[0]["res"].measure_unit in ("m²", "lm", "m", "pts", "pcs"):
+            qty, unit = float(round(sum(c["res"].measure_qty for c in comps), 1)), comps[0]["res"].measure_unit
         else:
             qty, unit = 1.0, "Set"
         lines = [ln for c in comps for ln in c["res"].lines]
@@ -437,6 +477,15 @@ def run_estimate(spec: dict, rates: Ratebook, base_dir: str | Path | None = None
         if amount and margin < mn:
             warns.append(f"Margin {margin:.0f}% is below your minimum {mn:g}%")
             warnings.append(f"'{title}': margin {margin:.0f}% (below minimum {mn:g}%)")
+        if len(comps) == 1 and qty and not p["fixed"]:
+            band = bands.get(comps[0]["item"].get("type")) or bands.get(_canon(comps[0]["item"].get("type")))
+            if band:
+                per = amount / qty
+                lo, hi = float(band[0]), float(band[1])
+                if per < lo or per > hi:
+                    w_ = (f"'{title}': AED {per:,.0f} per {unit} is outside the usual Dubai range "
+                          f"{lo:,.0f}–{hi:,.0f} — check quantities and rates")
+                    warns.append(w_.split(": ", 1)[1])
         zero = sorted({ln.ref for ln in lines if ln.kind == "material" and ln.unit_cost == 0})
         if zero:
             warnings.append(f"'{title}': no cost price for {', '.join(zero)}")
@@ -503,8 +552,10 @@ def run_estimate(spec: dict, rates: Ratebook, base_dir: str | Path | None = None
     quote = rates.data.get("quote", {})
     letter = [s.format(**fmt) for s in quote.get("letter", [])]
     terms = []
+    fees_charged = float(project.get("building_fees", 0) or 0) > 0
     for t in rates.data.get("terms", []) or []:
-        terms.append({"title": t.get("title", ""), "text": str(t.get("text", "")).format(**fmt)})
+        text = t.get("text_if_fees") if (fees_charged and t.get("text_if_fees")) else t.get("text", "")
+        terms.append({"title": t.get("title", ""), "text": str(text).format(**fmt)})
     tiles = [s["tile"] for s in scope_out if not s["title"].startswith("Preliminaries")][:4]
     images = [s["image"] for s in scope_out if not s["title"].startswith("Preliminaries")][:4]
 

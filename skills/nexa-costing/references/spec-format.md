@@ -10,10 +10,11 @@ project:
   client: Mr. Ahmed Khan          # printed on the quote ("" -> "Client Name")
   name: Marina Gate 2 — 2304      # project line
   location: Dubai Marina, Dubai
-  ref: NF-2026-0928               # optional; default NF-<yyyy>-<mmdd>
+  ref: NF-2026-0928-01            # set one per quote; default NF-<yyyy>-<mmdd> (+ -2, -3 if taken that day)
   date: 28/09/2026                # optional; default today
   title: Bespoke Joinery Package  # optional; auto from the scope
   summary: ...                    # optional cover paragraph
+  salutation: Dear Ms. Layla,     # letter opening (default "Dear Sir / Madam,")
   ceiling_height: 2.8             # default for rooms without height (rate book default 2.8)
   typology: 2br                   # rough estimate without room list (studio, 1br, 2br, 3br, 4br_villa)
   total_area: 115                 # scales the typology rooms
@@ -82,7 +83,7 @@ Material keys refer to `[materials.<key>]` in `rates.toml`
 ### Surfaces
 | type (aliases) | fields | notes |
 |---|---|---|
-| `flooring` (`spc`, `laminate`, `parquet`, `vinyl`, `tiles`, `floor_tiles`) | `material`, `area` or `rooms` (default `dry`; tiles default `wet`), `perimeter`, `pattern` straight/diagonal/herringbone, `waste_pct`, `underlay`, `levelling` (true or mm), `skirting` (default true), `skirting_material`, `thresholds`, `threshold_count`, `removal` + `existing` (tiles/spc/laminate/carpet/parquet) | planks/tiles from plank size + waste; tile adhesive, grout and clips added for tiles; skirting = perimeter − door widths |
+| `flooring` (`spc`, `laminate`, `parquet`, `vinyl`, `tiles`, `floor_tiles`) | `material`, `area` or `rooms` (default `dry`; tiles default `wet`), `perimeter` (set it for open-plan rooms that share edges, or skirting is over-counted), `pattern` straight/diagonal/herringbone, `waste_pct`, `underlay`, `levelling` (true or mm), `skirting` (default true), `skirting_material`, `thresholds`, `threshold_count`, `removal` + `existing` (tiles/spc/laminate/carpet/parquet) | planks/tiles from plank size + waste; tile adhesive, grout and clips added for tiles; skirting = perimeter − door widths |
 | `wall_tiles` | `material`, `width` + `height` or `area`, `openings` | labour × `wall_labour_factor` |
 | `wall_cladding` (`cladding`, `feature_wall`, `wall_panel`) | `material` (wpc_fluted_panel, pvc_marble_sheet, stone_pvc_panel, acoustic_slat_panel…), `width` (wall length), `height` (default room height), `area`, `openings` [[w,h]], `trims`, `framing`, `backing` (board key), `lighting` (true = one run the wall width, a length, or `{length, runs, strip, profile}`) | strips (fluted) are counted per column and rounded per wall |
 | `painting` (`paint`) | `rooms` (default all) or `area`, `surfaces` walls/ceilings/both, `coats` (2), `prep` none/light/medium/full, `paint`, `ceiling_paint`, `primer`, `colour` | wall area = perimeter × height − doors/windows |
@@ -99,7 +100,7 @@ Material keys refer to `[materials.<key>]` in `rates.toml`
 ### Electrical & glass
 | type | fields | notes |
 |---|---|---|
-| `electrical_point` (`socket`, `switch`, `data_point`, `light_point`) | `count`, `kind` socket/usb/switch/light/data/isolator, `mode` new/relocate/faceplate, `cable_m`, `new_faceplate` | per point: faceplate, back box, cable (3 single cores), conduit, making good |
+| `electrical_point` (`socket`, `switch`, `data_point`, `light_point`) | `count`, `kind` socket/usb/switch/light/data (TV / data point)/isolator, `mode` new/relocate/faceplate, `cable_m`, `new_faceplate` | per point: faceplate, back box, cable (3 single cores), conduit, making good |
 | `mirror` | `width` + `height` or `diameter`, `shape` rectangle/round/arch, `qty`, `glass` (mirror_clear_5mm, mirror_bronze_6mm…), `edge` polished/bevel/none, `frame`, `backlit` | minimum chargeable area; backlit adds LED, driver, sensor, frame |
 
 ### Joinery
@@ -117,14 +118,14 @@ preset: …`). Preset dimensions/composition live in
 | `drawers`, `drawer_height`, `drawer_columns`, `flaps` | drawer fronts + boxes + runners; flaps get stays |
 | `plinth`, `floating`, `legs`, `back`, `top` | construction |
 | `carcass_board`, `front_board`, `back_board`, `drawer_board` | board keys (mfc_18, melamine_mdf_18, mdf_18 for lacquer, acrylic_18, veneer_mdf_18…) |
-| `finish` laminate/lacquer/veneer/acrylic | lacquer & veneer add spray per m² of face; lacquered fronts skip edge band |
+| `finish` laminate/lacquer/veneer/acrylic | switches the front board automatically (lacquer → `mdf_18`, veneer → `veneer_mdf_18`, acrylic → `acrylic_18`) unless `front_board` is given; lacquer & veneer add spray per m² of face; sprayed fronts skip edge band |
 | `handles` standard/profile/push/none | handles, profile metres or push latches |
 | `led` (true or m), `led_sensor` | LED in profile + driver + sensor |
 | `countertop` (true or material key) | worktop along the width |
 
 | type | fields |
 |---|---|
-| `media_unit` (`tv_unit`, `media_wall`) | `width`; `base` (true/false or `{width, height, depth, drawers, flaps, door_type, floating, led}`), `drawers`, `flaps`, `handles`; `panel` (true/false or `{material, width, height}` — a board or a cladding material like `stone_pvc_panel`), `panel_led`; `shelves` (count, e.g. 1 or 2), `shelf_length`, `shelf_depth`, `shelf_thickness`, `shelf_board`, `shelf_led`; `side_units` (count or `{qty, width, height, preset, door_type}`); `tv_bracket`; `cable_management`; `front_board`, `carcass_board` |
+| `media_unit` (`tv_unit`, `media_wall`) | `width` (also the base box and panel width unless given); `base` (true/false or `{width, height, depth, drawers, flaps, door_type, floating, led}`), `drawers`, `flaps`, `handles`; `panel` (true/false or `{material, width, height}` — a board or a cladding material like `stone_pvc_panel`), `panel_led` (true = LED around the panel outline, or metres); `shelves` (count, e.g. 1 or 2), `shelf_length`, `shelf_depth`, `shelf_thickness`, `shelf_board`, `shelf_led`; `side_units` (count or `{qty, width, height, preset, door_type}`); `tv_bracket`; `cable_management`; `front_board`, `carcass_board` |
 | `headboard` (`bed_front`) | `width`, `height`, `qty`, `style` plain/channel/tufted/panelled, `backing_board`, `fabric` |
 | `bed_box` (`bed`, `bed_base`) | `size` single/double/queen/king/super_king or `width` + `length`, `height`, `storage` (gas lift), `upholstered` |
 | `countertop` (`worktop`, `vanity_top`) | `length`, `depth`, `material`, `sink`, `hob`, `cutouts`, `splashback` (height m) |

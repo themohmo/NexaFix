@@ -211,7 +211,10 @@ def calc_flooring(b: Builder, item: dict, ctx, rooms):
         existing = str(item.get("existing", "tiles")).lower()
         h = A * float(rem.get(existing, rem.get("tiles", 0.3)) if isinstance(rem, dict) else rem)
         b.labour(asm.get("removal_trade", "helper"), h, f"remove existing {existing}: {num(A)} m²", in_sell=True)
-        b.include(f"Removal of existing {existing} flooring")
+        b.include("Removal and disposal of existing " + {"tiles": "floor tiles", "spc": "SPC flooring",
+                                                         "laminate": "laminate flooring", "parquet": "parquet"}.get(existing, existing))
+        if existing == "tiles" and not lev:
+            b.warn("Tile removal usually leaves an uneven screed — consider `levelling: 3` (self-levelling compound)")
         ctx.flags.add("demolition")
         ctx.demolition_m2 += A
 
@@ -268,8 +271,8 @@ def cladding_core(b: Builder, ctx, key: str, W: float, H: float, openings=None, 
         pw = width_mm / 1000.0
         pl = float(mat.get("length_mm", 2900)) / 1000.0
         cols = ceil_int(W / pw)
-        full = int((H + 1e-9) // pl)
-        rem = H - full * pl
+        full = max(1, int((H + 1e-9) // pl))
+        rem = max(0.0, H - full * pl)
         topups = 0
         if rem > 0.01:
             per_panel = max(1, int((pl + 1e-9) // rem))       # top-up pieces cut from one panel
@@ -428,9 +431,21 @@ def gypsum_cove(b: Builder, ctx, length: float, girth: float | None = None, kind
 @calculator("cove_lighting", "cove", "cove_light", category="Lighting")
 def calc_cove(b: Builder, item: dict, ctx, rooms):
     asm = ctx.rates.assembly("cove_lighting")
-    L = _length_or_perimeter(item, rooms, b.res.notes)
     runs = int(item.get("runs", 1))
-    info = add_led(b, ctx, L, runs, item.get("strip") or asm.get("strip"), item.get("profile", asm.get("profile", False)))
+    strip = item.get("strip") or asm.get("strip")
+    profile = item.get("profile", asm.get("profile", False))
+    if item.get("length") is None and len(rooms) > 1:
+        # each room is its own circuit with its own driver(s)
+        L, drivers = 0.0, 0
+        for rm in rooms:
+            inf = add_led(b, ctx, rm.perimeter, runs, strip, profile)
+            L += rm.perimeter
+            drivers += inf["drivers"]
+        info = {"drivers": drivers}
+        b.note(f"Cove per room perimeter ({', '.join(f'{r.name} {num(r.perimeter)} m' for r in rooms)}), one circuit each")
+    else:
+        L = _length_or_perimeter(item, rooms, b.res.notes)
+        info = add_led(b, ctx, L, runs, strip, profile)
     if as_bool(item.get("build_cove"), as_bool(asm.get("build_cove"), False)):
         gypsum_cove(b, ctx, L, kind="cove")
         b.include(f"Gypsum cove / pelmet, {num(L, 1)} lm")
@@ -748,7 +763,8 @@ def calc_points(b: Builder, item: dict, ctx, rooms):
         "relocate": f"Relocation of existing {lc(label)} points including chasing, extension of cabling and making good.",
         "faceplate": f"Supply and replacement of {lc(label)} faceplates on existing boxes.",
     }[mode]
-    b.include(f"{label}, {count_phrase(n, 'point')}")
+    b.include(f"{label}, {count_phrase(n, 'point')}"
+              + {"new": "", "relocate": " (relocated)", "faceplate": " (faceplate replacement)"}[mode])
     if mode != "faceplate":
         b.include("Chasing, conduit and cabling from nearest source")
         b.include("Making good of plaster and touch-up paint")
@@ -863,7 +879,13 @@ def calc_cabinet_core(b: Builder, item: dict, ctx, label: str | None = None) -> 
                       drawer_columns=int(g("drawer_columns", 1)), flaps=flaps, back=as_bool(g("back"), True),
                       plinth=plinth, top=as_bool(g("top"), True), hanging_sections=hanging_sections,
                       max_door_width=float(g("max_door_width", 0.6)))
-    boards = {"carcass": g("carcass_board", "mfc_18"), "front": g("front_board", "mfc_18"),
+    finish_req = str(item.get("finish") or "").lower()
+    front_default = g("front_board", "mfc_18")
+    if finish_req and not item.get("front_board"):
+        swap = asm.get("finish_boards", {}).get(finish_req)
+        if swap and ctx.rates.material(front_default).get("finish") != finish_req:
+            front_default = swap
+    boards = {"carcass": g("carcass_board", "mfc_18"), "front": front_default,
               "back": g("back_board", "mdf_06"), "drawer": g("drawer_board") or g("carcass_board", "mfc_18")}
     per_board: dict[str, float] = {}
     for role, a in m.area_by_role().items():
