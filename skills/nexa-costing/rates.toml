@@ -1,0 +1,1859 @@
+# =============================================================================
+#  NEXA FIX — RATE BOOK
+#  The single source of truth for every estimate. Fill it in once; every
+#  quote reads from here.
+#
+#  • Prices are AED, excluding VAT.
+#  • status = "owner"        -> your confirmed price (never flagged)
+#    status = "placeholder"  -> researched UAE market default (2025-26). Quotes
+#                               using it are flagged until you confirm it.
+#  • Easiest way to update: tell Claude "SPC plank now costs 38" — or run
+#      python scripts/rates.py set materials.spc_plank.cost 38
+#    Setting a cost/sell marks the item status = "owner" automatically.
+#  • cost  = what you pay the supplier per unit.
+#    sell  = your resale price per unit (optional). If sell is missing,
+#            sell = cost x (1 + markup_pct) using the category markup below.
+# =============================================================================
+
+[company]
+name = "NEXA FIX"
+display_name = "Nexa Fix"
+tagline = "Where craft meets quality"
+division = "JOINERY & FIT-OUT"
+quote_prefix = "NF"
+validity_days = 15
+warranty_short = "2 Years"
+warranty = "Two (2) year warranty against manufacturing defects."
+payment_terms = "50% advance payment upon confirmation · 40% upon completion, before delivery · 10% after installation."
+phone = ""
+email = ""
+website = ""
+address = "Dubai, United Arab Emirates"
+trn = ""          # UAE VAT TRN, printed on the quotation when filled
+signatory = ""    # name printed under "For and on behalf of Nexa Fix"
+
+[brand]           # quotation colours
+ink = "#1F1D1A"
+accent = "#9C7B52"
+paper = "#FBF8F3"
+line = "#DDD3C4"
+muted = "#7A7268"
+
+[pricing]
+currency = "AED"
+vat_registered = true
+vat_pct = 5
+default_material_markup_pct = 40   # used when a material has no `sell` and no category markup
+ffe_markup_pct = 25                # loose furniture / décor bought in and resold
+consumables_pct = 3                # glue, screws, silicone, sandpaper, blades (% of material cost)
+contingency_pct = 5                # added to the selling price for surprises (older buildings: 10+)
+snagging_reserve_pct = 1.5         # internal reserve for snagging / warranty call-backs (% of sell)
+overhead_pct = 12                  # company running costs as % of turnover (rent, office, vehicles, admin)
+site_labour_uplift_pct = 10        # towers: lift booking, access, protection, parking (site trades only)
+target_margin_pct = 35             # gross margin you aim for (sell - direct cost) / sell
+min_margin_pct = 25                # warn below this
+round_items_to = 50                # each quoted scope item is rounded UP to this
+min_job_value = 1500               # warn when a whole job is smaller than this
+show_prelims_line = false          # true: show "Preliminaries & Site Works" as its own quote line
+
+[pricing.category_markup_pct]      # markup on cost when a material has no explicit sell price
+flooring = 40
+tiles = 35
+cladding = 45
+gypsum = 35
+boards = 50
+hardware = 50
+finishing = 35
+lighting = 60
+electrical = 60
+glass = 45
+paint = 35
+upholstery = 50
+soft_furnishings = 45
+stone = 25
+sundries = 40
+
+[defaults]
+ceiling_height = 2.8               # m, used when a room/project doesn't say
+
+[schedule]
+hours_per_day = 8                  # workshop productive hours
+site_hours_per_day = 7             # productive hours on site (towers lose time to lifts/access)
+working_days_per_week = 6
+workshop_crew = 2                  # carpenters/upholsterers working on this job
+site_crew = 4                      # most people on site at once (all trades together)
+install_crew = 2                   # joinery installers (install follows fabrication)
+trade_crew = 2                     # people per trade unless the trade sets `crew`
+procurement_days = 5               # ordering + delivery of boards, hardware, finishes
+
+[preliminaries]                    # project-level costs everyone forgets
+markup_pct = 20
+trip_cost = 300                    # pickup + driver per delivery / site trip
+base_trips = 2                     # material delivery + joinery delivery
+site_days_per_trip = 3             # one extra trip every N site days
+protection_per_m2 = 6              # floor protection sheets, corner guards, lift protection
+protection_min = 250
+cleaning_per_m2 = 3
+cleaning_min = 300
+disposal_base = 300                # packaging / offcut removal
+skip_cost = 700                    # added when there is strip-out / demolition
+supervision_hours_per_site_day = 2
+
+[min_charges]                      # minimum selling price per item type (AED)
+mirror = 350
+electrical_point = 250
+socket = 250
+led_strip = 300
+curtains = 400
+blinds = 250
+
+[quote]
+salutation = "Dear Sir / Madam,"
+show_unit_rates = false
+letter = [
+  "Thank you for extending to {company} the opportunity to submit our quotation for the above mentioned project.",
+  "We are pleased to present our proposal for the supply, fabrication, and installation of the works described herein, executed with high quality materials and superior craftsmanship, in strict accordance with the approved drawings, samples, and specifications.",
+  "We trust that our offer meets your expectations, and we look forward to your valued confirmation.",
+]
+
+[[terms]]
+title = "Scope of Work"
+text = "Supply, fabrication, delivery, and professional installation of custom made furniture and finishes as per the approved drawings, samples, and materials."
+
+[[terms]]
+title = "Pre-Commencement Coordination Meeting"
+text = "A mandatory coordination meeting shall be conducted prior to the start of production to finalise and confirm all drawings, dimensions, finishes, materials, and technical specifications. The production timeline shall commence only after written approval following this meeting. Any changes requested thereafter may affect both cost and delivery timeline."
+
+[[terms]]
+title = "Payment Terms"
+text = "{payment_terms}"
+
+[[terms]]
+title = "Validity"
+text = "This quotation is valid for {validity_days} days from the date of issue."
+
+[[terms]]
+title = "Warranty"
+text = "{warranty}"
+
+[[terms]]
+title = "Building Approvals"
+text = "Building management NOC, access permits and service-lift bookings are to be arranged by the client unless stated otherwise. Refundable deposits required by the building are not included."
+
+# =============================================================================
+#  LABOUR — cost_per_hour = your all-in cost (salary, visa, housing, transport,
+#  insurance, gratuity) / ~179 productive hours a month.
+#  sell_per_hour = what one hour is worth in a quote.
+#  where = workshop | site | install (install follows workshop fabrication)
+# =============================================================================
+
+[trades.carpenter]
+label = "Carpenter (workshop)"
+where = "workshop"
+cost_per_hour = 21.6
+sell_per_hour = 55
+status = "placeholder"
+
+[trades.upholsterer]
+label = "Upholsterer (workshop)"
+where = "workshop"
+cost_per_hour = 21.6
+sell_per_hour = 55
+status = "placeholder"
+
+[trades.installer]
+label = "Joinery installer"
+where = "install"
+cost_per_hour = 23.4
+sell_per_hour = 60
+status = "placeholder"
+
+[trades.flooring]
+label = "Flooring installer"
+where = "site"
+cost_per_hour = 19.9
+sell_per_hour = 50
+status = "placeholder"
+
+[trades.tiler]
+label = "Tile mason"
+where = "site"
+cost_per_hour = 19.9
+sell_per_hour = 50
+status = "placeholder"
+
+[trades.gypsum]
+label = "Gypsum carpenter"
+where = "site"
+cost_per_hour = 19.9
+sell_per_hour = 50
+status = "placeholder"
+
+[trades.painter]
+label = "Painter"
+where = "site"
+cost_per_hour = 17.5
+sell_per_hour = 35
+status = "placeholder"
+
+[trades.electrician]
+label = "Electrician"
+where = "site"
+cost_per_hour = 21.6
+sell_per_hour = 60
+status = "placeholder"
+
+[trades.helper]
+label = "Helper"
+where = "site"
+cost_per_hour = 14.0
+sell_per_hour = 35
+status = "placeholder"
+
+[trades.supervisor]
+label = "Site supervisor"
+where = "site"
+cost_per_hour = 36.4
+sell_per_hour = 80
+status = "placeholder"
+
+# =============================================================================
+#  MATERIALS
+#  unit: what you buy (plank, tile, pc, sheet, m, m2, l, bag...)
+#  length_mm / width_mm or coverage_m2: area one unit covers
+#  pack_size: units per box/roll/tin — the shopping list rounds up to whole packs
+#  waste_pct: cutting waste added on top of the net quantity
+#  install_hours_per_m2 / install_trade: labour to fit it
+#  sell_includes_labour = true: your resale price already covers installation
+# =============================================================================
+
+# ---------------------------------------------------------------- flooring
+[materials.spc_plank]
+name = "SPC flooring plank 1800 x 180 mm"
+short = "SPC Flooring"
+client_name = "SPC click flooring"
+category = "flooring"
+unit = "plank"
+length_mm = 1800
+width_mm = 180
+cost = 35.0
+sell = 110.0
+sell_includes_labour = true        # 110/plank is your supply & install price — set false if labour is extra
+waste_pct = 8
+pack_size = 0                      # planks per box (0 = buy by the plank)
+install_trade = "flooring"
+install_hours_per_m2 = 0.32
+skirting_material = "skirting_pvc_80"
+needs_underlay = false             # most SPC has attached IXPE underlay
+status = "owner"
+
+[materials.spc_underlay]
+name = "IXPE underlay 2 mm"
+category = "flooring"
+unit = "m2"
+cost = 6.0
+status = "placeholder"
+
+[materials.laminate_8mm]
+name = "Laminate flooring 8 mm AC4"
+short = "Laminate Flooring"
+category = "flooring"
+unit = "m2"
+cost = 50.0
+waste_pct = 7
+pack_size = 2.131
+pack_name = "boxes"
+install_trade = "flooring"
+install_hours_per_m2 = 0.32
+needs_underlay = true
+skirting_material = "skirting_mdf_80"
+status = "placeholder"
+
+[materials.parquet_engineered]
+name = "Engineered oak parquet"
+short = "Engineered Parquet"
+category = "flooring"
+unit = "m2"
+cost = 150.0
+waste_pct = 8
+pack_size = 2.0
+pack_name = "boxes"
+install_trade = "flooring"
+install_hours_per_m2 = 0.45
+needs_underlay = true
+skirting_material = "skirting_mdf_80"
+status = "placeholder"
+
+[materials.tile_60x60]
+name = "Porcelain tile 600 x 600 mm"
+short = "Porcelain Tiling"
+category = "tiles"
+unit = "tile"
+length_mm = 600
+width_mm = 600
+cost = 19.8                        # ~AED 55/m²
+waste_pct = 8
+pack_size = 4
+pack_name = "boxes"
+spare_packs = 1                    # attic stock for future repairs
+install_trade = "tiler"
+install_hours_per_m2 = 0.9
+status = "placeholder"
+
+[materials.tile_120x60]
+name = "Porcelain tile 1200 x 600 mm"
+short = "Large-Format Tiling"
+category = "tiles"
+unit = "tile"
+length_mm = 1200
+width_mm = 600
+cost = 50.4                        # ~AED 70/m²
+waste_pct = 10
+pack_size = 2
+pack_name = "boxes"
+spare_packs = 1
+install_trade = "tiler"
+install_hours_per_m2 = 1.2
+status = "placeholder"
+
+[materials.tile_adhesive]
+name = "Tile adhesive C2TE 20 kg"
+category = "tiles"
+unit = "bag"
+cost = 45.0
+status = "placeholder"
+
+[materials.tile_grout]
+name = "Grout 5 kg"
+category = "tiles"
+unit = "bag"
+cost = 70.0
+status = "placeholder"
+
+[materials.tile_clips]
+name = "Tile levelling clips + wedges"
+category = "tiles"
+unit = "pc"
+cost = 0.25
+status = "placeholder"
+
+[materials.self_levelling]
+name = "Self-levelling compound 25 kg"
+category = "flooring"
+unit = "bag"
+kg_per_unit = 25
+cost = 120.0
+status = "placeholder"
+
+[materials.skirting_pvc_80]
+name = "PVC skirting 80 mm (2.4 m)"
+category = "flooring"
+unit = "pc"
+length_mm = 2400
+cost = 29.0
+waste_pct = 10
+status = "placeholder"
+
+[materials.skirting_mdf_80]
+name = "MDF skirting 80 mm primed (2.44 m)"
+category = "flooring"
+unit = "pc"
+length_mm = 2440
+cost = 29.0
+waste_pct = 10
+status = "placeholder"
+
+[materials.skirting_alu_60]
+name = "Aluminium skirting 60 mm (3 m)"
+category = "flooring"
+unit = "pc"
+length_mm = 3000
+cost = 75.0
+waste_pct = 10
+status = "placeholder"
+
+[materials.threshold_profile]
+name = "Aluminium threshold / transition profile 0.9 m"
+category = "flooring"
+unit = "pc"
+cost = 30.0
+status = "placeholder"
+
+# ---------------------------------------------------------------- wall cladding
+[materials.wpc_fluted_panel]
+name = "WPC fluted panel 160 x 2900 mm"
+short = "WPC Fluted Cladding"
+client_name = "WPC fluted wall panels"
+category = "cladding"
+unit = "pc"
+width_mm = 160
+length_mm = 2900
+cost = 35.0
+waste_pct = 5
+layout = "strips"
+trim_material = "cladding_trim"
+install_trade = "installer"
+install_hours_per_m2 = 0.65
+status = "placeholder"
+
+[materials.pvc_marble_sheet]
+name = "PVC marble sheet 1220 x 2800 x 3 mm"
+short = "PVC Marble Cladding"
+client_name = "PVC marble-effect sheets"
+category = "cladding"
+unit = "sheet"
+width_mm = 1220
+length_mm = 2800
+cost = 170.0
+waste_pct = 10
+layout = "sheets"
+round_per_item = true              # pattern matching: no pooling offcuts between walls
+trim_material = "pvc_trim"
+install_trade = "installer"
+install_hours_per_m2 = 0.55
+status = "placeholder"
+
+[materials.pvc_marble_sheet_2440]
+name = "PVC marble sheet 1220 x 2440 x 3 mm"
+short = "PVC Marble Cladding"
+category = "cladding"
+unit = "sheet"
+width_mm = 1220
+length_mm = 2440
+cost = 140.0
+waste_pct = 10
+layout = "sheets"
+round_per_item = true
+trim_material = "pvc_trim"
+install_trade = "installer"
+install_hours_per_m2 = 0.55
+status = "placeholder"
+
+[materials.stone_pvc_panel]
+name = "Stone-finish PU/PVC panel 1200 x 600 mm"
+short = "Stone-Finish Cladding"
+client_name = "stone finish PVC panels"
+category = "cladding"
+unit = "pc"
+width_mm = 600
+length_mm = 1200
+cost = 85.0
+waste_pct = 8
+layout = "sheets"
+trim_material = "pvc_trim"
+install_trade = "installer"
+install_hours_per_m2 = 0.7
+status = "placeholder"
+
+[materials.acoustic_slat_panel]
+name = "Acoustic wood slat panel 2400 x 600 mm"
+short = "Acoustic Slat Cladding"
+category = "cladding"
+unit = "pc"
+width_mm = 600
+length_mm = 2400
+cost = 200.0
+waste_pct = 5
+layout = "sheets"
+trims = false
+install_trade = "installer"
+install_hours_per_m2 = 0.6
+status = "placeholder"
+
+[materials.cladding_trim]
+name = "WPC / aluminium trim 2.9 m"
+category = "cladding"
+unit = "pc"
+length_mm = 2900
+cost = 18.0
+status = "placeholder"
+
+[materials.pvc_trim]
+name = "PVC / aluminium edge trim 2.9 m"
+category = "cladding"
+unit = "pc"
+length_mm = 2900
+cost = 18.0
+status = "placeholder"
+
+[materials.cladding_adhesive]
+name = "Panel adhesive cartridge"
+category = "cladding"
+unit = "pc"
+cost = 18.0
+status = "placeholder"
+
+[materials.timber_batten]
+name = "Timber batten 25 x 50 mm"
+category = "cladding"
+unit = "m"
+cost = 3.5
+status = "placeholder"
+
+# ---------------------------------------------------------------- gypsum
+[materials.gypsum_board_std]
+name = "Gypsum board 1200 x 2400 x 12.5 mm"
+short = "gypsum board"
+category = "gypsum"
+unit = "sheet"
+width_mm = 1200
+length_mm = 2400
+cost = 22.0
+status = "placeholder"
+
+[materials.gypsum_board_mr]
+name = "Moisture-resistant gypsum board 1200 x 2400 x 12.5 mm"
+short = "moisture-resistant gypsum board"
+category = "gypsum"
+unit = "sheet"
+width_mm = 1200
+length_mm = 2400
+cost = 43.0
+status = "placeholder"
+
+[materials.gypsum_board_fr]
+name = "Fire-rated gypsum board 1200 x 2400 x 12.5 mm"
+short = "fire-rated gypsum board"
+category = "gypsum"
+unit = "sheet"
+width_mm = 1200
+length_mm = 2400
+cost = 45.0
+status = "placeholder"
+
+[materials.stud_c]
+name = "Metal C-stud 70 mm x 3 m"
+category = "gypsum"
+unit = "pc"
+length_mm = 3000
+cost = 10.0
+status = "placeholder"
+
+[materials.track_u]
+name = "Metal U-track 72 mm x 3 m"
+category = "gypsum"
+unit = "pc"
+length_mm = 3000
+cost = 9.5
+status = "placeholder"
+
+[materials.main_channel]
+name = "Ceiling main channel 3 m"
+category = "gypsum"
+unit = "pc"
+length_mm = 3000
+cost = 5.0
+status = "placeholder"
+
+[materials.furring_channel]
+name = "Furring channel 3 m"
+category = "gypsum"
+unit = "pc"
+length_mm = 3000
+cost = 9.1
+status = "placeholder"
+
+[materials.wall_angle]
+name = "Perimeter wall angle 3 m"
+category = "gypsum"
+unit = "pc"
+length_mm = 3000
+cost = 10.0
+status = "placeholder"
+
+[materials.ceiling_hanger]
+name = "Hanger rod + clip set"
+category = "gypsum"
+unit = "pc"
+cost = 1.5
+status = "placeholder"
+
+[materials.drywall_screws]
+name = "Drywall screws 25 mm"
+category = "gypsum"
+unit = "pc"
+cost = 0.045
+status = "placeholder"
+
+[materials.joint_tape]
+name = "Paper joint tape"
+category = "gypsum"
+unit = "m"
+cost = 0.23
+status = "placeholder"
+
+[materials.joint_compound]
+name = "Joint compound 28 kg"
+category = "gypsum"
+unit = "bag"
+kg_per_unit = 28
+cost = 57.5
+status = "placeholder"
+
+[materials.rockwool_50]
+name = "Rockwool insulation 50 mm"
+category = "gypsum"
+unit = "m2"
+cost = 25.0
+status = "placeholder"
+
+[materials.access_panel]
+name = "Ceiling access panel 600 x 600"
+category = "gypsum"
+unit = "pc"
+cost = 85.0
+status = "placeholder"
+
+[materials.downlight]
+name = "LED downlight 9 W"
+category = "lighting"
+unit = "pc"
+cost = 20.0
+status = "placeholder"
+
+# ---------------------------------------------------------------- joinery boards
+[materials.mfc_18]
+name = "Egger MFC 18 mm 2800 x 2070"
+short = "Egger wood sheet"
+client_name = "Egger wood sheet"
+category = "boards"
+unit = "sheet"
+length_mm = 2800
+width_mm = 2070
+cost = 250.0
+yield_pct = 84
+finish = "laminate"
+status = "placeholder"
+
+[materials.melamine_mdf_18]
+name = "Melamine-faced MDF 18 mm 1220 x 2440"
+client_name = "melamine-faced MDF"
+category = "boards"
+unit = "sheet"
+length_mm = 2440
+width_mm = 1220
+cost = 130.0
+yield_pct = 80
+finish = "laminate"
+status = "placeholder"
+
+[materials.mdf_18]
+name = "MDF 18 mm 1220 x 2440 (for lacquer)"
+client_name = "lacquered MDF"
+category = "boards"
+unit = "sheet"
+length_mm = 2440
+width_mm = 1220
+cost = 65.0
+yield_pct = 80
+finish = "lacquer"
+status = "placeholder"
+
+[materials.mdf_mr_18]
+name = "Moisture-resistant MDF 18 mm 1220 x 2440"
+client_name = "moisture-resistant MDF"
+category = "boards"
+unit = "sheet"
+length_mm = 2440
+width_mm = 1220
+cost = 78.0
+yield_pct = 80
+finish = "lacquer"
+status = "placeholder"
+
+[materials.mdf_06]
+name = "MDF 6 mm 1220 x 2440 (backs, drawer bottoms)"
+category = "boards"
+unit = "sheet"
+length_mm = 2440
+width_mm = 1220
+cost = 35.0
+yield_pct = 85
+status = "placeholder"
+
+[materials.ply_18]
+name = "Marine plywood 18 mm 1220 x 2440"
+client_name = "marine plywood"
+category = "boards"
+unit = "sheet"
+length_mm = 2440
+width_mm = 1220
+cost = 120.0
+yield_pct = 80
+status = "placeholder"
+
+[materials.ply_12]
+name = "Plywood 12 mm 1220 x 2440"
+category = "boards"
+unit = "sheet"
+length_mm = 2440
+width_mm = 1220
+cost = 85.0
+yield_pct = 85
+status = "placeholder"
+
+[materials.acrylic_18]
+name = "High-gloss acrylic MDF 18 mm 1220 x 2800"
+client_name = "high-gloss acrylic"
+category = "boards"
+unit = "sheet"
+length_mm = 2800
+width_mm = 1220
+cost = 330.0
+yield_pct = 72
+finish = "acrylic"
+status = "placeholder"
+
+[materials.veneer_mdf_18]
+name = "Oak veneer MDF 18 mm 1220 x 2440"
+client_name = "natural oak veneer"
+category = "boards"
+unit = "sheet"
+length_mm = 2440
+width_mm = 1220
+cost = 115.0
+yield_pct = 75
+finish = "veneer"
+status = "placeholder"
+
+[materials.lacquer_finish]
+name = "PU lacquer spray, matt/satin (per m² of face)"
+category = "finishing"
+unit = "m2"
+cost = 80.0
+status = "placeholder"
+
+[materials.clear_lacquer]
+name = "Clear PU lacquer on veneer (per m² of face)"
+category = "finishing"
+unit = "m2"
+cost = 60.0
+status = "placeholder"
+
+[materials.glass_door]
+name = "Tinted glass for display doors 5 mm"
+category = "glass"
+unit = "m2"
+cost = 140.0
+status = "placeholder"
+
+[materials.edge_band_thin]
+name = "PVC edge band 0.8 mm (carcass)"
+category = "hardware"
+unit = "m"
+cost = 0.55
+status = "placeholder"
+
+[materials.edge_band_thick]
+name = "PVC edge band 2 mm (fronts)"
+category = "hardware"
+unit = "m"
+cost = 1.4
+status = "placeholder"
+
+# ---------------------------------------------------------------- hardware
+[materials.hinge_soft_close]
+name = "Soft-close concealed hinge"
+category = "hardware"
+unit = "pc"
+cost = 15.0
+status = "placeholder"
+
+[materials.drawer_runner]
+name = "Soft-close full-extension runner (pair)"
+category = "hardware"
+unit = "pair"
+cost = 45.0
+status = "placeholder"
+
+[materials.handle_std]
+name = "Bar handle 160 mm"
+category = "hardware"
+unit = "pc"
+cost = 15.0
+status = "placeholder"
+
+[materials.handle_profile]
+name = "Aluminium profile handle"
+category = "hardware"
+unit = "m"
+cost = 70.0
+status = "placeholder"
+
+[materials.push_latch]
+name = "Push-to-open latch"
+category = "hardware"
+unit = "pc"
+cost = 8.0
+status = "placeholder"
+
+[materials.gas_strut]
+name = "Gas strut / flap stay"
+category = "hardware"
+unit = "pc"
+cost = 15.0
+status = "placeholder"
+
+[materials.shelf_pin]
+name = "Shelf support pin"
+category = "hardware"
+unit = "pc"
+cost = 0.3
+status = "placeholder"
+
+[materials.hanging_rail]
+name = "Oval wardrobe rail"
+category = "hardware"
+unit = "m"
+cost = 15.0
+status = "placeholder"
+
+[materials.adjustable_leg]
+name = "Adjustable cabinet leg"
+category = "hardware"
+unit = "pc"
+cost = 4.0
+status = "placeholder"
+
+[materials.wall_hanger]
+name = "Concealed cabinet wall hanger"
+category = "hardware"
+unit = "pc"
+cost = 12.0
+status = "placeholder"
+
+[materials.floating_bracket]
+name = "Concealed floating-shelf bracket"
+category = "hardware"
+unit = "pc"
+cost = 25.0
+status = "placeholder"
+
+[materials.sliding_door_kit]
+name = "Soft-close sliding door gear (per door)"
+category = "hardware"
+unit = "pc"
+cost = 250.0
+status = "placeholder"
+
+[materials.bed_gas_lift]
+name = "Bed gas-lift mechanism (pair)"
+category = "hardware"
+unit = "set"
+cost = 150.0
+status = "placeholder"
+
+[materials.tv_bracket]
+name = "TV wall bracket (fixed/tilt)"
+category = "hardware"
+unit = "pc"
+cost = 120.0
+status = "placeholder"
+
+[materials.cable_grommet]
+name = "Cable grommet"
+category = "hardware"
+unit = "pc"
+cost = 5.0
+status = "placeholder"
+
+# ---------------------------------------------------------------- lighting
+[materials.led_strip_24v]
+name = "LED strip 24 V 10 W/m 3000K"
+category = "lighting"
+unit = "m"
+cost = 9.0
+watts_per_m = 10
+max_run_m = 10
+pack_size = 5
+pack_name = "rolls"
+status = "placeholder"
+
+[materials.led_strip_cob]
+name = "COB LED strip 24 V 10 W/m (dotless)"
+category = "lighting"
+unit = "m"
+cost = 12.0
+watts_per_m = 10
+max_run_m = 10
+pack_size = 5
+pack_name = "rolls"
+status = "placeholder"
+
+[materials.led_driver_60w]
+name = "LED driver 24 V 60 W"
+category = "lighting"
+unit = "pc"
+watts = 60
+cost = 40.0
+status = "placeholder"
+
+[materials.led_driver_100w]
+name = "LED driver 24 V 100 W"
+category = "lighting"
+unit = "pc"
+watts = 100
+cost = 60.0
+status = "placeholder"
+
+[materials.led_driver_150w]
+name = "LED driver 24 V 150 W"
+category = "lighting"
+unit = "pc"
+watts = 150
+cost = 80.0
+status = "placeholder"
+
+[materials.led_driver_200w]
+name = "LED driver 24 V 200 W"
+category = "lighting"
+unit = "pc"
+watts = 200
+cost = 100.0
+status = "placeholder"
+
+[materials.led_driver_300w]
+name = "LED driver 24 V 300 W"
+category = "lighting"
+unit = "pc"
+watts = 300
+cost = 130.0
+status = "placeholder"
+
+[materials.led_profile]
+name = "Aluminium LED profile + diffuser 2 m"
+category = "lighting"
+unit = "pc"
+length_mm = 2000
+cost = 20.0
+status = "placeholder"
+
+[materials.led_connector_kit]
+name = "LED feed connector / end caps / clips kit"
+category = "lighting"
+unit = "pc"
+cost = 6.0
+status = "placeholder"
+
+[materials.led_sensor]
+name = "Touch / door sensor switch"
+category = "lighting"
+unit = "pc"
+cost = 25.0
+status = "placeholder"
+
+# ---------------------------------------------------------------- electrical
+[materials.socket_double_13a]
+name = "13 A twin switched socket"
+category = "electrical"
+unit = "pc"
+cost = 40.0
+status = "placeholder"
+
+[materials.socket_usb]
+name = "13 A twin socket with USB-A/C"
+category = "electrical"
+unit = "pc"
+cost = 60.0
+status = "placeholder"
+
+[materials.switch_1g]
+name = "1-gang light switch"
+category = "electrical"
+unit = "pc"
+cost = 15.0
+status = "placeholder"
+
+[materials.tv_data_point]
+name = "TV / data outlet"
+category = "electrical"
+unit = "pc"
+cost = 25.0
+status = "placeholder"
+
+[materials.isolator_20a]
+name = "20 A DP isolator switch"
+category = "electrical"
+unit = "pc"
+cost = 45.0
+status = "placeholder"
+
+[materials.light_point_fitting]
+name = "Ceiling rose / connector for light point"
+category = "electrical"
+unit = "pc"
+cost = 10.0
+status = "placeholder"
+
+[materials.back_box]
+name = "GI back box 3 x 3"
+category = "electrical"
+unit = "pc"
+cost = 1.75
+status = "placeholder"
+
+[materials.cable_2_5]
+name = "Single-core cable 2.5 mm² (coil 91.4 m)"
+category = "electrical"
+unit = "m"
+cost = 2.19
+status = "placeholder"
+
+[materials.cable_1_5]
+name = "Single-core cable 1.5 mm² (coil 91.4 m)"
+category = "electrical"
+unit = "m"
+cost = 1.53
+status = "placeholder"
+
+[materials.cable_4_0]
+name = "Single-core cable 4 mm²"
+category = "electrical"
+unit = "m"
+cost = 3.2
+status = "placeholder"
+
+[materials.cable_cat6]
+name = "Cat6 data cable"
+category = "electrical"
+unit = "m"
+cost = 1.2
+status = "placeholder"
+
+[materials.conduit_20]
+name = "PVC conduit 20 mm x 3 m"
+category = "electrical"
+unit = "pc"
+length_mm = 3000
+cost = 7.5
+status = "placeholder"
+
+# ---------------------------------------------------------------- glass / mirrors
+[materials.mirror_clear_5mm]
+name = "Clear silver mirror 5 mm"
+short = "Clear mirror"
+category = "glass"
+unit = "m2"
+cost = 80.0
+status = "placeholder"
+
+[materials.mirror_bronze_6mm]
+name = "Bronze tinted mirror 6 mm"
+short = "Bronze mirror"
+category = "glass"
+unit = "m2"
+cost = 140.0
+status = "placeholder"
+
+[materials.mirror_grey_6mm]
+name = "Grey tinted mirror 6 mm"
+short = "Grey mirror"
+category = "glass"
+unit = "m2"
+cost = 140.0
+status = "placeholder"
+
+[materials.mirror_edge_polish]
+name = "Mirror edge polishing"
+category = "glass"
+unit = "m"
+cost = 7.0
+status = "placeholder"
+
+[materials.mirror_bevel]
+name = "Mirror bevelled edge 20 mm"
+category = "glass"
+unit = "m"
+cost = 18.0
+status = "placeholder"
+
+[materials.mirror_adhesive]
+name = "Mirror adhesive cartridge"
+category = "glass"
+unit = "pc"
+cost = 25.0
+status = "placeholder"
+
+[materials.mirror_frame_metal]
+name = "Slim metal mirror frame (PVD)"
+category = "glass"
+unit = "m"
+cost = 45.0
+status = "placeholder"
+
+# ---------------------------------------------------------------- paint
+[materials.paint_emulsion]
+name = "Interior emulsion (Jotun Fenomastic class)"
+category = "paint"
+unit = "l"
+cost = 15.6                        # ~AED 280 per 18 L
+coverage_m2_per_l = 9
+pack_size = 18
+pack_name = "18 L pails"
+status = "placeholder"
+
+[materials.paint_ceiling]
+name = "Ceiling emulsion matt"
+category = "paint"
+unit = "l"
+cost = 8.5
+coverage_m2_per_l = 10
+pack_size = 18
+pack_name = "18 L pails"
+status = "placeholder"
+
+[materials.primer_sealer]
+name = "Primer / sealer"
+category = "paint"
+unit = "l"
+cost = 9.95
+coverage_m2_per_l = 8
+pack_size = 18
+pack_name = "18 L pails"
+status = "placeholder"
+
+[materials.wall_putty]
+name = "Wall putty 20 kg"
+category = "paint"
+unit = "bag"
+kg_per_unit = 20
+cost = 35.0
+status = "placeholder"
+
+# ---------------------------------------------------------------- upholstery
+[materials.foam_50mm]
+name = "High-density foam 50 mm"
+category = "upholstery"
+unit = "m2"
+cost = 42.5
+status = "placeholder"
+
+[materials.foam_25mm]
+name = "Foam 25 mm"
+category = "upholstery"
+unit = "m2"
+cost = 25.0
+status = "placeholder"
+
+[materials.batting]
+name = "Polyester batting / wadding"
+category = "upholstery"
+unit = "m2"
+cost = 8.0
+status = "placeholder"
+
+[materials.upholstery_fabric]
+name = "Upholstery fabric 140 cm"
+category = "upholstery"
+unit = "m"
+width_mm = 1400
+cost = 45.0
+status = "placeholder"
+
+# ---------------------------------------------------------------- curtains / blinds / wallpaper
+[materials.curtain_blackout]
+name = "Blackout curtain fabric 280 cm"
+category = "soft_furnishings"
+unit = "m"
+width_mm = 2800
+cost = 55.0
+status = "placeholder"
+
+[materials.curtain_sheer]
+name = "Sheer curtain fabric 280 cm"
+category = "soft_furnishings"
+unit = "m"
+width_mm = 2800
+cost = 28.0
+status = "placeholder"
+
+[materials.curtain_stitching]
+name = "Curtain making-up, wave heading (per m finished width)"
+category = "soft_furnishings"
+unit = "m"
+cost = 60.0
+status = "placeholder"
+
+[materials.curtain_track]
+name = "Ceiling curtain track"
+category = "soft_furnishings"
+unit = "m"
+cost = 35.0
+status = "placeholder"
+
+[materials.curtain_motor]
+name = "Curtain motor (mid-range)"
+category = "soft_furnishings"
+unit = "pc"
+cost = 650.0
+status = "placeholder"
+
+[materials.roller_blind]
+name = "Roller blind, blackout or sunscreen"
+short = "Roller blind"
+category = "soft_furnishings"
+unit = "m2"
+cost = 90.0
+status = "placeholder"
+
+[materials.blind_motor]
+name = "Blind motor"
+category = "soft_furnishings"
+unit = "pc"
+cost = 350.0
+status = "placeholder"
+
+[materials.wallpaper_roll]
+name = "Wallpaper roll 0.53 x 10.05 m"
+category = "paint"
+unit = "roll"
+width_mm = 530
+length_mm = 10050
+cost = 120.0
+status = "placeholder"
+
+[materials.wallpaper_paste]
+name = "Wallpaper paste"
+category = "paint"
+unit = "pc"
+cost = 25.0
+status = "placeholder"
+
+# ---------------------------------------------------------------- stone
+[materials.quartz_countertop]
+name = "Quartz countertop 20 mm, 600 deep (supplied, fabricated & fitted by stone supplier)"
+short = "Quartz countertop"
+category = "stone"
+unit = "m"
+cost = 650.0
+status = "placeholder"
+
+[materials.countertop_cutout]
+name = "Sink / hob cut-out"
+category = "stone"
+unit = "pc"
+cost = 150.0
+status = "placeholder"
+
+# =============================================================================
+#  ASSEMBLIES — how each item type is built up. Productivity figures are
+#  man-hours (mh) from UAE/industry norms; tune them to your own crews.
+# =============================================================================
+
+[assemblies.flooring]
+default_material = "spc_plank"
+default_tile = "tile_60x60"
+default_wall_tile = "tile_60x60"
+trade = "flooring"
+waste_pct = 8
+skirting = true
+skirting_material = "skirting_pvc_80"
+skirting_hours_per_lm = 0.15
+thresholds = true
+threshold_material = "threshold_profile"
+underlay_material = "spc_underlay"
+tile_adhesive = "tile_adhesive"
+tile_adhesive_m2_per_bag = 4.0         # 20 kg at ~5 kg/m² (60x60)
+tile_adhesive_m2_per_bag_large = 2.9   # large format ~7 kg/m²
+tile_grout = "tile_grout"
+tile_grout_m2_per_bag = 15
+tile_clips = "tile_clips"
+tile_clips_per_m2 = 8
+wall_labour_factor = 1.5
+levelling_material = "self_levelling"
+levelling_mm = 3
+levelling_kg_per_m2_per_mm = 1.6
+levelling_hours_per_m2 = 0.08
+removal_trade = "helper"
+
+[assemblies.flooring.pattern_waste_pct]  # extra waste on top of the material's own
+straight = 0
+diagonal = 6
+herringbone = 11
+
+[assemblies.flooring.pattern_labour_factor]
+straight = 1.0
+diagonal = 1.25
+herringbone = 1.6
+
+[assemblies.flooring.removal_hours_per_m2]
+tiles = 0.7
+spc = 0.1
+laminate = 0.1
+carpet = 0.05
+parquet = 0.25
+
+[assemblies.wall_cladding]
+default_material = "wpc_fluted_panel"
+waste_pct = 8
+hours_per_m2 = 0.65
+trim_hours_per_lm = 0.15
+adhesive_material = "cladding_adhesive"
+adhesive_per_m2 = 0.6
+framing_material = "timber_batten"
+framing_lm_per_m2 = 2.5
+framing_hours_per_m2 = 0.35
+
+[assemblies.led]
+default_strip = "led_strip_24v"
+default_profile = "led_profile"
+drivers = ["led_driver_60w", "led_driver_100w", "led_driver_150w", "led_driver_200w", "led_driver_300w"]
+driver_load_pct = 80                   # never load a driver above 80%
+max_run_m = 10                         # 24 V: re-feed every 10 m to avoid voltage drop
+waste_pct = 5
+connector_material = "led_connector_kit"
+cable_material = "cable_1_5"
+cable_per_feed_m = 6
+sensor_material = "led_sensor"
+trade = "electrician"
+hours_per_m = 0.2
+profile_hours_per_m = 0.2
+hours_per_driver = 0.75
+
+[assemblies.cove_lighting]
+strip = "led_strip_24v"
+profile = false
+build_cove = false                     # true: also build the gypsum cove itself
+cct = "3000K warm white"
+sell_rate_per_m = 0                    # e.g. 120 to sell cove lighting at AED 120/lm
+
+[assemblies.gypsum_partition]
+board = "gypsum_board_std"
+board_mr = "gypsum_board_mr"
+board_fr = "gypsum_board_fr"
+stud_material = "stud_c"
+track_material = "track_u"
+stud_spacing_m = 0.6
+waste_pct = 10
+screw_material = "drywall_screws"
+screws_per_m2 = 15                     # per board face
+tape_material = "joint_tape"
+tape_m_per_m2 = 1.25
+compound_material = "joint_compound"
+compound_kg_per_m2 = 0.4
+insulation = false
+insulation_material = "rockwool_50"
+trade = "gypsum"
+framing_hours_per_m2 = 0.35
+boarding_hours_per_m2 = 0.2            # per face
+finishing_hours_per_m2 = 0.225         # per face (tape, joint, sand)
+sell_rate_per_m2 = 0                   # e.g. 95 to sell partitions at AED 95/m²
+
+[assemblies.gypsum_ceiling]
+board = "gypsum_board_std"
+board_mr = "gypsum_board_mr"
+waste_pct = 10
+main_channel_material = "main_channel"
+main_channel_m_per_m2 = 0.9
+furring_material = "furring_channel"
+furring_m_per_m2 = 2.75
+hanger_material = "ceiling_hanger"
+hangers_per_m2 = 1.0
+wall_angle_material = "wall_angle"
+screw_material = "drywall_screws"
+screws_per_m2 = 18
+tape_material = "joint_tape"
+tape_m_per_m2 = 1.1
+compound_material = "joint_compound"
+compound_kg_per_m2 = 0.5
+cove_girth_m = 0.7
+bulkhead_girth_m = 0.9
+cove_framing_m_per_lm = 3.5
+bulkhead_framing_m_per_lm = 3.5
+trade = "gypsum"
+hours_per_m2 = 1.1
+cove_hours_per_lm = 1.8
+bulkhead_hours_per_lm = 1.2
+cutout_hours = 0.15
+downlight_material = "downlight"
+downlight_hours = 0.8
+access_panel_material = "access_panel"
+sell_rate_per_m2 = 0
+cove_sell_rate_per_m = 0
+
+[assemblies.painting]
+paint = "paint_emulsion"
+ceiling_paint = "paint_ceiling"
+primer = "auto"                        # auto = only for medium/full prep (new plaster/gypsum, heavy repairs)
+primer_material = "primer_sealer"
+putty_material = "wall_putty"
+coats = 2
+prep = "light"                         # none | light | medium | full
+surfaces = "walls"
+trade = "painter"
+hours_per_m2_per_coat = 0.06          # ~50-60 m²/day per painter per coat on flat walls
+ceiling_labour_factor = 1.25
+sell_rate_per_m2 = 0
+
+[assemblies.painting.putty_kg_per_m2]
+none = 0
+light = 0.2
+medium = 0.5
+full = 1.0
+
+[assemblies.painting.prep_hours_per_m2]
+none = 0
+light = 0.04                           # repaint: fill nail holes, light sand
+medium = 0.15
+full = 0.4                             # full skim + sand
+
+[assemblies.wallpaper]
+roll_material = "wallpaper_roll"
+paste_material = "wallpaper_paste"
+rolls_per_paste = 5
+trade = "painter"
+hours_per_roll = 1.25
+
+[assemblies.electrical_point]
+trade = "electrician"
+box_material = "back_box"
+conduit_material = "conduit_20"
+relocate_cable_m = 12
+relocate_conduit_m = 3
+making_good_cost = 15
+
+[assemblies.electrical_point.hours]
+new = 3.5            # chase, conduit, cable (3 cores), box, faceplate, test, make good
+relocate = 2.5
+faceplate = 0.35
+
+[assemblies.electrical_point.kinds.socket]
+label = "13 A double socket"
+material = "socket_double_13a"
+cable = "cable_2_5"
+cable_m = 24                           # ~8 m run x 3 single cores (L, N, E)
+conduit_m = 8
+
+[assemblies.electrical_point.kinds.usb]
+label = "USB socket"
+material = "socket_usb"
+cable = "cable_2_5"
+cable_m = 24
+conduit_m = 8
+
+[assemblies.electrical_point.kinds.switch]
+label = "Light switch"
+material = "switch_1g"
+cable = "cable_1_5"
+cable_m = 25
+conduit_m = 9
+
+[assemblies.electrical_point.kinds.light]
+label = "Light point"
+material = "light_point_fitting"
+cable = "cable_1_5"
+cable_m = 25
+conduit_m = 9
+
+[assemblies.electrical_point.kinds.data]
+label = "TV / data point"
+material = "tv_data_point"
+cable = "cable_cat6"
+cable_m = 15
+conduit_m = 10
+
+[assemblies.electrical_point.kinds.isolator]
+label = "20 A isolator"
+material = "isolator_20a"
+cable = "cable_4_0"
+cable_m = 30
+conduit_m = 10
+dewa_note = true
+
+[assemblies.mirror]
+default_glass = "mirror_clear_5mm"
+min_area_m2 = 0.3
+waste_pct = 10
+edge = "polished"
+adhesive_material = "mirror_adhesive"
+adhesive_per_m2 = 1
+frame_material = "mirror_frame_metal"
+sensor_material = "led_sensor"
+backlit_fab_hours = 1.5
+trade = "installer"
+install_hours_each = 0.75
+install_hours_per_m2 = 0.9
+
+[assemblies.mirror.edge_materials]
+polished = "mirror_edge_polish"
+bevel = "mirror_bevel"
+
+[assemblies.cabinet]
+carcass_board = "mfc_18"
+front_board = "mfc_18"
+back_board = "mdf_06"
+sheet_yield_pct = 82
+edge_thin_material = "edge_band_thin"
+edge_thick_material = "edge_band_thick"
+lacquer_material = "lacquer_finish"
+clear_lacquer_material = "clear_lacquer"
+glass_material = "glass_door"
+spray_faces_factor = 2.1               # both faces + edges of every sprayed front
+section_width = 0.9
+max_door_width = 0.6
+handles = "standard"                   # standard | profile | push | none
+fab_trade = "carpenter"
+install_trade = "installer"
+hinge_rule = [[0.9, 2], [1.6, 3], [2.0, 4], [2.6, 5], [99, 6]]   # [max door height m, hinges]
+
+[assemblies.cabinet.hardware]
+hinge = "hinge_soft_close"
+runner = "drawer_runner"
+handle = "handle_std"
+handle_profile = "handle_profile"
+push_latch = "push_latch"
+gas_strut = "gas_strut"
+shelf_pin = "shelf_pin"
+hanging_rail = "hanging_rail"
+leg = "adjustable_leg"
+wall_bracket = "wall_hanger"
+floating_bracket = "floating_bracket"
+sliding_kit = "sliding_door_kit"
+
+[assemblies.cabinet.fab_hours]         # workshop man-hours
+setup = 2.0
+per_m2 = 1.0                           # per m² of board cut, edged and drilled
+per_door = 1.0
+per_drawer = 1.5
+per_flap = 1.2
+per_shelf = 0.3
+
+[assemblies.cabinet.install_hours]     # site man-hours
+per_unit = 1.5
+per_m_width = 1.5
+floating_factor = 1.3
+
+[assemblies.cabinet.presets.wardrobe]
+label = "Wardrobe"
+height = 2.6
+depth = 0.6
+plinth = 0.1
+section_width = 0.9
+max_door_width = 0.5
+shelves_per_section = 2
+hanging_ratio = 0.6
+fab_setup_hours = 5
+install_per_unit = 2
+install_per_m = 4.5
+
+[assemblies.cabinet.presets.kitchen_base]
+label = "Kitchen base cabinets"
+height = 0.87
+depth = 0.58
+plinth = 0.1
+top = false
+section_width = 0.6
+max_door_width = 0.6
+shelves_per_section = 1
+install_per_m = 3.0
+
+[assemblies.cabinet.presets.kitchen_wall]
+label = "Kitchen wall cabinets"
+height = 0.72
+depth = 0.35
+section_width = 0.6
+max_door_width = 0.6
+shelves_per_section = 2
+floating = true
+install_per_m = 2.0
+
+[assemblies.cabinet.presets.tall_unit]
+label = "Tall unit"
+height = 2.2
+depth = 0.58
+plinth = 0.1
+section_width = 0.6
+max_door_width = 0.6
+shelves_per_section = 4
+fab_setup_hours = 3.5
+install_per_m = 3.0
+
+[assemblies.cabinet.presets.vanity]
+label = "Vanity unit"
+height = 0.55
+depth = 0.5
+drawers = 2
+drawer_height = 0.25
+door_type = "none"
+floating = true
+section_width = 1.2
+front_board = "mdf_mr_18"
+carcass_board = "mdf_mr_18"
+install_per_unit = 1.5
+install_per_m = 1.0
+
+[assemblies.cabinet.presets.shoe_cabinet]
+label = "Shoe cabinet"
+height = 1.1
+depth = 0.35
+plinth = 0.1
+section_width = 0.9
+max_door_width = 0.5
+shelves_per_section = 4
+
+[assemblies.cabinet.presets.dresser]
+label = "Dresser"
+height = 0.8
+depth = 0.45
+drawers = 4
+drawer_columns = 2
+drawer_height = 0.36
+door_type = "none"
+section_width = 1.4
+
+[assemblies.cabinet.presets.nightstand]
+label = "Nightstand"
+width = 0.5
+height = 0.45
+depth = 0.4
+drawers = 1
+drawer_height = 0.18
+door_type = "none"
+floating = true
+section_width = 0.6
+install_per_unit = 0.75
+install_per_m = 0.5
+
+[assemblies.cabinet.presets.bookshelf]
+label = "Open shelving unit"
+height = 2.2
+depth = 0.35
+door_type = "none"
+section_width = 0.8
+shelves_per_section = 4
+fab_setup_hours = 3
+
+[assemblies.cabinet.presets.storage]
+label = "Storage cabinet"
+height = 2.2
+depth = 0.6
+plinth = 0.1
+section_width = 0.9
+max_door_width = 0.5
+shelves_per_section = 4
+fab_setup_hours = 3.5
+
+[assemblies.cabinet.presets.console]
+label = "Console / sideboard"
+height = 0.8
+depth = 0.45
+section_width = 0.8
+max_door_width = 0.6
+shelves_per_section = 1
+
+[assemblies.cabinet.presets.study_desk]
+label = "Study desk"
+height = 0.75
+depth = 0.6
+drawers = 2
+drawer_height = 0.15
+door_type = "none"
+back = false
+section_width = 1.2
+
+[assemblies.cabinet.presets.tv_base]
+label = "TV base unit"
+height = 0.4
+depth = 0.45
+door_type = "none"
+floating = true
+section_width = 1.2
+
+[assemblies.cabinet.presets.display_unit]
+label = "Display unit"
+height = 2.2
+depth = 0.35
+door_type = "glass"
+section_width = 0.6
+max_door_width = 0.6
+shelves_per_section = 4
+fab_setup_hours = 3
+
+[assemblies.media_unit]
+width = 2.4
+front_board = "mfc_18"
+carcass_board = "mfc_18"
+panel = true
+panel_material = "mfc_18"              # board, or a cladding material like stone_pvc_panel
+panel_batten_lm_per_m2 = 2.0
+panel_fab_hours_per_m2 = 0.5
+panel_install_hours_per_m2 = 0.5
+base_height = 0.4
+base_depth = 0.45
+base_drawers = 2
+shelves = 2
+shelf_length = 1.2
+shelf_depth = 0.25
+shelf_thickness = 0.05
+shelf_led = true
+shelf_fab_hours = 1.5
+shelf_install_hours = 0.75
+tv_bracket = false
+tv_bracket_material = "tv_bracket"
+grommet_material = "cable_grommet"
+conduit_m = 3
+
+[assemblies.headboard]
+width = 2.0
+height = 1.2
+backing_board = "ply_12"
+frame_material = "timber_batten"
+foam_material = "foam_50mm"
+batting_material = "batting"
+fabric_material = "upholstery_fabric"
+fabric_waste_pct = 20
+base_hours = 2
+hours_per_m2 = 1.7
+frame_hours = 2.5
+install_hours = 1.5
+
+[assemblies.headboard.style_factor]
+plain = 1.0
+channel = 1.4
+tufted = 1.8
+panelled = 1.2
+
+[assemblies.bed_box]
+size = "king"
+height = 0.35
+carcass_board = "mfc_18"
+platform_board = "ply_18"
+bottom_board = "mdf_06"
+gas_lift_material = "bed_gas_lift"
+fabric_material = "upholstery_fabric"
+foam_thin_material = "foam_25mm"
+fab_hours = 8
+upholstery_hours = 6
+install_hours = 2
+
+[assemblies.bed_box.sizes]             # mattress [width, length] m
+single = [0.9, 1.9]
+double = [1.4, 1.9]
+queen = [1.6, 2.0]
+king = [1.8, 2.0]
+super_king = [2.0, 2.0]
+
+[assemblies.countertop]
+default_material = "quartz_countertop"
+depth = 0.6
+cutout_material = "countertop_cutout"
+splashback_material = "quartz_countertop"
+trade = "installer"
+install_hours_per_m = 0.5              # coordination only; stone supplier fits
+
+[assemblies.curtains]
+fullness = 2.3                         # wave heading
+stitching_material = "curtain_stitching"
+track_material = "curtain_track"
+motor_material = "curtain_motor"
+trade = "installer"
+hours_per_track = 1.25
+
+[assemblies.curtains.fabrics]
+blackout = "curtain_blackout"
+sheer = "curtain_sheer"
+
+[assemblies.blinds]
+default_material = "roller_blind"
+min_area_m2 = 1.0
+motor_material = "blind_motor"
+trade = "installer"
+hours_each = 0.75
+
+[assemblies.demolition]
+trade = "helper"
+disposal_per_m2 = 4
+
+[assemblies.demolition.hours_per_m2]
+tiles = 0.7
+spc = 0.1
+laminate = 0.1
+carpet = 0.05
+parquet = 0.25
+gypsum = 0.3
+joinery = 0.5
+wallpaper = 0.15
+
+# =============================================================================
+#  TYPOLOGIES — typical Dubai layouts, used for quick rough estimates when
+#  there is no floor plan yet (project.typology = "2br", total_area = 115).
+# =============================================================================
+
+[typologies.studio]
+label = "studio apartment"
+rooms = [
+  {name = "Living / Sleeping", area = 24.0},
+  {name = "Kitchenette", area = 5.0},
+  {name = "Bathroom", area = 4.5},
+  {name = "Entrance", area = 3.0},
+  {name = "Balcony", area = 4.0, tags = ["outdoor"]},
+]
+
+[typologies.1br]
+label = "1-bedroom apartment"
+rooms = [
+  {name = "Living / Dining", area = 26.0},
+  {name = "Kitchen", area = 7.0},
+  {name = "Bedroom", area = 16.0},
+  {name = "Bathroom", area = 5.0},
+  {name = "Guest WC", area = 2.5},
+  {name = "Entrance / Corridor", area = 6.0},
+  {name = "Balcony", area = 8.0, tags = ["outdoor"]},
+]
+
+[typologies.2br]
+label = "2-bedroom apartment"
+rooms = [
+  {name = "Living / Dining", area = 32.0},
+  {name = "Kitchen", area = 9.0},
+  {name = "Master Bedroom", area = 18.0},
+  {name = "Bedroom 2", area = 14.0},
+  {name = "Master Bathroom", area = 6.0},
+  {name = "Bathroom 2", area = 4.5},
+  {name = "Guest WC", area = 2.5},
+  {name = "Corridor / Entrance", area = 9.0},
+  {name = "Laundry / Store", area = 3.0},
+  {name = "Balcony", area = 10.0, tags = ["outdoor"]},
+]
+
+[typologies.3br]
+label = "3-bedroom apartment"
+rooms = [
+  {name = "Living / Dining", area = 45.0},
+  {name = "Kitchen", area = 12.0},
+  {name = "Master Bedroom", area = 22.0},
+  {name = "Bedroom 2", area = 15.0},
+  {name = "Bedroom 3", area = 14.0},
+  {name = "Master Bathroom", area = 7.0},
+  {name = "Bathroom 2", area = 5.0},
+  {name = "Bathroom 3", area = 4.5},
+  {name = "Guest WC", area = 2.5},
+  {name = "Maid Room", area = 7.0},
+  {name = "Maid Bathroom", area = 2.5},
+  {name = "Corridor / Entrance", area = 12.0},
+  {name = "Laundry", area = 3.0},
+  {name = "Balcony", area = 14.0, tags = ["outdoor"]},
+]
+
+[typologies.4br_villa]
+label = "4-bedroom villa"
+rooms = [
+  {name = "Majlis", area = 30.0},
+  {name = "Living", area = 35.0},
+  {name = "Dining", area = 18.0},
+  {name = "Kitchen", area = 18.0},
+  {name = "Master Bedroom", area = 28.0},
+  {name = "Bedroom 2", area = 18.0},
+  {name = "Bedroom 3", area = 16.0},
+  {name = "Bedroom 4", area = 16.0},
+  {name = "Master Bathroom", area = 10.0},
+  {name = "Bathroom 2", area = 6.0},
+  {name = "Bathroom 3", area = 5.0},
+  {name = "Bathroom 4", area = 5.0},
+  {name = "Powder Room", area = 3.0},
+  {name = "Maid Room", area = 8.0},
+  {name = "Maid Bathroom", area = 3.0},
+  {name = "Laundry", area = 5.0},
+  {name = "Stairs / Corridors", area = 30.0},
+  {name = "Store", area = 4.0},
+]

@@ -1,0 +1,9 @@
+Fonts bundled for the NexaFix quotation PDFs
+
+Cormorant Garamond — Copyright 2015 The Cormorant Project Authors
+Jost               — Copyright 2020 The Jost Project Authors (Owen Earl)
+
+Both are licensed under the SIL Open Font License, Version 1.1
+(https://openfontlicense.org). They may be used, embedded and redistributed
+freely, including in commercial documents. Converted to static TTF from the
+@fontsource packages (Latin subset).

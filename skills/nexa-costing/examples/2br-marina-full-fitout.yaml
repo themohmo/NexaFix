@@ -1,0 +1,92 @@
+# Example: full furnishing fit-out of a 2-bedroom apartment in Dubai Marina.
+# Run:  python scripts/estimate.py examples/2br-marina-full-fitout.yaml --out out
+project:
+  client: Mr. Ahmed Khan
+  name: Marina Gate 2 — Unit 2304
+  location: Dubai Marina, Dubai
+  ceiling_height: 2.8
+  building_fees: 500            # building NOC admin fee (pass-through)
+
+rooms:
+  - {name: Living Room, length: 6.2, width: 4.5, windows: [[3.0, 2.4]]}
+  - {name: Kitchen, length: 3.2, width: 2.8}
+  - {name: Master Bedroom, length: 4.6, width: 4.0, windows: [[2.0, 2.2]]}
+  - {name: Bedroom 2, length: 3.8, width: 3.4, windows: [[1.6, 2.2]]}
+  - {name: Corridor, length: 5.0, width: 1.4, doors: 0}
+  - {name: Master Bathroom, length: 2.6, width: 2.2}
+  - {name: Bathroom 2, length: 2.2, width: 1.8}
+
+scope:
+  - title: SPC Flooring
+    subtitle: Supply & installation to all dry areas
+    type: flooring
+    material: spc_plank
+    rooms: dry                   # living, kitchen, bedrooms, corridor
+
+  - title: Living Room Wall Cladding
+    subtitle: Feature wall behind sofa
+    room: Living Room
+    items:
+      - type: wall_cladding
+        material: wpc_fluted_panel
+        width: 4.5
+        lighting: {length: 4.5, profile: true}
+
+  - title: TV Unit
+    subtitle: Media wall
+    room: Living Room
+    tile: TV UNIT
+    items:
+      - type: media_unit
+        width: 3.0
+        shelves: 2
+        shelf_length: 1.2
+        panel: {material: stone_pvc_panel, width: 3.0}
+        tv_bracket: true
+
+  - title: Cove Lighting
+    subtitle: Living room & master bedroom
+    type: cove_lighting
+    rooms: [Living Room, Master Bedroom]
+    build_cove: true
+
+  - title: Master Bedroom Set
+    subtitle: Complete set with wall cladding
+    room: Master Bedroom
+    tile: BEDROOM
+    items:
+      - {type: nightstand, qty: 2}
+      - {type: headboard, width: 2.0, height: 1.2, style: channel}
+      - {type: bed_box, size: king}
+      - {type: wall_cladding, material: pvc_marble_sheet, width: 4.0}
+
+  - title: Built-in Wardrobes
+    subtitle: Master & second bedroom
+    items:
+      - {type: wardrobe, width: 2.4, room: Master Bedroom, led: true}
+      - {type: wardrobe, width: 1.8, room: Bedroom 2}
+
+  - title: Dresser & Vanity Mirror
+    room: Master Bedroom
+    items:
+      - {type: dresser, width: 1.2}
+      - {type: mirror, width: 0.9, height: 1.2, backlit: true}
+
+  - title: Gypsum Partition
+    subtitle: Study nook in living room
+    type: gypsum_partition
+    length: 2.4
+    room: Living Room
+    doors: 0
+
+  - title: Electrical Points
+    type: socket
+    count: 6
+    mode: new
+
+  - title: Painting
+    subtitle: Walls & ceilings throughout
+    type: painting
+    surfaces: both
+    rooms: all
+    colour: Jotun 1024 Timeless

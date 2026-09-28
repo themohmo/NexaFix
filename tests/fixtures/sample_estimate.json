@@ -1,0 +1,493 @@
+{
+  "meta": {
+    "ref": "NF-2026-0928",
+    "date": "28/09/2026",
+    "title": "Bespoke Joinery, Cladding & Flooring Package",
+    "summary": "A premium proposal for the supply, fabrication, and installation of custom wall cladding, media joinery, bedroom furniture and flooring, executed in approved materials and finishes to an exacting standard of craftsmanship.",
+    "client": "Mr. Ahmed Khan",
+    "project": "Marina Gate 2BR Refurbishment",
+    "location": "Dubai Marina, Dubai",
+    "currency": "AED",
+    "salutation": "Dear Sir / Madam,",
+    "letter": [
+      "Thank you for extending to Nexa Fix the opportunity to submit our quotation for the above mentioned project.",
+      "We are pleased to present our proposal for the supply, fabrication, and installation of bespoke furniture and wall cladding, executed with high quality materials and superior craftsmanship, in strict accordance with the approved drawings, samples, and specifications.",
+      "We trust that our offer meets your expectations, and we look forward to your valued confirmation."
+    ],
+    "cover_tiles": [
+      "LIVING ROOM",
+      "TV UNIT",
+      "BEDROOM",
+      "FLOORING"
+    ],
+    "cover_images": [
+      null,
+      null,
+      null,
+      null
+    ],
+    "show_unit_rates": false
+  },
+  "company": {
+    "name": "NEXA FIX",
+    "tagline": "Where craft meets quality",
+    "division": "JOINERY & FIT-OUT",
+    "phone": "+971 50 000 0000",
+    "email": "info@nexafix.ae",
+    "address": "Dubai, United Arab Emirates",
+    "website": "",
+    "trn": "",
+    "signatory": "",
+    "validity_days": 15,
+    "warranty_short": "2 Years",
+    "brand": {
+      "ink": "#1F1D1A",
+      "accent": "#9C7B52",
+      "paper": "#FBF8F3",
+      "line": "#DDD3C4",
+      "muted": "#7A7268"
+    }
+  },
+  "scope": [
+    {
+      "no": "01",
+      "title": "Living Room Wall Cladding",
+      "subtitle": "Feature wall behind sofa",
+      "room": "Living Room",
+      "description": "Full wall feature cladding to the entire wall behind the sofa, supplied, fabricated, and installed strictly in accordance with the agreed specification and the approved sample.",
+      "includes": [
+        "Colours and finishes as per approved sample",
+        "Panel design and arrangement as agreed",
+        "Integrated LED lighting within the cladding (4.2 m)"
+      ],
+      "summary_line": "Feature wall behind sofa, with integrated lighting",
+      "qty": 1,
+      "unit": "Set",
+      "qty_display": "1",
+      "unit_rate": 6850.0,
+      "amount": 6850.0,
+      "image": null,
+      "internal": {
+        "cost_materials": 1840.5,
+        "cost_labour": 532.0,
+        "cost_other": 0.0,
+        "cost_total": 2372.5,
+        "sell_build_up": 5960.0,
+        "amount": 6850.0,
+        "profit": 4477.5,
+        "margin_pct": 65.4,
+        "labour_hours": {
+          "installer": 14.0,
+          "electrician": 3.0
+        },
+        "lines": [
+          {
+            "kind": "material",
+            "ref": "wpc_fluted_panel",
+            "description": "WPC fluted panel 160 x 2900 mm",
+            "qty": 29.0,
+            "unit": "pc",
+            "unit_cost": 38.0,
+            "cost": 1102.0,
+            "unit_sell": 53.2,
+            "sell": 1542.8,
+            "calc": "4.2 m / 0.16 m = 27 columns x 1 pc + 8% waste = 29.2",
+            "placeholder": true
+          },
+          {
+            "kind": "material",
+            "ref": "led_strip_24v",
+            "description": "LED strip 24V 10 W/m, 3000K",
+            "qty": 4.4,
+            "unit": "m",
+            "unit_cost": 9.0,
+            "cost": 39.6,
+            "unit_sell": 14.0,
+            "sell": 61.6,
+            "calc": "4.2 m + 5% waste",
+            "placeholder": true
+          },
+          {
+            "kind": "labour",
+            "ref": "installer",
+            "description": "Installer (site)",
+            "qty": 14.0,
+            "unit": "h",
+            "unit_cost": 25.0,
+            "cost": 350.0,
+            "unit_sell": 65.0,
+            "sell": 910.0,
+            "calc": "11.8 m2 x 1.2 h/m2",
+            "placeholder": false
+          }
+        ],
+        "notes": [
+          "Wall 4.2 x 2.8 m, one opening deducted"
+        ],
+        "warnings": []
+      }
+    },
+    {
+      "no": "02",
+      "title": "TV Unit",
+      "subtitle": "Media wall",
+      "room": "Living Room",
+      "description": "Complete TV unit finished in Egger wood sheet with a stone finish PVC feature panel, supplied, fabricated, and installed exactly as per the approved reference image.",
+      "includes": [
+        "Main TV unit with floating base storage box (2 drawers)",
+        "Display shelves, two (2) units",
+        "Stone finish PVC feature panel",
+        "Concealed LED strip lighting to shelves"
+      ],
+      "summary_line": "Egger wood sheet with stone finish PVC panel and shelving",
+      "qty": 1,
+      "unit": "Unit",
+      "qty_display": "1",
+      "unit_rate": 9400.0,
+      "amount": 9400.0,
+      "image": null,
+      "internal": {
+        "cost_materials": 2310.0,
+        "cost_labour": 1180.0,
+        "cost_other": 0.0,
+        "cost_total": 3490.0,
+        "sell_build_up": 8150.0,
+        "amount": 9400.0,
+        "profit": 5910.0,
+        "margin_pct": 62.9,
+        "labour_hours": {
+          "carpenter": 26.5,
+          "installer": 8.0,
+          "electrician": 2.0
+        },
+        "lines": [
+          {
+            "kind": "material",
+            "ref": "mfc_18_egger",
+            "description": "Egger MFC 18 mm 2800 x 2070",
+            "qty": 3.1,
+            "unit": "sheet",
+            "unit_cost": 260.0,
+            "cost": 806.0,
+            "unit_sell": 390.0,
+            "sell": 1209.0,
+            "calc": "10.2 m2 / (5.8 m2 x 82% yield)",
+            "placeholder": true
+          }
+        ],
+        "notes": [],
+        "warnings": []
+      }
+    },
+    {
+      "no": "03",
+      "title": "Bedroom Set",
+      "subtitle": "Complete set with wall cladding",
+      "room": "Master Bedroom",
+      "description": "Complete bedroom set supplied, fabricated, and installed as per the approved reference image, together with full feature wall cladding to the bed wall.",
+      "includes": [
+        "Wall mounted nightstands, two (2) units",
+        "Upholstered bed front (headboard)",
+        "Bed back panel and bed storage box",
+        "Full wall cladding to the bed wall"
+      ],
+      "summary_line": "Nightstands, bed front and back, bed box, full wall cladding",
+      "qty": 1,
+      "unit": "Set",
+      "qty_display": "1 Set",
+      "unit_rate": 14750.0,
+      "amount": 14750.0,
+      "image": null,
+      "internal": {
+        "cost_materials": 4100.0,
+        "cost_labour": 1900.0,
+        "cost_other": 0.0,
+        "cost_total": 6000.0,
+        "sell_build_up": 12900.0,
+        "amount": 14750.0,
+        "profit": 8750.0,
+        "margin_pct": 59.3,
+        "labour_hours": {
+          "carpenter": 40.0,
+          "upholsterer": 10.0,
+          "installer": 12.0
+        },
+        "lines": [],
+        "notes": [],
+        "warnings": []
+      }
+    },
+    {
+      "no": "04",
+      "title": "SPC Flooring",
+      "subtitle": "Supply & installation to all dry areas",
+      "room": "Whole apartment",
+      "description": "Supply and installation of SPC click flooring with acoustic underlay and matching skirting to all dry areas.",
+      "includes": [
+        "SPC planks 1800 x 180 mm, 131.9 planks incl. 8% cutting waste",
+        "Matching 80 mm skirting, 58.6 lm",
+        "Door threshold profiles, four (4) units"
+      ],
+      "summary_line": "SPC flooring 42.5 m2 with skirting",
+      "qty": 42.5,
+      "unit": "m²",
+      "qty_display": "42.5 m²",
+      "unit_rate": 400.0,
+      "amount": 17000.0,
+      "image": null,
+      "internal": {
+        "cost_materials": 5250.0,
+        "cost_labour": 380.0,
+        "cost_other": 0.0,
+        "cost_total": 5630.0,
+        "sell_build_up": 15650.0,
+        "amount": 17000.0,
+        "profit": 11370.0,
+        "margin_pct": 66.9,
+        "labour_hours": {
+          "flooring": 14.9
+        },
+        "lines": [
+          {
+            "kind": "material",
+            "ref": "spc_plank",
+            "description": "SPC plank 1800 x 180 mm",
+            "qty": 131.9,
+            "unit": "plank",
+            "unit_cost": 35.0,
+            "cost": 4616.5,
+            "unit_sell": 110.0,
+            "sell": 14509.0,
+            "calc": "42.5 m2 x 1.08 / 0.324 m2 per plank",
+            "placeholder": false
+          }
+        ],
+        "notes": [],
+        "warnings": [
+          "Margin OK"
+        ]
+      }
+    },
+    {
+      "no": "05",
+      "title": "Electrical Points",
+      "subtitle": "New socket outlets",
+      "room": "Living Room",
+      "description": "Supply and installation of new 13A double switched socket outlets including chasing, conduit, cabling and making good.",
+      "includes": [
+        "13A double switched sockets, four (4) points",
+        "Chasing, conduit and cabling from nearest source",
+        "Making good of plaster and touch-up paint"
+      ],
+      "summary_line": "4 new double socket points",
+      "qty": 4,
+      "unit": "pt",
+      "qty_display": "4 pts",
+      "unit_rate": 362.5,
+      "amount": 1450.0,
+      "image": null,
+      "internal": {
+        "cost_materials": 260.0,
+        "cost_labour": 270.0,
+        "cost_other": 0.0,
+        "cost_total": 530.0,
+        "sell_build_up": 1300.0,
+        "amount": 1450.0,
+        "profit": 920.0,
+        "margin_pct": 63.4,
+        "labour_hours": {
+          "electrician": 10.0
+        },
+        "lines": [],
+        "notes": [],
+        "warnings": []
+      }
+    }
+  ],
+  "totals": {
+    "subtotal": 49450.0,
+    "discount": 0.0,
+    "discount_label": "",
+    "net": 49450.0,
+    "vat_pct": 5.0,
+    "vat": 2472.5,
+    "grand_total": 51922.5,
+    "vat_registered": true
+  },
+  "terms": [
+    {
+      "title": "Scope of Work",
+      "text": "Supply, fabrication, delivery, and professional installation of custom made furniture and wall cladding as per the approved drawings, samples, and materials."
+    },
+    {
+      "title": "Pre-Commencement Coordination Meeting",
+      "text": "A mandatory coordination meeting shall be conducted prior to the start of production to finalise and confirm all drawings, dimensions, finishes, materials, and technical specifications. The production timeline shall commence only after written approval following this meeting. Any changes requested thereafter may affect both cost and delivery timeline."
+    },
+    {
+      "title": "Payment Terms",
+      "text": "50% advance payment upon confirmation · 40% upon completion, before delivery · 10% after installation."
+    },
+    {
+      "title": "Validity",
+      "text": "This quotation is valid for 15 days from the date of issue."
+    },
+    {
+      "title": "Warranty",
+      "text": "Two (2) year warranty against manufacturing defects."
+    }
+  ],
+  "internal": {
+    "materials_cost": 13560.5,
+    "labour_cost": 4262.0,
+    "other_cost": 0.0,
+    "consumables_cost": 406.8,
+    "stock_rounding_cost": 140.0,
+    "prelims_cost": 1150.0,
+    "direct_cost": 19519.3,
+    "overhead_pct": 10,
+    "overhead_cost": 1951.9,
+    "total_cost": 21471.2,
+    "sell_net": 49450.0,
+    "gross_profit": 29930.7,
+    "gross_margin_pct": 60.5,
+    "net_profit": 27978.8,
+    "net_margin_pct": 56.6,
+    "markup_on_cost_pct": 153.3,
+    "target_margin_pct": 35,
+    "min_margin_pct": 25,
+    "contingency_pct": 5,
+    "contingency_amount": 2400.0,
+    "prelims": [
+      {
+        "name": "Transport & delivery",
+        "cost": 500.0,
+        "sell": 750.0,
+        "calc": "2 trips x 250"
+      },
+      {
+        "name": "Floor & site protection",
+        "cost": 250.0,
+        "sell": 375.0,
+        "calc": "50 m2 x 5"
+      },
+      {
+        "name": "Debris removal",
+        "cost": 400.0,
+        "sell": 600.0,
+        "calc": "1 x 400"
+      }
+    ],
+    "purchase_list": [
+      {
+        "ref": "spc_plank",
+        "description": "SPC plank 1800 x 180 mm",
+        "category": "flooring",
+        "qty_required": 131.9,
+        "qty_to_buy": 136,
+        "unit": "plank",
+        "pack_note": "17 boxes of 8",
+        "unit_cost": 35.0,
+        "cost": 4760.0,
+        "supplier": "",
+        "placeholder": false
+      },
+      {
+        "ref": "mfc_18_egger",
+        "description": "Egger MFC 18 mm 2800 x 2070",
+        "category": "boards",
+        "qty_required": 9.4,
+        "qty_to_buy": 10,
+        "unit": "sheet",
+        "pack_note": "",
+        "unit_cost": 260.0,
+        "cost": 2600.0,
+        "supplier": "",
+        "placeholder": true
+      },
+      {
+        "ref": "led_strip_24v",
+        "description": "LED strip 24V 10 W/m, 3000K",
+        "category": "lighting",
+        "qty_required": 16.2,
+        "qty_to_buy": 20,
+        "unit": "m",
+        "pack_note": "4 rolls of 5 m",
+        "unit_cost": 9.0,
+        "cost": 180.0,
+        "supplier": "",
+        "placeholder": true
+      }
+    ],
+    "boards": [
+      {
+        "ref": "mfc_18_egger",
+        "description": "Egger MFC 18 mm 2800 x 2070",
+        "m2": 44.6,
+        "sheets_exact": 9.4,
+        "sheets_to_buy": 10
+      },
+      {
+        "ref": "mdf_06",
+        "description": "MDF 6 mm 1220 x 2440",
+        "m2": 6.1,
+        "sheets_exact": 2.3,
+        "sheets_to_buy": 3
+      }
+    ],
+    "labour": [
+      {
+        "trade": "carpenter",
+        "label": "Carpenter (workshop)",
+        "hours": 66.5,
+        "days": 7.4,
+        "cost_per_hour": 22.0,
+        "cost": 1463.0,
+        "sell_per_hour": 60.0,
+        "sell": 3990.0
+      },
+      {
+        "trade": "installer",
+        "label": "Joinery installer (site)",
+        "hours": 34.0,
+        "days": 3.8,
+        "cost_per_hour": 25.0,
+        "cost": 850.0,
+        "sell_per_hour": 65.0,
+        "sell": 2210.0
+      },
+      {
+        "trade": "electrician",
+        "label": "Electrician",
+        "hours": 15.0,
+        "days": 1.7,
+        "cost_per_hour": 28.0,
+        "cost": 420.0,
+        "sell_per_hour": 75.0,
+        "sell": 1125.0
+      }
+    ],
+    "schedule": {
+      "procurement_days": 5,
+      "workshop_days": 8,
+      "site_days": 6,
+      "total_days": 19,
+      "weeks": 3.2,
+      "notes": [
+        "Assumes workshop crew of 2 and site crew of 3"
+      ]
+    },
+    "warnings": [
+      "2 materials still use placeholder prices: mfc_18_egger, led_strip_24v",
+      "Ceiling height not given - 2.8 m assumed"
+    ],
+    "assumptions": [
+      "Ceiling height 2.8 m (default)",
+      "One door per room deducted from skirting"
+    ],
+    "placeholders_used": [
+      "mfc_18_egger",
+      "led_strip_24v",
+      "wpc_fluted_panel"
+    ]
+  }
+}

@@ -1,0 +1,15 @@
+# Example: rough budget with no floor plan — "2BR in JVC, 1,250 sqft, SPC everywhere,
+# paint, wardrobe in the master". Room sizes come from the typical Dubai 2BR layout,
+# scaled to the given area; the estimate lists that as an assumption.
+project:
+  client: Ms. Sara
+  name: JVC 2BR refresh (budget estimate)
+  location: Jumeirah Village Circle, Dubai
+  typology: 2br
+  total_area: 1250 sqft
+
+scope:
+  - {title: SPC Flooring, type: flooring, material: spc_plank, rooms: dry, removal: true}
+  - {title: Painting, subtitle: Walls & ceilings, type: painting, surfaces: both}
+  - {title: Master Wardrobe, type: wardrobe, width: 2.4, room: Master Bedroom}
+  - {title: Cove Lighting, type: cove_lighting, rooms: Living / Dining}

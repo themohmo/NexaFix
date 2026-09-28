@@ -1,0 +1,92 @@
+# Example: the "Bespoke Joinery & Wall Cladding Package" (same four scope items as
+# the June 2026 NexaFix quotation NF-2026-0611), now priced from the rate book.
+project:
+  client: ""                       # blank prints "Client Name"
+  name: Villa refurbishment
+  location: Dubai
+  ref: NF-2026-0611
+  date: 11/06/2026
+  title: Bespoke Joinery & Wall Cladding Package
+  summary: >-
+    A premium proposal for the supply, fabrication, and installation of custom wall
+    cladding, media joinery, and bedroom furniture, executed in approved materials and
+    finishes to an exacting standard of craftsmanship.
+  ceiling_height: 3.0
+
+rooms:
+  - {name: Living Room, length: 7.0, width: 5.0}
+  - {name: Bedroom, length: 5.0, width: 4.2}
+
+scope:
+  - title: Living Room Wall Cladding
+    subtitle: Feature wall behind sofa
+    tile: LIVING ROOM
+    room: Living Room
+    description: >-
+      Full wall feature cladding to the entire wall behind the sofa, supplied, fabricated,
+      and installed strictly in accordance with the agreed specification and the approved sample.
+    includes:
+      - Colours and finishes as per approved sample
+      - Panel design and arrangement as agreed
+      - Integrated lighting within the cladding
+    summary_line: Feature wall behind sofa, with integrated lighting
+    qty: 1
+    unit: Unit
+    items:
+      - {type: wall_cladding, material: wpc_fluted_panel, width: 5.0, lighting: {length: 5.0}}
+
+  - title: TV Unit
+    subtitle: Media wall
+    tile: TV UNIT
+    room: Living Room
+    description: >-
+      Complete TV unit finished in Egger wood sheet with a stone finish PVC feature panel,
+      supplied, fabricated, and installed exactly as per the approved reference image.
+    includes:
+      - Main TV unit with base storage box
+      - Display shelves, three (3) units
+      - Stone finish PVC feature panel
+    summary_line: Egger wood sheet with stone finish PVC panel and shelving
+    qty: 1
+    unit: Unit
+    items:
+      - type: media_unit
+        width: 3.6
+        shelves: 3
+        panel: {material: stone_pvc_panel, width: 1.8}
+
+  - title: Bedroom Set
+    subtitle: Complete set with wall cladding
+    tile: BEDROOM
+    room: Bedroom
+    description: >-
+      Complete bedroom set supplied, fabricated, and installed as per the approved reference
+      image, together with full feature wall cladding to the bed wall.
+    includes:
+      - Wall mounted nightstands, two (2) units
+      - Upholstered bed front (headboard)
+      - Bed back panel and bed storage box
+      - Full wall cladding to the bed wall
+    summary_line: Nightstands, bed front and back, bed box, full wall cladding
+    items:
+      - {type: nightstand, qty: 2}
+      - {type: headboard, width: 2.2, height: 1.4, style: panelled}
+      - {type: bed_box, size: king}
+      - {type: wall_cladding, material: wpc_fluted_panel, width: 4.2}
+
+  - title: Dresser & Vanity Wall
+    subtitle: Stone finish PVC, wood & mirror
+    tile: DRESSER
+    room: Bedroom
+    description: >-
+      Full wall cladding in stone finish PVC with wood detailing and a feature mirror,
+      complete with two dresser boxes, as per the approved reference image.
+    includes:
+      - Full wall cladding in stone finish PVC
+      - Wood detailing and feature mirror
+      - Dresser boxes, two (2) units
+    summary_line: Stone finish PVC cladding, wood, mirror, two dresser boxes
+    items:
+      - {type: wall_cladding, material: stone_pvc_panel, width: 3.0}
+      - {type: mirror, width: 1.0, height: 1.6, edge: polished}
+      - {type: dresser, width: 0.9, qty: 2, floating: true}
