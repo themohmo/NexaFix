@@ -16,6 +16,8 @@ from .util import SpecError, area as parse_area, as_bool, ceil_int, ceil_to, cou
 _COUNT_RE = re.compile(r"\b([a-z]+) \((\d+)\) (points?|units?|pieces?)\b")
 
 # item types that measure floors/walls of rooms and default to a room set
+PER_UNIT_TYPES = {"media_unit", "bed_box"}   # calculators that price one unit; engine applies qty
+
 DEFAULT_ROOMS = {
     "flooring": "dry", "floor": "dry", "spc": "dry", "spc_flooring": "dry", "laminate": "dry", "parquet": "dry",
     "vinyl": "dry", "tiles": "wet", "floor_tiles": "wet", "tiling": "wet",
@@ -177,6 +179,15 @@ def run_estimate(spec: dict, rates: Ratebook, base_dir: str | Path | None = None
             except SpecError as exc:
                 raise SpecError(f"{pkg.title or t}: {exc}") from exc
             res = b.res
+            n_units = int(it.get("qty", 1) or 1)
+            if _canon(t) in PER_UNIT_TYPES and n_units > 1:
+                # these calculators price one unit; scale every line for qty
+                for ln in res.lines:
+                    ln.qty *= n_units
+                    ln.calc = f"{ln.calc} x {n_units} units" if ln.calc else f"x {n_units} units"
+                res.boards = {k: v * n_units for k, v in res.boards.items()}
+                res.measure_qty, res.measure_unit = n_units, "Units"
+                res.includes.insert(0, f"{res.title}, {count_phrase(n_units, 'unit')}")
             cost = sum(ln.cost for ln in res.lines)
             sell = sum(ln.sell for ln in res.lines)
             if res.sell_override is not None:
@@ -187,8 +198,8 @@ def run_estimate(spec: dict, rates: Ratebook, base_dir: str | Path | None = None
             if it.get("price") is not None:
                 sell = float(it["price"])
                 b.note("Lump-sum price set in the spec")
-            mc = it.get("min_charge", min_charges.get(t))
-            if mc and sell < float(mc):
+            mc = it.get("min_charge", min_charges.get(t, min_charges.get(_canon(t))))
+            if mc and res.lines and res.measure_qty and sell < float(mc):
                 b.note(f"Minimum charge AED {float(mc):,.0f} applied (build-up AED {sell:,.0f})")
                 sell = float(mc)
             comps.append({"item": it, "res": res, "cost": cost, "sell": sell, "hours": b.labour_hours()})
@@ -354,7 +365,8 @@ def run_estimate(spec: dict, rates: Ratebook, base_dir: str | Path | None = None
     contingency = cont_pct / 100 * (build_total + consumables_sell + stock_rounding_sell + prelims_sell)
     distributable = extras_sell + contingency
     flex = [p for p in packages if not p["fixed"]]
-    weight_total = sum(p["sell_build"] for p in flex)
+    # every item carries its share of project extras by value; fixed-price items absorb theirs in margin
+    weight_total = sum(p["sell_build"] for p in packages)
     step = float(pricing.get("round_items_to", 50))
 
     if show_prelims and prelims:
@@ -367,12 +379,11 @@ def run_estimate(spec: dict, rates: Ratebook, base_dir: str | Path | None = None
         weight_total += prelims_sell
     for p in packages:
         share = (p["sell_build"] / weight_total * distributable) if (weight_total and not p["fixed"]) else 0.0
-        if not flex and distributable:
-            share = 0.0
         p["pre_round"] = p["sell_build"] + share
         p["amount"] = p["pre_round"] if p["fixed"] else ceil_to(p["pre_round"], step)
-    if not flex and distributable:
-        ctx.assumptions.append("All scope items have fixed prices — project extras and contingency are not added")
+    if any(p["fixed"] for p in packages) and distributable:
+        ctx.assumptions.append("Fixed-price items absorb their share of preliminaries, consumables and contingency "
+                               "in their margin")
 
     subtotal = sum(p["amount"] for p in packages)
     disc_pct = float(project.get("discount_pct", 0) or 0)
@@ -393,7 +404,8 @@ def run_estimate(spec: dict, rates: Ratebook, base_dir: str | Path | None = None
     tgt = rates.price("target_margin_pct", 35)
     mn = rates.price("min_margin_pct", 25)
     line_cost_total = sum(p["cost"] for p in packages) or 1.0
-    project_costs = consumables_cost + stock_rounding_cost + prelims_cost + snag_cost
+    project_costs = consumables_cost + stock_rounding_cost + snag_cost + \
+        (0.0 if any(p.get("prelims_line") for p in packages) else prelims_cost)
 
     warnings = []
     scope_out = []
@@ -454,6 +466,7 @@ def run_estimate(spec: dict, rates: Ratebook, base_dir: str | Path | None = None
         elif p.get("prelims_line"):
             qty, unit = 1.0, "Lot"
         elif len({c["res"].measure_unit for c in comps}) == 1 and \
+                len({_canon(c["item"].get("type")) for c in comps}) == 1 and \
                 comps[0]["res"].measure_unit in ("m²", "lm", "m", "pts", "pcs"):
             qty, unit = float(round(sum(c["res"].measure_qty for c in comps), 1)), comps[0]["res"].measure_unit
         else:

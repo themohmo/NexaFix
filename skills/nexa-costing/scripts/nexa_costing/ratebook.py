@@ -139,7 +139,10 @@ class Ratebook:
 
 
 # ============================================================== line editor
-_HEADER_RE = re.compile(r"^\s*\[\s*([^\[\]]+?)\s*\]\s*(#.*)?$")
+# matches [table] and [[array.of.tables]]; group(1) is "[[" for arrays
+_HEADER_RE = re.compile(r"^\s*(\[\[?)\s*([^\[\]]+?)\s*\]\]?\s*(#.*)?$")
+NUMERIC_KEYS = {"cost", "sell", "cost_per_hour", "sell_per_hour", "markup_pct", "waste_pct", "pack_size",
+                "length_mm", "width_mm", "coverage_m2", "yield_pct", "watts", "watts_per_m"}
 
 
 def _fmt_value(value) -> str:
@@ -196,11 +199,24 @@ def set_values(path: str | os.PathLike, section: str, values: dict) -> list[str]
     lines = original.splitlines()
     changes: list[str] = []
 
-    # locate section
+    # type checks: numbers stay numbers ("38,5" is rejected, not written as text)
+    current = _toml.loads(original)
+    node = current
+    for part in section.split("."):
+        node = node.get(part, {}) if isinstance(node, dict) else {}
+    if not isinstance(node, dict):
+        raise SpecError(f"[{section}] is not a table that can hold keys")
+    for k, v in values.items():
+        old = node.get(k)
+        numeric_old = isinstance(old, (int, float)) and not isinstance(old, bool)
+        if (numeric_old or k in NUMERIC_KEYS) and not (isinstance(v, (int, float)) and not isinstance(v, bool)):
+            raise SpecError(f"{section}.{k} must be a number (got {v!r}); use a dot for decimals, e.g. 38.5")
+
+    # locate section (only plain [tables] can be edited; [[arrays]] are boundaries)
     start = None
     for i, line in enumerate(lines):
         m = _HEADER_RE.match(line)
-        if m and m.group(1).strip() == section:
+        if m and m.group(1) == "[" and m.group(2).strip() == section:
             start = i
             break
     if start is None:
@@ -210,7 +226,7 @@ def set_values(path: str | os.PathLike, section: str, values: dict) -> list[str]
         last_sibling = None
         for i, line in enumerate(lines):
             m = _HEADER_RE.match(line)
-            if m and (m.group(1).strip() == parent or m.group(1).strip().startswith(parent + ".")):
+            if m and (m.group(2).strip() == parent or m.group(2).strip().startswith(parent + ".")):
                 last_sibling = i
         if last_sibling is not None:
             insert_at = len(lines)
@@ -218,6 +234,10 @@ def set_values(path: str | os.PathLike, section: str, values: dict) -> list[str]
                 if _HEADER_RE.match(lines[j]):
                     insert_at = j
                     break
+            # step back over the comment banner / blank lines that introduce the next block
+            while insert_at > last_sibling + 1 and (not lines[insert_at - 1].strip()
+                                                    or lines[insert_at - 1].lstrip().startswith("#")):
+                insert_at -= 1
         block = [""] if insert_at > 0 and lines[insert_at - 1].strip() else []
         block.append(f"[{section}]")
         for k, v in values.items():

@@ -122,7 +122,7 @@ def main(argv=None) -> int:
     a.add_argument("--unit", required=True)
     a.add_argument("--cost", type=float, required=True)
     a.add_argument("--sell", type=float)
-    a.add_argument("--category", default="sundries")
+    a.add_argument("--category", help="default: the --like material's category, else sundries")
     a.add_argument("--length-mm", type=float)
     a.add_argument("--width-mm", type=float)
     a.add_argument("--pack-size", type=float)
@@ -144,6 +144,9 @@ def main(argv=None) -> int:
                 print(ch)
         elif args.cmd == "confirm":
             for k in args.keys:
+                sec, _, key = k.partition(".")
+                if sec not in ("materials", "trades") or key not in rb.data.get(sec, {}):
+                    raise SpecError(f"{k} not found — use materials.<key> or trades.<key> (see `rates.py show`)")
                 for ch in set_values(path, k, {"status": "owner"}):
                     print(ch)
         elif args.cmd == "add":
@@ -153,7 +156,8 @@ def main(argv=None) -> int:
             if args.like:
                 base = rb.material(args.like)
                 vals.update({k: v for k, v in base.items() if k not in ("key", "name", "short", "client_name", "status")})
-            vals.update({"name": args.name, "unit": args.unit, "category": args.category, "cost": args.cost})
+            vals.update({"name": args.name, "unit": args.unit, "cost": args.cost,
+                         "category": args.category or vals.get("category") or "sundries"})
             for k, v in (("sell", args.sell), ("length_mm", args.length_mm), ("width_mm", args.width_mm),
                          ("pack_size", args.pack_size), ("waste_pct", args.waste_pct)):
                 if v is not None:

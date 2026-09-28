@@ -124,8 +124,8 @@ def build_cabinet(W: float, H: float, D: float, *, sections: int = 1, shelves: i
     # doors
     door_type = (door_type or "hinged").lower()
     door_zone = max(0.0, W * body_h - drawer_front_area - flap_area)
-    if door_type in ("none", "open") or doors == 0:
-        m.doors = 0
+    if door_type in ("none", "open") or doors == 0 or (door_type != "sliding" and W and door_zone / W < 0.15):
+        m.doors = 0   # drawers / flaps fill the face
     else:
         if door_type == "sliding":
             m.sliding = True

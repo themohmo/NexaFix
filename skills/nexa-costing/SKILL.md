@@ -179,7 +179,8 @@ and why, and re-run to confirm.
 - Gross margin = (sell − direct cost) ÷ sell. Markup = (sell − cost) ÷ cost.
   A 25% markup is a 20% margin, so don't mix them up when the owner asks.
 - Fixed selling rates are supported: `sell_rate` on an item (AED per m², lm,
-  point) or `price` for a lump sum. The cost side is still built up, so the
+  point) or `price` for a lump sum (a fixed-price item absorbs its share of
+  preliminaries and contingency in its margin). The cost side is still built up, so the
   margin stays visible.
 
 ## Guardrails

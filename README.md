@@ -89,6 +89,7 @@ skills/nexa-costing/        the skill (upload this folder / the zip)
   examples/                 worked project specs
   assets/fonts/             Cormorant Garamond + Jost (OFL)
 docs/research/              the research behind the default prices and labour norms
+docs/samples/               example quotation + internal cost sheet PDFs
 tests/                      python -m pytest tests -q
 tools/build_skill_zip.py    packages the skill for Claude.ai
 ```

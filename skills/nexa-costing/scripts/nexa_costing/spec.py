@@ -51,8 +51,8 @@ class Room:
             return self.wet
         if s in self.tags:
             return True
-        if s in ("bedrooms", "bedroom") and ("bedroom" in self.tags or "bed" in self.name.lower()):
-            return True
+        if s in ("bedrooms", "bedroom"):
+            return "bedroom" in self.tags and not self.wet and indoor
         return slug(s) == slug(self.name)
 
 
@@ -75,7 +75,7 @@ def _openings(value, default_count: int, dflt_w: float, dflt_h: float, label: st
 def _guess_tags(name: str) -> set:
     n = name.lower()
     tags = set()
-    for key, tag in (("bed", "bedroom"), ("master", "bedroom"), ("living", "living"), ("majlis", "living"),
+    for key, tag in (("bed", "bedroom"), ("living", "living"), ("majlis", "living"),
                      ("dining", "living"), ("kitchen", "kitchen"), ("bath", "bathroom"), ("toilet", "bathroom"),
                      ("wc", "bathroom"), ("powder", "bathroom"), ("ensuite", "bathroom"), ("laundry", "utility"),
                      ("maid", "utility"), ("store", "utility"), ("corridor", "circulation"), ("hall", "circulation"),
@@ -83,19 +83,23 @@ def _guess_tags(name: str) -> set:
                      ("balcony", "outdoor"), ("terrace", "outdoor")):
         if key in n:
             tags.add(tag)
+    if "master" in n and not tags & {"bathroom", "outdoor", "utility"}:
+        tags.add("bedroom")   # "Master" alone usually means the master bedroom
+    if tags & {"bathroom", "outdoor"}:
+        tags.discard("bedroom")   # "Bedroom 2 ensuite", "Master bedroom balcony"
     return tags
 
 
 def build_room(r: dict, default_height: float, notes: list) -> Room:
     name = r.get("name") or "Room"
-    L = dim(r.get("length"), f"{name} length", notes)
-    W = dim(r.get("width"), f"{name} width", notes)
+    L = dim(r.get("length"), f"{name} length", notes, mm_above=60)
+    W = dim(r.get("width"), f"{name} width", notes, mm_above=60)
     A = parse_area(r.get("area"), f"{name} area")
     if A is None and L and W:
         A = L * W
     if A is None:
         raise SpecError(f"Room '{name}' needs length + width, or area")
-    P = dim(r.get("perimeter"), f"{name} perimeter", notes)
+    P = dim(r.get("perimeter"), f"{name} perimeter", notes, mm_above=150)
     if P is None:
         if L and W:
             P = 2 * (L + W)
@@ -164,7 +168,7 @@ def build_packages(scope: list) -> list[Package]:
         if "items" in s:
             items = s["items"]
         elif "type" in s:  # shorthand: a single item scope entry
-            items = [{k: v for k, v in s.items() if k not in _PKG_KEYS - {"qty"} or k == "type"}]
+            items = [{k: v for k, v in s.items() if k not in _PKG_KEYS - {"qty", "unit"} or k == "type"}]
             # qty on a single-item shorthand belongs to the item (e.g. 4 sockets)
             if "qty" in s:
                 items[0]["qty"] = s["qty"]
@@ -175,7 +179,7 @@ def build_packages(scope: list) -> list[Package]:
             description=s.get("description", ""), includes=s.get("includes"),
             summary_line=s.get("summary_line", ""), room=s.get("room"), rooms=s.get("rooms"),
             qty=s.get("qty") if "items" in s else None, unit=s.get("unit") if "items" in s else None,
-            image=s.get("image"), sell=s.get("price") if "items" in s else None,
+            image=s.get("image"), sell=s.get("price"),
             markup_pct=s.get("markup_pct"), tile=s.get("tile"), raw=s))
     return pkgs
 

@@ -185,7 +185,8 @@ def calc_flooring(b: Builder, item: dict, ctx, rooms):
         kg = A * float(asm.get("levelling_kg_per_m2_per_mm", 1.6)) * mm
         bags = kg / float(lmat.get("kg_per_unit", 25))
         b.material(lkey, bags, f"{num(A)} m² x {mm:g} mm x {asm.get('levelling_kg_per_m2_per_mm', 1.6)} kg/m²/mm = {num(kg)} kg")
-        b.labour(asm.get("trade", "flooring"), A * float(asm.get("levelling_hours_per_m2", 0.08)), "floor levelling")
+        b.labour(asm.get("trade", "flooring"), A * float(asm.get("levelling_hours_per_m2", 0.08)), "floor levelling",
+                 in_sell=True)
         b.include(f"Floor levelling compound ({mm:g} mm)")
 
     # skirting
@@ -367,7 +368,9 @@ def add_led(b: Builder, ctx, length: float, runs: int = 1, strip_key: str | None
     asm = ctx.rates.assembly("led")
     key = strip_key or asm.get("default_strip", "led_strip_24v")
     mat = ctx.rates.material(key)
-    run_m = length * runs
+    run_m = (length or 0) * runs
+    if run_m <= 1e-6:
+        return {"watts": 0.0, "drivers": 0, "strip_m": 0.0, "feeds": 0}
     waste = float(asm.get("waste_pct", 5))
     strip_m = run_m * (1 + waste / 100)
     b.material(key, strip_m, f"{num(length)} m x {runs} run(s) + {waste:g}% = {num(strip_m)} m")
@@ -487,6 +490,20 @@ def calc_led(b: Builder, item: dict, ctx, rooms):
 
 
 # ============================================================== GYPSUM
+BOARD_ALIASES = {"std": "board", "standard": "board", "mr": "board_mr", "moisture": "board_mr",
+                 "fr": "board_fr", "fire": "board_fr"}
+
+
+def gypsum_board_key(ctx, asm: dict, board: str | None) -> str | None:
+    """Resolve std / mr / fr shorthands to rate-book keys (partition assembly as fallback)."""
+    if board is None:
+        return None
+    alias = BOARD_ALIASES.get(str(board).lower())
+    if alias:
+        return asm.get(alias) or ctx.rates.assembly("gypsum_partition").get(alias)
+    return board
+
+
 def gypsum_consumables(b: Builder, ctx, asm: dict, face_m2: float, what: str):
     if face_m2 <= 0:
         return
@@ -519,9 +536,7 @@ def calc_partition(b: Builder, item: dict, ctx, rooms):
     oa += n_doors * 0.9 * 2.1
     A = max(0.0, L * H - oa)
     faces = sides * layers
-    board = item.get("board") or asm.get("board", "gypsum_board_std")
-    if board in ("mr", "moisture", "fr", "fire"):
-        board = asm.get({"mr": "board_mr", "moisture": "board_mr", "fr": "board_fr", "fire": "board_fr"}[board])
+    board = gypsum_board_key(ctx, asm, item.get("board")) or asm.get("board", "gypsum_board_std")
     if any(r.wet for r in rooms) and "mr" not in board and item.get("board") is None:
         board = asm.get("board_mr", board)
         b.note("Wet area: moisture-resistant board used")
@@ -574,10 +589,18 @@ def calc_ceiling(b: Builder, item: dict, ctx, rooms):
             raise SpecError("gypsum_ceiling needs `area` or `rooms`")
         A = _sum_rooms(rooms, "area")
     Pm = dim(item.get("perimeter"), "perimeter", notes, mm_above=RUN_MM) or (_sum_rooms(rooms, "perimeter") if rooms else 4 * math.sqrt(A))
-    board = item.get("board") or (asm.get("board_mr") if any(r.wet for r in rooms) else asm.get("board", "gypsum_board_std"))
-    bmat = ctx.rates.material(board)
     waste = float(asm.get("waste_pct", 10))
-    b.material(board, A * (1 + waste / 100) / ctx.rates.unit_area(bmat), f"{num(A)} m² + {waste:g}%")
+    explicit = gypsum_board_key(ctx, asm, item.get("board"))
+    wet_A = sum(r.area for r in rooms if r.wet) if (explicit is None and item.get("area") is None) else 0.0
+    board = explicit or asm.get("board", "gypsum_board_std")
+    bmat = ctx.rates.material(board)
+    if wet_A:
+        mr = asm.get("board_mr", board)
+        b.material(mr, wet_A * (1 + waste / 100) / ctx.rates.unit_area(ctx.rates.material(mr)),
+                   f"wet rooms {num(wet_A)} m² + {waste:g}% (moisture-resistant)")
+        b.note("Wet rooms use moisture-resistant board")
+    if A - wet_A > 1e-6:
+        b.material(board, (A - wet_A) * (1 + waste / 100) / ctx.rates.unit_area(bmat), f"{num(A - wet_A)} m² + {waste:g}%")
     for mkey, per_key, dflt in (("main_channel_material", "main_channel_m_per_m2", 0.9),
                                 ("furring_material", "furring_m_per_m2", 2.5)):
         mat = ctx.rates.material(asm.get(mkey))
@@ -697,7 +720,7 @@ def calc_wallpaper(b: Builder, item: dict, ctx, rooms):
     notes = b.res.notes
     key = item.get("material") or asm.get("roll_material", "wallpaper_roll")
     mat = ctx.rates.material(key)
-    W = dim(item.get("width"), "width", notes)
+    W = dim(item.get("width"), "width", notes, mm_above=WALL_MM)
     H = dim(item.get("height"), "height", notes) or (rooms[0].height if rooms else ctx.default_height)
     if W is None:
         raise SpecError("wallpaper needs `width` (wall length, m)")
@@ -784,6 +807,8 @@ def calc_mirror(b: Builder, item: dict, ctx, rooms):
     shape = str(item.get("shape", "rectangle")).lower()
     if shape in ("round", "circle"):
         d = dim(item.get("diameter") or item.get("width"), "diameter", notes)
+        if not d:
+            raise SpecError("round mirror needs `diameter` (or `width`)")
         W = H = d
         perim = math.pi * d
     else:
@@ -815,7 +840,8 @@ def calc_mirror(b: Builder, item: dict, ctx, rooms):
         b.include("Slim metal frame")
     backlit = as_bool(item.get("backlit"))
     if backlit:
-        add_led(b, ctx, perim * 0.9, runs=qty, profile=False)
+        for _ in range(qty):   # each mirror is its own circuit
+            add_led(b, ctx, perim * 0.9, runs=1, profile=False)
         if asm.get("sensor_material"):
             b.material(asm["sensor_material"], qty, "touch sensor switch")
         b.labour("carpenter", qty * float(asm.get("backlit_fab_hours", 1.5)), "stand-off backing frame")
