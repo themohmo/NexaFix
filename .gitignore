@@ -5,3 +5,12 @@ out/
 quotes/**/out/
 *.egg-info/
 .DS_Store
+
+# iOS / Swift
+.build/
+*.xcodeproj
+*.xcworkspace
+xcuserdata/
+DerivedData/
+.swiftpm/
+Package.resolved
