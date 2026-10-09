@@ -40,12 +40,26 @@ struct GlassModifier<GlassShape: InsettableShape>: ViewModifier {
     @Environment(\.colorSchemeContrast) private var contrast
     @Environment(\.isInsideGlass) private var insideGlass
 
+    @ViewBuilder
     func body(content: Content) -> some View {
-        content
-            .background { fill }
-            .overlay { edge }
-            .shadow(color: shadow.color, radius: shadow.radius, x: 0, y: shadow.y)
-            .environment(\.isInsideGlass, true)
+        if #available(iOS 26.0, *), usesSystemGlass {
+            // The system's Liquid Glass: it supplies its own blur, highlight and shadow, so none of ours.
+            content
+                .glassEffect(.regular, in: shape)
+                .environment(\.isInsideGlass, true)
+        } else {
+            content
+                .background { fill }
+                .overlay { edge }
+                .shadow(color: shadow.color, radius: shadow.radius, x: 0, y: shadow.y)
+                .environment(\.isInsideGlass, true)
+        }
+    }
+
+    /// Liquid Glass is used only for the top-level glass surface. Reduce Transparency and Increased
+    /// Contrast keep the opaque / bordered fallback, and nested glass stays a flat tint (never glass on glass).
+    private var usesSystemGlass: Bool {
+        !insideGlass && !reduceTransparency && contrast != .increased
     }
 
     private var material: Material {
@@ -106,6 +120,8 @@ struct GlassModifier<GlassShape: InsettableShape>: ViewModifier {
 extension View {
     /// Gives the view a glass background: a material, a top-edge highlight and a shadow.
     ///
+    /// - On iOS 26 and later it is the system's Liquid Glass (`glassEffect`); earlier systems get a material
+    ///   with a top-edge highlight and a shadow.
     /// - Reduce Transparency swaps the material for an opaque `surface` with a hairline border.
     /// - Increased Contrast adds a 1 pt `line` border.
     /// - Inside another glass surface it draws a flat tint, never a second blur.

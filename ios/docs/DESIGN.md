@@ -40,12 +40,16 @@ dynamic colours (light/dark) in `Theme.swift`; never hard-code hex elsewhere.
 | `background` | `#FBF8F3` | `#141311` | screen background |
 | `surface` | `#FFFFFF` | `#1E1C19` | cards, grouped rows |
 | `ink` | `#1F1D1A` | `#F4EFE8` | primary text, numbers |
-| `muted` | `#7A7268` | `#A39A8E` | secondary text, units |
+| `muted` | `#716A60` | `#A39A8E` | secondary text, units |
 | `line` | `#DDD3C4` | `#3A3631` | hairlines |
-| `accent` | `#9C7B52` | `#B8956A` | primary buttons, selection, plan highlight |
+| `accent` | `#8A6C45` | `#B8956A` | primary buttons, selection, plan highlight |
 | `verified` | `#2F7A4B` | `#5BB77E` | laser-verified values |
-| `caution` | `#B26A00` | `#E0A04B` | scanned-only joinery dimensions, out-of-square < 3° |
+| `caution` | `#9C5C00` | `#E0A04B` | scanned-only joinery dimensions, out-of-square < 3° |
 | `critical` | `#B3261E` | `#F0776E` | out-of-square ≥ 3°, failures |
+
+The light-mode `muted`, `accent` and `caution` are a shade darker than the print palette of the quotation PDFs
+(`#7A7268`, `#9C7B52`, `#B26A00`) so that text and white-on-accent buttons reach WCAG AA 4.5:1
+(muted 5.0:1, white on accent 4.9:1, caution 5.0:1). Dark-mode values already pass.
 
 Rules: colour is never the only signal (verified also has a check-mark glyph, caution has a
 triangle, out-of-square shows the number). Accent is for the one thing you should do next.

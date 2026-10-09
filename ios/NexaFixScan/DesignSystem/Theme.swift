@@ -17,17 +17,17 @@ enum Palette {
     /// Primary text and numbers.
     static let ink = token(light: 0x1F1D1A, dark: 0xF4EFE8)
     /// Secondary text and units.
-    static let muted = token(light: 0x7A7268, dark: 0xA39A8E, contrastMix: 0.5)
+    static let muted = token(light: 0x716A60, dark: 0xA39A8E, contrastMix: 0.5)
     /// Hairlines.
     static let line = token(light: 0xDDD3C4, dark: 0x3A3631, contrastMix: 0.45)
     /// Primary buttons, selection, plan highlight. The one thing to do next.
-    static let accent = token(light: 0x9C7B52, dark: 0xB8956A, contrastMix: 0.25)
+    static let accent = token(light: 0x8A6C45, dark: 0xB8956A, contrastMix: 0.25)
     /// Text and glyphs on an `accent` fill: white in light mode, the dark background in dark mode.
     static let accentContrast = token(light: 0xFFFFFF, dark: 0x141311)
     /// Laser-verified values.
     static let verified = token(light: 0x2F7A4B, dark: 0x5BB77E, contrastMix: 0.3)
     /// Scanned-only joinery dimensions; out of square by less than 3 degrees.
-    static let caution = token(light: 0xB26A00, dark: 0xE0A04B, contrastMix: 0.3)
+    static let caution = token(light: 0x9C5C00, dark: 0xE0A04B, contrastMix: 0.3)
     /// Out of square by 3 degrees or more; failures.
     static let critical = token(light: 0xB3261E, dark: 0xF0776E, contrastMix: 0.25)
 
