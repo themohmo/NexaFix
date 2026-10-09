@@ -14,3 +14,4 @@ xcuserdata/
 DerivedData/
 .swiftpm/
 Package.resolved
+ios/Config/Info.plist
