@@ -488,7 +488,7 @@ public extension OverlayLabel {
     /// A sentence for VoiceOver: units spelled out, provenance stated, never colour alone.
     /// For example "Wall length 3245 millimetres, verified with laser".
     var spokenDescription: String {
-        let spokenTitle = SpokenText.expand(title, isOpening: kind == .opening)
+        let spokenTitle = OverlaySpokenText.expand(title, isOpening: kind == .opening)
         let lead: String
         switch kind {
         case .wallLength: lead = "Wall length " + spokenTitle
@@ -501,7 +501,7 @@ public extension OverlayLabel {
 
         var parts = [lead]
         let provenanceKinds: [OverlayLabelKind] = [.wallLength, .wallHeight, .ceiling, .opening]
-        let subtitleText = subtitle.map { SpokenText.expand($0, isOpening: false) }
+        let subtitleText = subtitle.map { OverlaySpokenText.expand($0, isOpening: false) }
 
         switch state {
         case .verified:
@@ -526,9 +526,10 @@ public extension OverlayLabel {
 }
 
 /// Expands the compact on-screen text (units, symbols) into words a screen reader says well.
-enum SpokenText {
+enum OverlaySpokenText {
     static func expand(_ text: String, isOpening: Bool) -> String {
-        let tokens = text.split(separator: " ", omittingEmptySubsequences: true).map(String.init)
+        var tokens = text.split(separator: " ", omittingEmptySubsequences: true).map(String.init)
+        if isOpening { tokens = withSpokenMillimetres(tokens) }
         var out: [String] = []
         for (index, token) in tokens.enumerated() {
             let previous = index > 0 ? tokens[index - 1] : ""
@@ -552,6 +553,23 @@ enum SpokenText {
         }
         // " / " reads as a pause.
         return out.joined(separator: " ").replacingOccurrences(of: " / ", with: ", ")
+    }
+
+    /// An opening label in millimetres carries no unit on screen ("D 900 x 2100", "W 1500 x 1400 / sill 900"),
+    /// but a screen reader must always say it. Labels in other units already hold a unit token (m, cm, in) or
+    /// a foot or inch mark, so no unit at all means millimetres. The unit goes after each group of numbers:
+    /// "window 1500 by 1400 millimetres, sill 900 millimetres".
+    private static func withSpokenMillimetres(_ tokens: [String]) -> [String] {
+        let units: Set<String> = ["mm", "cm", "m", "in"]
+        let hasUnit = tokens.contains { units.contains($0) || $0.contains("'") || $0.contains("\"") }
+        guard !hasUnit else { return tokens }
+        var out: [String] = []
+        for (index, token) in tokens.enumerated() {
+            out.append(token)
+            let endsGroup = index + 1 == tokens.count || tokens[index + 1] == "/"
+            if endsGroup, token.first?.isNumber == true { out.append("mm") }
+        }
+        return out
     }
 
     private static func expandSymbols(in token: String) -> String {

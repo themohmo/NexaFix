@@ -1,0 +1,252 @@
+{
+  "project" : {
+    "ceiling_height" : 2.92,
+    "client" : "Ms. Layla Hassan",
+    "location" : "JVC, Dubai",
+    "name" : "Studio 1207",
+    "ref" : "NF-2026-1009-02"
+  },
+  "rooms" : [
+    {
+      "area" : 20.92,
+      "doors" : [
+        [
+          0.9,
+          2.1
+        ]
+      ],
+      "height" : 2.92,
+      "name" : "Living / Kitchen",
+      "perimeter" : 20.43,
+      "tags" : [
+        "living"
+      ],
+      "wet" : false,
+      "windows" : [
+        [
+          1.8,
+          2.3
+        ]
+      ]
+    },
+    {
+      "doors" : [
+        [
+          0.75,
+          2.1
+        ]
+      ],
+      "height" : 2.6,
+      "length" : 2.2,
+      "name" : "Bathroom",
+      "tags" : [
+        "bathroom"
+      ],
+      "wet" : true,
+      "width" : 1.8,
+      "windows" : [
+
+      ]
+    },
+    {
+      "doors" : [
+        [
+          2,
+          2.3
+        ]
+      ],
+      "height" : 2.9,
+      "length" : 3.8,
+      "name" : "Balcony",
+      "tags" : [
+        "outdoor"
+      ],
+      "wet" : false,
+      "width" : 1.5,
+      "windows" : [
+
+      ]
+    }
+  ],
+  "scope" : [
+
+  ],
+  "x_nexafix_scan" : {
+    "generator" : "NexaFix Scan",
+    "joinery_measurement_count" : 25,
+    "joinery_verified_count" : 3,
+    "measurement_count" : 39,
+    "notes" : [
+
+    ],
+    "property_id" : "00000000-0000-0000-0000-0000000000A1",
+    "rooms" : [
+      {
+        "floor" : "Level 12",
+        "joinery_total" : 11,
+        "joinery_verified" : 3,
+        "kind" : "livingRoom",
+        "name" : "Living / Kitchen",
+        "total" : 17,
+        "verified" : 3
+      },
+      {
+        "floor" : "Level 12",
+        "joinery_total" : 7,
+        "joinery_verified" : 0,
+        "kind" : "bathroom",
+        "name" : "Bathroom",
+        "total" : 11,
+        "verified" : 0
+      },
+      {
+        "floor" : "Level 12",
+        "joinery_total" : 7,
+        "joinery_verified" : 0,
+        "kind" : "balcony",
+        "name" : "Balcony",
+        "total" : 11,
+        "verified" : 0
+      }
+    ],
+    "scan_date" : "2026-10-07",
+    "schema" : "nexafix.costing-spec",
+    "unverified_joinery" : [
+      {
+        "item" : "Wall B length",
+        "room" : "Living / Kitchen",
+        "scanned_m" : 2.4,
+        "typical_tolerance_m" : 0.036
+      },
+      {
+        "item" : "Wall C length",
+        "room" : "Living / Kitchen",
+        "scanned_m" : 2.2,
+        "typical_tolerance_m" : 0.033
+      },
+      {
+        "item" : "Wall D length",
+        "room" : "Living / Kitchen",
+        "scanned_m" : 2.2,
+        "typical_tolerance_m" : 0.033
+      },
+      {
+        "item" : "Wall E length",
+        "room" : "Living / Kitchen",
+        "scanned_m" : 3.4,
+        "typical_tolerance_m" : 0.051
+      },
+      {
+        "item" : "Door 1 width",
+        "room" : "Living / Kitchen",
+        "scanned_m" : 0.9,
+        "typical_tolerance_m" : 0.0135
+      },
+      {
+        "item" : "Door 1 height",
+        "room" : "Living / Kitchen",
+        "scanned_m" : 2.1,
+        "typical_tolerance_m" : 0.0315
+      },
+      {
+        "item" : "Window 1 width",
+        "room" : "Living / Kitchen",
+        "scanned_m" : 1.8,
+        "typical_tolerance_m" : 0.027
+      },
+      {
+        "item" : "Window 1 height",
+        "room" : "Living / Kitchen",
+        "scanned_m" : 2.3,
+        "typical_tolerance_m" : 0.0345
+      },
+      {
+        "item" : "Wall A length",
+        "room" : "Bathroom",
+        "scanned_m" : 2.2,
+        "typical_tolerance_m" : 0.033
+      },
+      {
+        "item" : "Wall B length",
+        "room" : "Bathroom",
+        "scanned_m" : 1.8,
+        "typical_tolerance_m" : 0.027
+      },
+      {
+        "item" : "Wall C length",
+        "room" : "Bathroom",
+        "scanned_m" : 2.2,
+        "typical_tolerance_m" : 0.033
+      },
+      {
+        "item" : "Wall D length",
+        "room" : "Bathroom",
+        "scanned_m" : 1.8,
+        "typical_tolerance_m" : 0.027
+      },
+      {
+        "item" : "Ceiling height",
+        "room" : "Bathroom",
+        "scanned_m" : 2.6,
+        "typical_tolerance_m" : 0.039
+      },
+      {
+        "item" : "Door 1 width",
+        "room" : "Bathroom",
+        "scanned_m" : 0.75,
+        "typical_tolerance_m" : 0.0113
+      },
+      {
+        "item" : "Door 1 height",
+        "room" : "Bathroom",
+        "scanned_m" : 2.1,
+        "typical_tolerance_m" : 0.0315
+      },
+      {
+        "item" : "Wall A length",
+        "room" : "Balcony",
+        "scanned_m" : 3.8,
+        "typical_tolerance_m" : 0.057
+      },
+      {
+        "item" : "Wall B length",
+        "room" : "Balcony",
+        "scanned_m" : 1.5,
+        "typical_tolerance_m" : 0.0225
+      },
+      {
+        "item" : "Wall C length",
+        "room" : "Balcony",
+        "scanned_m" : 3.8,
+        "typical_tolerance_m" : 0.057
+      },
+      {
+        "item" : "Wall D length",
+        "room" : "Balcony",
+        "scanned_m" : 1.5,
+        "typical_tolerance_m" : 0.0225
+      },
+      {
+        "item" : "Ceiling height",
+        "room" : "Balcony",
+        "scanned_m" : 2.9,
+        "typical_tolerance_m" : 0.0435
+      },
+      {
+        "item" : "Door 1 width",
+        "room" : "Balcony",
+        "scanned_m" : 2,
+        "typical_tolerance_m" : 0.03
+      },
+      {
+        "item" : "Door 1 height",
+        "room" : "Balcony",
+        "scanned_m" : 2.3,
+        "typical_tolerance_m" : 0.0345
+      }
+    ],
+    "verified_count" : 3,
+    "version" : 1,
+    "warning" : "22 of 25 joinery-critical dimensions are LiDAR-scanned only and have not been verified on site. LiDAR dimensions are typically within 1-2 %. Verify every dimension joinery will be cut to with a laser measure. Treat this as a budget estimate until they are verified."
+  }
+}

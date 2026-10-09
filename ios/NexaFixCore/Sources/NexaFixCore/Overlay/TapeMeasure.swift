@@ -136,7 +136,7 @@ public struct TapeSnapTracker: Hashable, Sendable {
 // MARK: - Measurement session
 
 /// Two points and what to do with a tap: first tap sets A, second sets B, a third starts over at A.
-public struct MeasureSession: Hashable, Sendable {
+public struct TapeMeasureSession: Hashable, Sendable {
     public private(set) var first: Point3?
     public private(set) var second: Point3?
 
@@ -188,6 +188,76 @@ public struct MeasureSession: Hashable, Sendable {
     }
 }
 
+// MARK: - Coordinate-frame guard
+
+/// A tape measurement that knows whether its points can be stored on a room.
+///
+/// A saved measurement lives in the room's coordinate frame, which is the frame of the scan session. A live AR
+/// session shares that frame only after it has relocalised against the scan's world map. Before that, and
+/// again after a restart, ARKit measures in a throwaway frame of its own, and the frame jumps the moment the
+/// session lines up. Points from the two frames must never meet in one measurement or on one room, so one
+/// invariant holds at all times: every point on the table was placed under the CURRENT alignment state.
+/// - A measurement can be saved only while the session is lined up.
+/// - Whenever the session lines up, loses its place or restarts, the points on the table are dropped,
+///   because the world they were measured in is no longer the world the camera sees.
+///
+/// Pure value logic, so the rule is unit-tested off-device; the app only feeds it events.
+public struct AlignedTapeMeasure: Hashable, Sendable {
+    /// Why the points on the table were dropped.
+    public enum Reset: Hashable, Sendable {
+        /// The session just lined up with the scan, so its frame changed.
+        case linedUp
+        /// The session lost its place (interrupted, tracking lost).
+        case lostPlace
+        /// The AR session was restarted.
+        case restarted
+    }
+
+    /// The points and the arithmetic on them.
+    public private(set) var session = TapeMeasureSession()
+    /// The AR session currently shares the scan's coordinate frame.
+    public private(set) var isAligned: Bool
+
+    public init(isAligned: Bool = false) {
+        self.isAligned = isAligned
+    }
+
+    /// Both points are in the room's frame and the session still shares it: safe to store on a room.
+    /// (Points placed before the session lined up never survive the line-up, see `setAligned`.)
+    public var canSave: Bool { session.isComplete && isAligned }
+
+    /// Places a point in the session's current frame. A third point starts a new measurement. Non-finite
+    /// points are ignored.
+    public mutating func addPoint(_ p: Point3) {
+        session.addPoint(p)
+    }
+
+    /// Reports whether the session is lined up with the scan. When that changes while there are points on the
+    /// table they are dropped, and the reason is returned so the screen can say so.
+    @discardableResult
+    public mutating func setAligned(_ aligned: Bool) -> Reset? {
+        guard aligned != isAligned else { return nil }
+        isAligned = aligned
+        guard !session.isEmpty else { return nil }
+        session.clear()
+        return aligned ? .linedUp : .lostPlace
+    }
+
+    /// The AR session was restarted: it starts again in a frame of its own, not lined up.
+    @discardableResult
+    public mutating func sessionRestarted() -> Reset? {
+        isAligned = false
+        guard !session.isEmpty else { return nil }
+        session.clear()
+        return .restarted
+    }
+
+    /// Drops the points. The alignment state is unchanged.
+    public mutating func clear() {
+        session.clear()
+    }
+}
+
 // MARK: - Readout text
 
 /// The strings in the glass readout after two points are placed. Everything is formatted in the user's
@@ -218,16 +288,16 @@ public struct TapeReadout: Hashable, Sendable {
         horizontal = plain(reading.horizontalM)
         vertical = plain(reading.verticalM)
         slope = UnitFormatter.angle(reading.slopeDegrees, decimals: 1)
-        spoken = "Measured length " + SpokenText.expand(length, isOpening: false)
-            + ", horizontal " + SpokenText.expand(horizontal, isOpening: false)
-            + ", vertical " + SpokenText.expand(vertical, isOpening: false)
+        spoken = "Measured length " + OverlaySpokenText.expand(length, isOpening: false)
+            + ", horizontal " + OverlaySpokenText.expand(horizontal, isOpening: false)
+            + ", vertical " + OverlaySpokenText.expand(vertical, isOpening: false)
             + ", scanned, not checked"
     }
 }
 
 // MARK: - Which room does a measurement belong to?
 
-public enum MeasureRoomLocator {
+public enum TapeRoomLocator {
     /// The room to store a saved measurement in: the focused room if there is one, else the first room
     /// whose outline contains the midpoint of the points (then any of the points), else the first room.
     public static func roomID(forPoints points: [Point3], in rooms: [Room], focusRoomID: UUID?) -> UUID? {

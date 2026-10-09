@@ -62,13 +62,17 @@ struct UserFacingError: LocalizedError, Identifiable {
 
     // MARK: Wording
 
+    /// Same wording on iPhone and iPad, so it names no device.
+    private static let outOfSpace: (message: String, recovery: String?) =
+        ("There isn't enough free storage on this device.",
+         "Free up space in Settings > General > Storage, then try again.")
+
     /// Plain-language reason and next step for the errors this app can realistically hit.
     static func describe(_ error: Error) -> (message: String, recovery: String?) {
         if let cocoa = error as? CocoaError {
             switch cocoa.code {
             case .fileWriteOutOfSpace:
-                return ("There isn't enough free storage on this iPhone.",
-                        "Free up space in Settings > General > iPhone Storage, then try again.")
+                return outOfSpace
             case .fileWriteNoPermission, .fileWriteVolumeReadOnly:
                 return ("The app isn't allowed to write to its storage.",
                         "Restart the app and try again.")
@@ -85,9 +89,9 @@ struct UserFacingError: LocalizedError, Identifiable {
         if error is DecodingError {
             return ("A saved file is damaged, or was made by a newer version of the app.", nil)
         }
-        if let nsError = error as NSError?, nsError.domain == NSPOSIXErrorDomain, nsError.code == Int(ENOSPC) {
-            return ("There isn't enough free storage on this iPhone.",
-                    "Free up space in Settings > General > iPhone Storage, then try again.")
+        let nsError = error as NSError
+        if nsError.domain == NSPOSIXErrorDomain, nsError.code == Int(ENOSPC) {
+            return outOfSpace
         }
         if let localized = error as? LocalizedError,
            let text = localized.errorDescription?.trimmingCharacters(in: .whitespacesAndNewlines),

@@ -80,3 +80,29 @@ Indicative Dubai **selling** prices, 2025–26, supply & install, ex VAT:
 
 If a line lands far outside, check the inputs (mm vs m, count vs length)
 before questioning the rate book.
+
+## 5. Site scans from the NexaFix Scan app
+
+The NexaFix Scan iPhone app (LiDAR, RoomPlan) exports a costing spec per property,
+`NexaFix_<Property>_<date>_costing-spec.json`: the `project` block and the scanned `rooms` in
+metres, an **empty `scope`**, and an extra `x_nexafix_scan` block the engine ignores. Use it
+instead of reading dimensions off a plan:
+
+```
+python scripts/from_scan.py NexaFix_…_costing-spec.json --starter --out spec.json        # rough budget now
+python scripts/from_scan.py NexaFix_…_costing-spec.json --scope scope.yaml --out spec.json  # real scope
+python scripts/estimate.py spec.json
+```
+
+- Rectangles arrive as `length` + `width`, anything else as `area` + `perimeter` (solid walls only, so
+  open-plan edges are not painted or skirted). `doors` / `windows` are the scanned openings, using the
+  laser-verified size where there is one; balconies carry `outdoor`, bathrooms and laundries are `wet`.
+  Room names are as typed on site (a repeated name becomes `Name (2)`).
+- `--starter` adds SPC flooring (dry rooms) and painting (walls and ceilings, all indoor rooms), nothing else;
+  replace it with the real scope before quoting. Joinery sizes (wardrobe, TV wall, kitchen run) still come from
+  the brief (sections 2 and 3); the scan only tells you how much wall there is.
+- **LiDAR is typically within 1–2 %, not good enough to cut joinery from.** `x_nexafix_scan.unverified_joinery`
+  lists every joinery-critical dimension nobody laser-checked, and `from_scan.py` prints it as a warning.
+  Treat the result as a **budget** until the site team has verified them in the app and re-exported; do not
+  hand-edit the numbers. `--strict` makes the script exit 3 while any are unverified.
+- Format reference for every exported file: `ios/docs/SCAN-FILE-FORMAT.md`.

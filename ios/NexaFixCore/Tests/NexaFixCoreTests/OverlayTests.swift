@@ -538,7 +538,8 @@ final class OverlayTests: XCTestCase {
         XCTAssertTrue(scanned.spokenDescription.hasPrefix("Wall length 4000 millimetres, scanned, not checked, plus or minus"))
         XCTAssertTrue(scanned.spokenDescription.hasSuffix("millimetres"))
         let window = label(s, "opening:\(r.openings[0].id.uuidString):size")
-        XCTAssertTrue(window.spokenDescription.hasPrefix("window 1500 by 1400, sill 900"), window.spokenDescription)
+        XCTAssertEqual(window.spokenDescription,
+                       "window 1500 by 1400 millimetres, sill 900 millimetres, scanned, not checked")
         let angle = label(s, "corner:\(r.id.uuidString):0:angle")
         XCTAssertEqual(angle.spokenDescription, "Corner angle 90.0 degrees")
         let area = label(s, "room:\(r.id.uuidString):area")
@@ -547,8 +548,40 @@ final class OverlayTests: XCTestCase {
         let imperial = scene([r], units: DisplayUnits(length: .feetAndInches))
         XCTAssertTrue(label(imperial, "wall:\(r.walls[1].id.uuidString):length").spokenDescription
             .hasPrefix("Wall length 13 feet 1 1/2 inches, scanned, not checked"))
-        XCTAssertEqual(SpokenText.expand("D 900 x 2100", isOpening: true), "door 900 by 2100")
-        XCTAssertEqual(SpokenText.expand("Maid's Room", isOpening: false), "Maid's Room")
+        XCTAssertEqual(OverlaySpokenText.expand("D 900 x 2100", isOpening: true), "door 900 by 2100 millimetres")
+        XCTAssertEqual(OverlaySpokenText.expand("Maid's Room", isOpening: false), "Maid's Room")
+    }
+
+    func testSavedMeasurementIsSpokenWithItsNameAndTolerance() {
+        var r = rect()
+        let m = CustomMeasurement(label: "Wardrobe wall", a: Point3(1, 0.1, -1), b: Point3(3, 0.1, -1))
+        r.customMeasurements = [m]
+        let l = label(scene([r]), "measure:\(m.id.uuidString):label")
+        XCTAssertEqual(l.spokenDescription,
+                       "Measurement 2000 millimetres, scanned, not checked, Wardrobe wall, plus or minus 30 millimetres")
+    }
+
+    func testOpeningsAlwaysSpeakTheirUnit() {
+        let r = rect(6, 4, openings: [.door(wall: 0, offset: 0.5), .window(wall: 2, offset: 1, width: 1.5, height: 1.4, sill: 0.9)])
+        let doorID = "opening:\(r.openings[0].id.uuidString):size"
+        let windowID = "opening:\(r.openings[1].id.uuidString):size"
+        // Millimetres show no unit on screen, so the unit must come from the spoken text.
+        let mmScene = scene([r])
+        XCTAssertEqual(label(mmScene, doorID).title, "D 900 x 2100")
+        XCTAssertEqual(label(mmScene, doorID).spokenDescription, "door 900 by 2100 millimetres, scanned, not checked")
+        XCTAssertEqual(label(mmScene, windowID).spokenDescription,
+                       "window 1500 by 1400 millimetres, sill 900 millimetres, scanned, not checked")
+        // Metres already hold a unit token: it is spoken once, not doubled.
+        let metres = scene([r], units: DisplayUnits(length: .metres))
+        XCTAssertEqual(label(metres, doorID).spokenDescription, "door 0.90 by 2.10 metres, scanned, not checked")
+        let cm = scene([r], units: DisplayUnits(length: .centimetres))
+        XCTAssertFalse(label(cm, doorID).spokenDescription.contains("millimetres"))
+        XCTAssertTrue(label(cm, doorID).spokenDescription.contains("centimetres"))
+        // Feet and inches carry their own marks.
+        let imperial = scene([r], units: DisplayUnits(length: .feetAndInches))
+        let spoken = label(imperial, doorID).spokenDescription
+        XCTAssertFalse(spoken.contains("millimetres"), spoken)
+        XCTAssertTrue(spoken.contains("feet") || spoken.contains("inches"), spoken)
     }
 
     func testCriticalAngleIsSpokenAsOutOfSquare() {
@@ -773,7 +806,7 @@ final class OverlayTests: XCTestCase {
     }
 
     func testMeasureSessionFlow() {
-        var s = MeasureSession()
+        var s = TapeMeasureSession()
         XCTAssertTrue(s.isEmpty)
         XCTAssertTrue(s.overlay(units: mm).isEmpty)
         s.addPoint(Point3(0, 0, 0))
@@ -799,6 +832,124 @@ final class OverlayTests: XCTestCase {
         XCTAssertTrue(s.isEmpty)
     }
 
+    // MARK: - AlignedTapeMeasure (which coordinate frame the points are in)
+
+    private let pa = Point3(1, 1, 1), pb = Point3(4, 1, 5), pc = Point3(7, 1, 7)
+
+    func testPointsPlacedWhileLinedUpCanBeSaved() {
+        var t = AlignedTapeMeasure(isAligned: true)
+        XCTAssertFalse(t.canSave)
+        t.addPoint(pa)
+        XCTAssertFalse(t.canSave, "one point is not a measurement")
+        t.addPoint(pb)
+        XCTAssertTrue(t.canSave)
+        XCTAssertEqual(t.session.points?.0, pa)
+        XCTAssertEqual(t.session.points?.1, pb)
+    }
+
+    func testPointsPlacedBeforeTheScanLinedUpCanNeverBeSaved() {
+        var t = AlignedTapeMeasure()
+        t.addPoint(pa)
+        t.addPoint(pb)
+        XCTAssertTrue(t.session.isComplete, "measuring still works while not lined up")
+        XCTAssertFalse(t.canSave)
+        // The session lines up and its frame jumps: the points belonged to the old frame and are dropped.
+        XCTAssertEqual(t.setAligned(true), .linedUp)
+        XCTAssertTrue(t.session.isEmpty)
+        XCTAssertFalse(t.canSave)
+        // Fresh points in the new frame are fine.
+        t.addPoint(pa)
+        t.addPoint(pb)
+        XCTAssertTrue(t.canSave)
+    }
+
+    func testHalfOfAMeasurementFromEachFrameIsNeverSaved() {
+        var t = AlignedTapeMeasure(isAligned: true)
+        t.addPoint(pa)
+        // Alignment is lost between the two taps: A is dropped rather than paired with a B from another frame.
+        XCTAssertEqual(t.setAligned(false), .lostPlace)
+        XCTAssertTrue(t.session.isEmpty)
+        t.addPoint(pb)
+        XCTAssertFalse(t.canSave)
+        XCTAssertEqual(t.session.first, pb)
+        // And the other way round: A unaligned, B after lining up.
+        var u = AlignedTapeMeasure()
+        u.addPoint(pa)
+        u.setAligned(true)
+        u.addPoint(pb)
+        XCTAssertFalse(u.session.isComplete)
+        XCTAssertFalse(u.canSave)
+    }
+
+    func testLosingAlignmentWithACompleteMeasurementBlocksSaving() {
+        var t = AlignedTapeMeasure(isAligned: true)
+        t.addPoint(pa)
+        t.addPoint(pb)
+        XCTAssertTrue(t.canSave)
+        XCTAssertEqual(t.setAligned(false), .lostPlace)
+        XCTAssertFalse(t.canSave)
+        XCTAssertTrue(t.session.isEmpty)
+    }
+
+    func testRestartingTheSessionDropsPointsAndAlignment() {
+        var t = AlignedTapeMeasure(isAligned: true)
+        t.addPoint(pa)
+        t.addPoint(pb)
+        XCTAssertEqual(t.sessionRestarted(), .restarted)
+        XCTAssertTrue(t.session.isEmpty)
+        XCTAssertFalse(t.isAligned)
+        t.addPoint(pa)
+        t.addPoint(pb)
+        XCTAssertFalse(t.canSave, "a restarted session has not lined up yet")
+        var empty = AlignedTapeMeasure(isAligned: true)
+        XCTAssertNil(empty.sessionRestarted(), "nothing to drop")
+        XCTAssertFalse(empty.isAligned)
+    }
+
+    func testAlignmentChangeWithNothingOnTheTableDropsNothing() {
+        var t = AlignedTapeMeasure()
+        XCTAssertNil(t.setAligned(true))
+        XCTAssertTrue(t.isAligned)
+        XCTAssertNil(t.setAligned(true), "no change")
+        XCTAssertNil(t.setAligned(false))
+    }
+
+    func testRepeatedAlignmentReportsDoNotDropPoints() {
+        var t = AlignedTapeMeasure(isAligned: true)
+        t.addPoint(pa)
+        XCTAssertNil(t.setAligned(true))
+        t.addPoint(pb)
+        XCTAssertNil(t.setAligned(true))
+        XCTAssertTrue(t.canSave)
+    }
+
+    func testAThirdTapStartsANewRecordAndInvalidPointsChangeNothing() {
+        var t = AlignedTapeMeasure(isAligned: true)
+        t.addPoint(pa)
+        t.addPoint(pb)
+        t.addPoint(Point3(.nan, 0, 0))
+        XCTAssertTrue(t.canSave, "a non-finite point is ignored")
+        XCTAssertEqual(t.session.points?.1, pb)
+        t.addPoint(pc)
+        XCTAssertEqual(t.session.first, pc)
+        XCTAssertNil(t.session.second)
+        XCTAssertFalse(t.canSave)
+        t.addPoint(pa)
+        XCTAssertTrue(t.canSave)
+        t.clear()
+        XCTAssertTrue(t.session.isEmpty)
+        XCTAssertTrue(t.isAligned, "clearing the points does not change the alignment")
+    }
+
+    func testTheLiveOverlayStillComesFromTheSession() {
+        var t = AlignedTapeMeasure()
+        t.addPoint(pa)
+        t.addPoint(pb)
+        let o = t.session.overlay(units: mm)
+        XCTAssertEqual(o.labels.first?.title, "5000 mm")
+        XCTAssertFalse(t.canSave)
+    }
+
     func testReadoutFormatsInTheUsersUnits() {
         let r = TapeMeasure.reading(from: .zero, to: Point3(1.2, 0.5, -0.9))
         let mmText = TapeReadout(r, units: mm)
@@ -818,15 +969,15 @@ final class OverlayTests: XCTestCase {
         let a = Room.rectangle(name: "A", width: 4, depth: 4)
         let b = Room.rectangle(name: "B", origin: Point2(10, 0), width: 4, depth: 4)
         let inB = [Point3(11, 1, -1), Point3(13, 1, -1)]
-        XCTAssertEqual(MeasureRoomLocator.roomID(forPoints: inB, in: [a, b], focusRoomID: nil), b.id)
-        XCTAssertEqual(MeasureRoomLocator.roomID(forPoints: inB, in: [a, b], focusRoomID: a.id), a.id, "the focused room wins")
+        XCTAssertEqual(TapeRoomLocator.roomID(forPoints: inB, in: [a, b], focusRoomID: nil), b.id)
+        XCTAssertEqual(TapeRoomLocator.roomID(forPoints: inB, in: [a, b], focusRoomID: a.id), a.id, "the focused room wins")
         let nowhere = [Point3(100, 0, 100), Point3(101, 0, 100)]
-        XCTAssertEqual(MeasureRoomLocator.roomID(forPoints: nowhere, in: [a, b], focusRoomID: nil), a.id)
-        XCTAssertEqual(MeasureRoomLocator.roomID(forPoints: nowhere, in: [a, b], focusRoomID: UUID()), a.id)
-        XCTAssertNil(MeasureRoomLocator.roomID(forPoints: nowhere, in: [], focusRoomID: nil))
+        XCTAssertEqual(TapeRoomLocator.roomID(forPoints: nowhere, in: [a, b], focusRoomID: nil), a.id)
+        XCTAssertEqual(TapeRoomLocator.roomID(forPoints: nowhere, in: [a, b], focusRoomID: UUID()), a.id)
+        XCTAssertNil(TapeRoomLocator.roomID(forPoints: nowhere, in: [], focusRoomID: nil))
         // One end in room A, one in the open: the midpoint is outside both, so fall back to the point in A.
         let straddle = [Point3(1, 1, -1), Point3(8, 1, -1)]
-        XCTAssertEqual(MeasureRoomLocator.roomID(forPoints: straddle, in: [b, a], focusRoomID: nil), a.id)
+        XCTAssertEqual(TapeRoomLocator.roomID(forPoints: straddle, in: [b, a], focusRoomID: nil), a.id)
     }
 }
 
