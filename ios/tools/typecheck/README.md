@@ -49,9 +49,10 @@ Exit status 0 means "no errors in any pass and every audit passed".
 * 49 swift files, **0 errors** in `device-debug`, `device-release` and `simulator-debug`; 41 warnings per pass (see
   "Warnings"). No edit to `ios/NexaFixScan` was needed: the first whole-app run reported 250 errors (103 distinct), and every
   one was a gap or an ambiguity in the shims (a missing type or overload, two documented overloads that accept the same
-  call, a missing `import Observation` in the shim). One of them, `ARReviewController.swift:491` (`UIAccessibility.post` from
-  a class that is not `@MainActor`), went away through a modelling decision, not a documented fact: see "`@preconcurrency`"
-  below. If Xcode reports that line, it is a real finding.
+  call, a missing `import Observation` in the shim). One of them, `ARReviewController.swift` (`UIAccessibility.post` from a
+  class that is not `@MainActor`), passed only through a modelling decision, not a documented fact: see
+  "`@preconcurrency`" below. The app no longer depends on that decision: `announce` now goes through
+  `MainActor.assumeIsolated`, and it also compiles against a shim in which `UIAccessibility.post` is `@MainActor`.
 * `--strict` (complete checking): 84 warnings, all "an error in the Swift 6 language mode"; none matters for Swift 5.
 * Fault injection (`prove_bites.sh`): 9 of 9 faults caught (the five required: wrong argument label across files, removed
   member, duplicate type name, missing import, optional misuse; plus a wrong `ForEach`, `ARSession.run`,
@@ -101,8 +102,8 @@ Every declaration in `shims/` carries a tag on the line above it:
 optionality, defaults, `@MainActor`, `@Sendable`, `@escaping`, result-builder attributes, protocol requirements,
 conformances (a conformance must be listed on the page, or the type on the protocol's page). It ignores access modifiers,
 bodies, `@inlinable`/`@export(implementation)`, `@_disfavoredOverload`, `@objc(...)`, and `nonisolated` on the docs side (a
-shim member may omit it; it may not add it). An untagged declaration is an error. At the time of writing: 3308 shim
-declarations, 2916 `doc`, 6 `doc-fixed`, 18 `doc-unconfirmed`, 238 `shim`, 130 conformance/extension containers, 0 problems.
+shim member may omit it; it may not add it). An untagged declaration is an error. At the time of writing: about 3300 shim
+declarations, about 2900 `doc`, 6 `doc-fixed`, 18 `doc-unconfirmed`, 238 `shim`, 130 conformance/extension containers, 0 problems.
 
 The documentation is Apple's current documentation JSON (`developer.apple.com/tutorials/data/documentation/...`),
 i.e. the iOS 26/27 SDK era. Availability, `@MainActor`, `@preconcurrency` and `nonisolated` come from the same pages.

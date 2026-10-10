@@ -110,7 +110,7 @@ the room. A tape measurement from the model is a scan-derived number, so it is m
 
 The export screen states how many dimensions are laser-verified before you send anything.
 
-Your data stays on the phone. It is in the Files app under **On My iPhone ▸ NexaFix Scan**.
+Your data stays on the phone, and in its iPhone backup if you back it up; nothing is sent anywhere unless you export it. It is in the Files app under **On My iPhone ▸ NexaFix Scan**.
 
 ### From scan to quote
 Send the costing spec to your Mac (or to Claude), then:

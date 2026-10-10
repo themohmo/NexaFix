@@ -84,7 +84,7 @@ struct PermissionPrimer: View {
                     PrimerRow(symbol: "lightbulb", title: "For the best result",
                               detail: DeviceCapability.sizeAndLightNote)
                     RowDivider()
-                    PrimerRow(symbol: "lock", title: "Stays on this device",
+                    PrimerRow(symbol: "lock", title: "Private to this iPhone",
                               detail: DeviceCapability.privacyNote)
                 }
             }
