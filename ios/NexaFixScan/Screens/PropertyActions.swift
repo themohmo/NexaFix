@@ -304,22 +304,26 @@ struct ScanRecoveryPrompt: Equatable, Identifiable {
     /// The property name in curly quotes, or "this property" when it has none.
     var quotedName: String { propertyName.isEmpty ? "this property" : "\u{201C}\(propertyName)\u{201D}" }
 
-    /// "9 Oct, 14:32": when the last room of the scan was saved.
-    func dateText(timeZone: TimeZone = .current) -> String {
-        ScanRecoveryPrompt.dateText(scan.updatedAt, timeZone: timeZone)
+    /// "9 Oct, 14:32": when the last room of the scan was saved. A scan is offered however old it is, so a date
+    /// from an earlier year carries its year ("2 Sep 2025, 14:32"); "2 Sep" alone would read as this year's.
+    func dateText(timeZone: TimeZone = .current, now: Date = Date()) -> String {
+        ScanRecoveryPrompt.dateText(scan.updatedAt, timeZone: timeZone, now: now)
     }
 
-    static func dateText(_ date: Date, timeZone: TimeZone = .current) -> String {
+    static func dateText(_ date: Date, timeZone: TimeZone = .current, now: Date = Date()) -> String {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = timeZone
+        let sameYear = calendar.component(.year, from: date) == calendar.component(.year, from: now)
         let formatter = DateFormatter()
         formatter.locale = Locale(identifier: "en_US_POSIX")
         formatter.timeZone = timeZone
-        formatter.dateFormat = "d MMM, HH:mm"
+        formatter.dateFormat = sameYear ? "d MMM, HH:mm" : "d MMM yyyy, HH:mm"
         return formatter.string(from: date)
     }
 
     /// "Unfinished scan found: 3 rooms from 9 Oct, 14:32 (Marina Gate 2)."
-    func headline(timeZone: TimeZone = .current) -> String {
-        var text = "Unfinished scan found: \(roomCountText) from \(dateText(timeZone: timeZone))"
+    func headline(timeZone: TimeZone = .current, now: Date = Date()) -> String {
+        var text = "Unfinished scan found: \(roomCountText) from \(dateText(timeZone: timeZone, now: now))"
         if !propertyName.isEmpty { text += " (\(propertyName))" }
         return text + "."
     }
@@ -353,6 +357,10 @@ struct ScanRecoveryPrompt: Equatable, Identifiable {
 ///
 /// The copy of a scan (`ScanRecoveryStore`) is only deleted once the rooms are really in the property on disk
 /// (or were already there), or the person chose to discard it. Every other end keeps it and says what to do.
+///
+/// Age never deletes a copy. One whose property save failed exists only in memory and in the copy, so a scan that
+/// is weeks old is offered like a new one (its date says how old). At launch a copy is deleted without asking only
+/// when it is proven redundant: the property is on disk, read cleanly, and already holds every room of the copy.
 @MainActor
 @Observable
 final class ScanRecoveryCoordinator {
@@ -400,6 +408,10 @@ final class ScanRecoveryCoordinator {
 
     @ObservationIgnored private let root: URL
     @ObservationIgnored private var hasLooked = false
+    /// Scans whose rooms this coordinator put into the property in memory but could not write to disk, with what
+    /// that attempt reported. If the rooms reach the disk some other way (Try again here, or on the not-saved
+    /// banner), the next attempt finds them already there and this is what it tells the person.
+    @ObservationIgnored private var failedSaves: [UUID: ScanIntake.Outcome] = [:]
 
     /// - Parameter root: Where the scan copies are (tests pass a temporary folder).
     init(root: URL = ScanRecoveryStore.defaultRoot) {
@@ -413,14 +425,24 @@ final class ScanRecoveryCoordinator {
 
     // MARK: Finding
 
-    /// Looks for unfinished scans, once. Dropping copies that are too old and reading the rest happen off the
-    /// main thread. If there are any, `phase` becomes `.asking` for the newest.
+    /// Looks for unfinished scans, once. Deleting the copies that are proven redundant and reading the rest happen
+    /// off the main thread. If there are any left, `phase` becomes `.asking` for the newest.
+    ///
+    /// Nothing is looked at when the property list could not be read: a scan's property would look missing, and
+    /// recovering would make a second property next to the real one. The copies stay for the next launch.
     func look(model: AppModel) async {
         guard !hasLooked else { return }
         hasLooked = true
+        guard !ScanRecoveryCoordinator.propertyListUnreadable(in: model) else { return }
         let root = self.root
+        let store = model.store
         let found = await Task.detached(priority: .utility) { () -> [ScanRecoveryStore.RecoverableScan] in
-            ScanRecoveryStore.prune(root: root)
+            // Only copies whose rooms are on disk in their property go, at any age (this also clears the copy of a
+            // scan that was saved by "Try again" on the not-saved banner, which does not know about the copy).
+            // Everything else is offered, however old it is.
+            ScanRecoveryStore.prune(root: root) { scan in
+                ScanRecoveryCoordinator.isSafelyStored(scan, root: root, store: store)
+            }
             return ScanRecoveryStore.recoverableScans(root: root)
         }.value
         guard phase == .idle else { return }
@@ -428,6 +450,30 @@ final class ScanRecoveryCoordinator {
         guard let first = prompts.first else { return }
         waiting = Array(prompts.dropFirst())
         phase = .asking(first)
+    }
+
+    /// True when starting the app could not read the property list (nothing is listed and an error is waiting to
+    /// be read). `AppModel.refresh` keeps the old list when a later read fails, so an empty list with an error
+    /// can only be a failure of the first read.
+    static func propertyListUnreadable(in model: AppModel) -> Bool {
+        model.summaries.isEmpty && model.presentedError != nil
+    }
+
+    /// Whether every room of the copy is already in its property **on disk**, so the copy has nothing left to
+    /// give. The property must exist, read cleanly from its own file (not from the backup, which the next save
+    /// would replace), and `ScanCommit.apply` must skip every room of the copy because the property holds its id:
+    /// the same test the real save uses. A copy that cannot be read completely, has no property id, or whose
+    /// property is missing, damaged or newer than this app proves nothing, so it is kept and offered.
+    nonisolated static func isSafelyStored(_ scan: ScanRecoveryStore.RecoverableScan, root: URL,
+                                           store: PropertyStore) -> Bool {
+        guard let propertyID = scan.propertyID,
+              let ids = ScanRecoveryStore.roomIDs(scanID: scan.scanID, root: root),
+              let loaded = try? store.loadWithStatus(id: propertyID),
+              !loaded.recoveredFromBackup else { return false }
+        // Only the ids matter to the test, so rooms with nothing in them stand in for the real ones.
+        let stand = ids.map { Room(id: $0, name: "", walls: [], ceilingHeight: Measured(scanned: 0)) }
+        let plan = ScanCommit.apply(rooms: stand, story: scan.story, scannedAt: Date(), to: loaded.property)
+        return plan.isNoOp && Set(plan.skippedRoomIDs) == Set(ids)
     }
 
     /// The name of a property that is on this iPhone (empty when it cannot be read), or nil when it is not.
@@ -484,26 +530,38 @@ final class ScanRecoveryCoordinator {
         let stillUnsaved = model.unsavedPropertyIDs.contains(propertyID)
 
         if outcome.saved {
+            failedSaves[scanID] = nil
             await removeCopy(scanID)
             phase = .done(target, Report(summary: outcome.summary, warnings: outcome.warnings, propertyID: propertyID))
         } else if outcome.roomsAlreadyInProperty, !stillUnsaved {
-            // Saved by the scan itself, and only the clean-up was missed.
             await removeCopy(scanID)
-            phase = .done(target, Report(
-                summary: "These rooms are already saved in \(target.quotedName), so nothing was added.",
-                warnings: [], propertyID: propertyID))
+            if let earlier = failedSaves.removeValue(forKey: scanID) {
+                // An earlier try of this recovery added the rooms but could not write them; since then they reached
+                // the disk (this try, or Try again on the not-saved banner). They are here because of this recovery,
+                // so say what it added and what the level lacks, as a first try that worked would have.
+                phase = .done(target, Report(summary: earlier.summary, warnings: earlier.warnings, propertyID: propertyID))
+            } else {
+                // Saved by the scan itself, and only the clean-up was missed. Nothing was recovered, so there is
+                // nothing to say about a missing 3D model or AR map: the scan's own save decided that.
+                phase = .done(target, Report(
+                    summary: "These rooms are already saved in \(target.quotedName), so nothing was added.",
+                    warnings: [], propertyID: propertyID))
+            }
         } else {
+            // The rooms are in the property in memory only: remember what was added for a try that finds them saved.
+            if outcome.floorID != nil { failedSaves[scanID] = outcome }
             phase = .failed(target, ScanRecoveryCoordinator.failure(for: outcome, stillUnsaved: stillUnsaved))
         }
     }
 
     /// The words for a recovery that did not reach storage. The copy is still there.
     static func failure(for outcome: ScanIntake.Outcome, stillUnsaved: Bool) -> Failure {
-        let kept = "The recovered copy is still on this iPhone."
         if outcome.floorID == nil, !outcome.roomsAlreadyInProperty, !stillUnsaved {
-            return Failure(message: "The property could not be opened, so the rooms were not added.",
-                           recovery: "\(kept) Restart the app, then try again.")
+            // A restart does not mend a damaged file, so it is not offered as the cure.
+            return Failure(message: "This property could not be opened, so the rooms were not added.",
+                           recovery: "Your copy is kept. You can try again later, or ask for help.")
         }
+        let kept = "The recovered copy is still on this iPhone."
         return Failure(message: "The rooms could not be saved to the property.",
                        recovery: "\(kept) Check that this iPhone has free space, then try again. Keep the app open until it has saved.")
     }
@@ -516,6 +574,7 @@ final class ScanRecoveryCoordinator {
         case .idle, .working, .done: return
         }
         await removeCopy(prompt.scan.scanID)
+        failedSaves[prompt.scan.scanID] = nil
         // A second tap while the first was deleting must not skip a scan.
         guard phase.promptID == prompt.id else { return }
         moveOn()
@@ -1238,7 +1297,8 @@ struct AccuracyOverview: Equatable {
     static func make(properties: [Property], unit: LengthUnit) -> AccuracyOverview {
         let real = properties.filter { !DemoMarker.isDemo($0) }
         let report = AccuracyReport(rooms: real.flatMap(\.allRooms), sources: AccuracyReport.measuredSources)
-        // The Core wording for "nothing yet" says laser only; tape checks count here too.
+        // Core says "No checks yet" when there is nothing, and its checks can also be copied from a drawing. This row
+        // counts only laser and tape checks (`measuredSources`), so it keeps its own wording for "nothing yet".
         let summary = report.sampleCount == 0 ? emptySummary : report.summary(unit: unit)
         return AccuracyOverview(sampleCount: report.sampleCount, summary: summary,
                                 bias: report.biasDescription(unit: unit))

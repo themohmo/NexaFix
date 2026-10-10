@@ -193,7 +193,9 @@ ios/
   docs/SCAN-FILE-FORMAT.md   JSON / CSV / costing spec formats
   Config/              signing (Signing.xcconfig; your own Local.xcconfig is git-ignored), generated Info.plist
   tools/               icon generator, preflight.py (build-config + privacy checks), remember-signing.sh,
-                       typecheck/ (compiles the whole app against the real core with Apple stand-ins)
+                       typecheck/ (compiles the whole app against the real core with Apple stand-ins),
+                       recovery-checks/ (regression tests for the crash-recovery rules: a saved scan copy is
+                       never deleted before its rooms are on disk)
 ```
 
 Run the core tests (Mac or Linux): `cd ios/NexaFixCore && swift test`.

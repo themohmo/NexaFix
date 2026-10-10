@@ -438,7 +438,14 @@ private struct ScanRecoverySheet: View {
     let coordinator: ScanRecoveryCoordinator
     @Environment(AppModel.self) private var model
     @Environment(AppRouter.self) private var router
+    @Environment(\.dynamicTypeSize) private var typeSize
     @State private var isConfirmingDiscard = false
+
+    /// The three buttons sit under the text in a bar that does not scroll. At the medium height and an
+    /// accessibility text size they would leave almost no room for the text, so the sheet opens full height.
+    private var detents: Set<PresentationDetent> {
+        typeSize.isAccessibilitySize ? [.large] : [.medium, .large]
+    }
 
     var body: some View {
         NavigationStack {
@@ -455,7 +462,7 @@ private struct ScanRecoverySheet: View {
             .safeAreaInset(edge: .bottom, spacing: 0) { actions }
             .motion(value: coordinator.phase)
         }
-        .presentationDetents([.medium, .large])
+        .presentationDetents(detents)
         .presentationDragIndicator(.visible)
         // Rebuilding the rooms and saving them cannot be taken back; closing the sheet then would hide how it went.
         .interactiveDismissDisabled(coordinator.isWorking)

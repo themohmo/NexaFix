@@ -17,8 +17,12 @@ import NexaFixCore
 // Foundation and NexaFixCore only, so this file is type-checked on Linux with the rest of the pure code.
 //
 // Where it lives: `Application Support/ScanRecovery/<scan id>/`, not in Documents, so it is not offered
-// in the Files app, and excluded from backups. Ages (for `prune`) are read from the manifest, never from file
-// attributes: the privacy manifest declares no file-timestamp API, so none may be used.
+// in the Files app, and excluded from backups. Dates (the "from 9 Oct, 14:32" in the prompt) are read from the
+// manifest, never from file attributes: the privacy manifest declares no file-timestamp API, so none may be used.
+//
+// When a copy may be deleted: when the rooms are on disk in a saved property (`ScanRecoveryCoordinator` proves
+// that and then calls `prune`), or when the person discards it. Never because it is old: a scan whose property
+// save failed exists only in memory and in this copy, so a copy that is weeks old can still be the only one.
 
 final class ScanRecoveryStore: @unchecked Sendable {
 
@@ -45,7 +49,8 @@ final class ScanRecoveryStore: @unchecked Sendable {
         var createdAt: Date
         var updatedAt: Date
         /// True once the finished scan was handed to the app to save. The copy stays until the save is
-        /// confirmed (`discard(scanID:)`) or it is old enough to be dropped (`prune`).
+        /// confirmed (`discard(scanID:)`), the next launch proves the rooms are in the property (`prune`), or the
+        /// person discards it. How old it is never decides.
         var delivered: Bool
         /// In scan order.
         var rooms: [RoomEntry]
@@ -54,11 +59,6 @@ final class ScanRecoveryStore: @unchecked Sendable {
     static let currentVersion = 1
     static let folderName = "ScanRecovery"
     static let manifestFileName = "manifest.json"
-
-    /// A delivered scan that nobody confirmed is dropped after this long, seconds.
-    static let deliveredLifetime: TimeInterval = 7 * 24 * 3600
-    /// A scan that was never delivered is kept this long, seconds.
-    static let abandonedLifetime: TimeInterval = 30 * 24 * 3600
 
     /// `Application Support/ScanRecovery`, falling back to the temporary directory if that cannot be found.
     static var defaultRoot: URL {
@@ -230,8 +230,8 @@ extension ScanRecoveryStore {
         var roomCount: Int
         var createdAt: Date
         var updatedAt: Date
-        /// True when the scan was handed over to be saved. Then the save may have worked; offer it only if the
-        /// property does not have the floor.
+        /// True when the scan was handed over to be saved. Then the save may have worked (the next launch deletes
+        /// the copy if the property holds every room) or failed (then it is offered, however old it is).
         var delivered: Bool
 
         var id: UUID { scanID }
@@ -311,14 +311,39 @@ extension ScanRecoveryStore {
         try? FileManager.default.removeItem(at: root.appendingPathComponent(scanID.uuidString, isDirectory: true))
     }
 
-    /// Drops copies that are old enough that nobody is coming back for them.
-    static func prune(root: URL = ScanRecoveryStore.defaultRoot, now: Date = Date()) {
-        for folder in folders(in: root) {
-            guard let manifest = readManifest(in: folder) else { continue }
-            let age = now.timeIntervalSince(manifest.updatedAt)
-            let limit = manifest.delivered ? deliveredLifetime : abandonedLifetime
-            if age > limit { try? FileManager.default.removeItem(at: folder) }
+    /// The ids the rooms of a copy have once they are in a property: `RoomReconstructor` gives a room the id of
+    /// its capture, so these are the ids of the saved `RawCapture`s, in scan order. This is what the property's
+    /// "already saved" test (`ScanCommit.apply` skips a room whose id the property holds) is asked about.
+    ///
+    /// nil unless the copy is whole: a manifest that cannot be read, no rooms, or one room whose capture is
+    /// missing or damaged. Nothing may be concluded from a copy that cannot be read completely.
+    static func roomIDs(scanID: UUID, root: URL = ScanRecoveryStore.defaultRoot) -> [UUID]? {
+        let folder = root.appendingPathComponent(scanID.uuidString, isDirectory: true)
+        guard let manifest = readManifest(in: folder), !manifest.rooms.isEmpty else { return nil }
+        var ids: [UUID] = []
+        for entry in manifest.rooms {
+            guard let data = try? Data(contentsOf: folder.appendingPathComponent(rawFileName(entry.id))),
+                  let raw = decode(RawCapture.self, from: data) else { return nil }
+            ids.append(raw.id)
         }
+        return ids
+    }
+
+    /// Deletes the copies `isSaved` says are redundant, and nothing else; returns the scans it deleted.
+    ///
+    /// Age is never a reason. A copy is the only record of a scan whose property save failed, so it stays until
+    /// the rooms are really on disk in the property or the person discards it, however long ago it was made.
+    /// `isSaved` must prove the first (`ScanRecoveryCoordinator.isSafelyStored`); the default proves nothing, so
+    /// calling `prune(root:)` deletes nothing.
+    @discardableResult
+    static func prune(root: URL = ScanRecoveryStore.defaultRoot,
+                      isSaved: (RecoverableScan) -> Bool = { _ in false }) -> [UUID] {
+        var removed: [UUID] = []
+        for scan in recoverableScans(root: root) where isSaved(scan) {
+            discard(scanID: scan.scanID, root: root)
+            removed.append(scan.scanID)
+        }
+        return removed
     }
 
     private static func folders(in root: URL) -> [URL] {
