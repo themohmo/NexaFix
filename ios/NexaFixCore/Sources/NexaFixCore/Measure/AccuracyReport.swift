@@ -154,14 +154,14 @@ public struct AccuracyReport: Sendable {
 
     // MARK: Text
 
-    /// "12 checks: typically 6 mm (0.3 %), worst 21 mm", or "No laser checks yet".
+    /// "12 checks: typically 6 mm (0.3 %), worst 21 mm", or "No checks yet" (a check can be a laser, a tape or a drawing).
     /// "Typically" is the mean absolute error; the percentage is the mean absolute percent.
     /// When any counted check is not a laser reading the sources are named, so the figure is never
     /// mistaken for a laser one: "12 checks (9 laser, 2 tape, 1 drawing): typically 6 mm ...".
     public var summary: String { summary(unit: .millimetres) }
 
     public func summary(unit: LengthUnit) -> String {
-        guard sampleCount > 0 else { return "No laser checks yet" }
+        guard sampleCount > 0 else { return "No checks yet" }
         let typical = UnitFormatter.length(meanAbsoluteError, unit: unit)
         let worst = UnitFormatter.length(maxAbsoluteError, unit: unit)
         let percent = String(format: "%.1f", meanAbsolutePercent)

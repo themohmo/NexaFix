@@ -294,23 +294,3 @@ public struct TapeReadout: Hashable, Sendable {
             + ", scanned, not checked"
     }
 }
-
-// MARK: - Which room does a measurement belong to?
-
-public enum TapeRoomLocator {
-    /// The room to store a saved measurement in: the focused room if there is one, else the first room
-    /// whose outline contains the midpoint of the points (then any of the points), else the first room.
-    public static func roomID(forPoints points: [Point3], in rooms: [Room], focusRoomID: UUID?) -> UUID? {
-        if let focus = focusRoomID, rooms.contains(where: { $0.id == focus }) { return focus }
-        guard !rooms.isEmpty else { return nil }
-        let plan = points.map(\.plan).filter { $0.x.isFinite && $0.y.isFinite }
-        if !plan.isEmpty {
-            let mid = plan.reduce(Point2.zero, +) / Double(plan.count)
-            if let room = rooms.first(where: { $0.walls.count >= 3 && Polygon.contains($0.outline, mid) }) { return room.id }
-            for p in plan {
-                if let room = rooms.first(where: { $0.walls.count >= 3 && Polygon.contains($0.outline, p) }) { return room.id }
-            }
-        }
-        return rooms[0].id
-    }
-}

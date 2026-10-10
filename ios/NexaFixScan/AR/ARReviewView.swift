@@ -80,7 +80,7 @@ struct ARReviewView: View {
             arLayer
         case .needsExplanation:
             ARInfoCard(symbol: "camera.viewfinder", title: "Allow the camera",
-                       message: "NexaFix Scan uses the camera to line the measurements up with the room. Nothing leaves your device.",
+                       message: "NexaFix Scan uses the camera to line the measurements up with the room. Your scans stay on this iPhone, and in its backup if you back it up. Nothing is sent anywhere unless you export it.",
                        primaryTitle: "Allow camera", primaryAction: { controller.requestCameraAccess() },
                        closeAction: { controller.close() })
         case .denied:

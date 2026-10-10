@@ -527,6 +527,7 @@ final class ExportEngineTests: XCTestCase {
         XCTAssertEqual(readiness.total, 14)
         XCTAssertEqual(readiness.verified, 2)
         XCTAssertEqual(readiness.laserVerified, 2)
+        XCTAssertEqual(readiness.drawingVerified, 0)
         XCTAssertEqual(readiness.joineryTotal, 9)
         XCTAssertEqual(readiness.joineryVerified, 2)
         XCTAssertEqual(readiness.unverifiedJoinery.count, 7)
@@ -598,6 +599,45 @@ final class ExportEngineTests: XCTestCase {
         XCTAssertEqual(readiness.verified, 2)
         XCTAssertEqual(readiness.laserVerified, 1)
         XCTAssertTrue(readiness.banner.hasPrefix("2 of 14 dimensions checked on site."), readiness.banner)
+    }
+
+    func testBannerDoesNotSayOnSiteWhenAnyCheckCameFromADrawing() {
+        var p = apartment()
+        p.floors[0].rooms[0].walls[0].length.verify(6.24, source: .laser, date: now)
+        p.floors[0].rooms[0].ceilingHeight.verify(2.85, source: .drawing, date: now)
+        var readiness = ExportReadiness(property: p)
+        XCTAssertEqual(readiness.verified, 2)
+        XCTAssertEqual(readiness.laserVerified, 1)
+        XCTAssertEqual(readiness.drawingVerified, 1)
+        XCTAssertEqual(readiness.banner,
+                       "2 of 14 dimensions checked. Unchecked dimensions are LiDAR estimates (typically 1-2 %).")
+        // A tape check beside it does not bring "on site" back: one of the checks was not made there.
+        p.floors[0].rooms[0].walls[1].length.verify(4.51, source: .tape, date: now)
+        readiness = ExportReadiness(property: p)
+        XCTAssertEqual(readiness.drawingVerified, 1)
+        XCTAssertEqual(readiness.banner,
+                       "3 of 14 dimensions checked. Unchecked dimensions are LiDAR estimates (typically 1-2 %).")
+        // Drawing checks alone are not "with a laser" either.
+        var drawn = apartment()
+        drawn.floors[0].rooms[0].ceilingHeight.verify(2.85, source: .drawing, date: now)
+        XCTAssertEqual(ExportReadiness(property: drawn).banner,
+                       "1 of 14 dimensions checked. Unchecked dimensions are LiDAR estimates (typically 1-2 %).")
+    }
+
+    func testBannerWhenEverythingIsCheckedAndOneCameFromADrawing() {
+        var p = apartment()
+        var room = p.floors[0].rooms[0]
+        for item in VerificationChecklist(room: room).items {
+            let source: VerificationSource = item.target == .ceilingHeight ? .drawing : .laser
+            room.setVerification(Verification(value: item.measured.scanned + 0.005, source: source, date: now),
+                                 for: item.target)
+        }
+        p.floors[0].rooms[0] = room
+        let readiness = ExportReadiness(property: p)
+        XCTAssertEqual(readiness.verified, readiness.total)
+        XCTAssertEqual(readiness.drawingVerified, 1)
+        XCTAssertEqual(readiness.laserVerified, 13)
+        XCTAssertEqual(readiness.banner, "All 14 dimensions checked.")
     }
 
     func testNothingCheckedYet() {

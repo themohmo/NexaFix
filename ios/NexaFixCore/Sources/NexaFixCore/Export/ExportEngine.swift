@@ -220,6 +220,8 @@ public enum ExportEngine {
                 let report = PlanPDFRenderer.renderWithReport(property: request.property, options: pdfOptions,
                                                               now: request.now)
                 add(report.data, format: format, kind: "floor-plan")
+                // First, so the scale a later warning names ("too small at 1:75") has already been explained.
+                notes.append(contentsOf: scaleNotes(for: request.property, options: pdfOptions))
                 notes.append(contentsOf: report.warnings)
 
             case .cadDXF:
@@ -304,6 +306,23 @@ public enum ExportEngine {
             let plans = PlanPDFRenderer.pageInfos(property: property, options: probe).filter { $0.kind == .plan }
             let fits = !plans.isEmpty && plans.allSatisfy { ($0.scale ?? .infinity) <= target }
             return fits ? .a4 : .a3
+        }
+    }
+
+    /// One sentence for each plan page that had to be drawn at a smaller scale (a larger denominator) than the
+    /// one asked for, because the plan does not fit the sheet at that scale: "Plan shown at 1:75 because 1:20 does
+    /// not fit on A3." The title block shows the scale used, but a person who asked for 1:20 is not looking for it.
+    /// With "auto" scale nothing was asked for, so there is nothing to say.
+    static func scaleNotes(for property: Property, options: PlanPDFOptions) -> [String] {
+        guard case .fixed(let requested) = options.scale, requested.isFinite, requested > 0 else { return [] }
+        var probe = options
+        probe.includeSchedule = false
+        let plans = PlanPDFRenderer.pageInfos(property: property, options: probe).filter { $0.kind == .plan }
+        return plans.compactMap { page in
+            guard let used = page.scale, used > requested + 1e-9 else { return nil }
+            let subject = plans.count > 1 ? "\(page.title): plan shown" : "Plan shown"
+            return "\(subject) at \(PlanPDFRenderer.scaleLabel(used)) because \(PlanPDFRenderer.scaleLabel(requested)) "
+                + "does not fit on \(page.paper.displayName)."
         }
     }
 
@@ -423,6 +442,8 @@ public struct ExportReadiness: Equatable, Sendable {
     public let total: Int
     /// The part of `verified` that was checked with a laser.
     public let laserVerified: Int
+    /// The part of `verified` that was taken from a drawing, not measured on site.
+    public let drawingVerified: Int
     public let joineryVerified: Int
     public let joineryTotal: Int
     /// Wall lengths, ceiling heights, opening sizes and custom measurements still on their LiDAR value, in
@@ -430,7 +451,7 @@ public struct ExportReadiness: Equatable, Sendable {
     public let unverifiedJoinery: [Item]
 
     public init(property: Property) {
-        var verified = 0, total = 0, laser = 0, joineryVerified = 0, joineryTotal = 0
+        var verified = 0, total = 0, laser = 0, drawing = 0, joineryVerified = 0, joineryTotal = 0
         var open: [Item] = []
         for floor in property.floors {
             for room in floor.rooms {
@@ -440,6 +461,7 @@ public struct ExportReadiness: Equatable, Sendable {
                     if let check = item.measured.verification {
                         verified += 1
                         if check.source == .laser { laser += 1 }
+                        if check.source == .drawing { drawing += 1 }
                     }
                     guard item.isJoinery else { continue }
                     joineryTotal += 1
@@ -458,6 +480,7 @@ public struct ExportReadiness: Equatable, Sendable {
         self.verified = verified
         self.total = total
         self.laserVerified = laser
+        self.drawingVerified = drawing
         self.joineryVerified = joineryVerified
         self.joineryTotal = joineryTotal
         self.unverifiedJoinery = open
@@ -472,15 +495,23 @@ public struct ExportReadiness: Equatable, Sendable {
 
     /// "14 of 52 dimensions checked with a laser. Unchecked dimensions are LiDAR estimates (typically 1-2 %)."
     ///
-    /// Says "checked on site" instead of "with a laser" when some checks were made with a tape or taken
-    /// from a drawing, so the banner never claims more than was done.
+    /// Says "checked on site" instead of "with a laser" when some checks were made with a tape, and just
+    /// "checked" when any came from a drawing (a drawing is not a site check), so the banner never claims
+    /// more than was done.
     public var banner: String {
         guard total > 0 else { return "There are no dimensions to check yet." }
-        let how = verified == laserVerified ? "with a laser" : "on site"
+        let how: String
+        if verified == laserVerified {
+            how = " with a laser"
+        } else if drawingVerified > 0 {
+            how = ""
+        } else {
+            how = " on site"
+        }
         let noun = total == 1 ? "dimension" : "dimensions"
         if verified == total {
-            return "All \(total) \(noun) checked \(how)."
+            return "All \(total) \(noun) checked\(how)."
         }
-        return "\(verified) of \(total) \(noun) checked \(how). Unchecked dimensions are LiDAR estimates (typically 1-2 %)."
+        return "\(verified) of \(total) \(noun) checked\(how). Unchecked dimensions are LiDAR estimates (typically 1-2 %)."
     }
 }

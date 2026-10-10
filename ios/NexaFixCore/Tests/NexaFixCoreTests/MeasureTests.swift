@@ -1171,7 +1171,7 @@ final class MeasureTests: XCTestCase {
     func testEmptyAccuracyReport() {
         let none = AccuracyReport(property: Property(name: "Empty"))
         XCTAssertEqual(none.sampleCount, 0)
-        XCTAssertEqual(none.summary, "No laser checks yet")
+        XCTAssertEqual(none.summary, "No checks yet")
         XCTAssertEqual(none.meanAbsoluteError, 0)
         XCTAssertEqual(none.meanSignedError, 0)
         XCTAssertEqual(none.meanAbsolutePercent, 0)
@@ -1185,7 +1185,7 @@ final class MeasureTests: XCTestCase {
         let unverified = Property(name: "P", floors: [Floor(name: "G", rooms: [Room.rectangle(name: "R", width: 3, depth: 3)])])
         let report = AccuracyReport(property: unverified)
         XCTAssertEqual(report.sampleCount, 0)
-        XCTAssertEqual(report.summary, "No laser checks yet")
+        XCTAssertEqual(report.summary, "No checks yet")
         XCTAssertEqual(AccuracyReport(rooms: []).sampleCount, 0)
     }
 
@@ -1249,7 +1249,7 @@ final class MeasureTests: XCTestCase {
         let drawingOnly = AccuracyReport(rooms: [r], sources: [.drawing])
         XCTAssertEqual(drawingOnly.summary, "1 check (1 drawing): typically 100 mm (3.4 %), worst 100 mm")
         // Nothing counted: still the empty sentence.
-        XCTAssertEqual(AccuracyReport(rooms: [r], sources: []).summary, "No laser checks yet")
+        XCTAssertEqual(AccuracyReport(rooms: [r], sources: []).summary, "No checks yet")
         // The breakdown always adds up to the sample count.
         for sources in [Set(VerificationSource.allCases), [.laser], [.tape, .drawing], AccuracyReport.measuredSources] {
             let report = AccuracyReport(rooms: [r], sources: sources)

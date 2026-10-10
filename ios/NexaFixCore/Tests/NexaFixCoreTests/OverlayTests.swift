@@ -965,19 +965,27 @@ final class OverlayTests: XCTestCase {
         XCTAssertEqual(m.length, "1.581 m")
     }
 
+    /// The app files a saved tape measurement with `MeasurementRoomLocator` (the AR screen and the 3D viewer
+    /// both use it; its other cases are in SceneGeometryTests). These are the cases a tape measurement meets.
     func testSavedMeasurementGoesToTheRightRoom() {
         let a = Room.rectangle(name: "A", width: 4, depth: 4)
         let b = Room.rectangle(name: "B", origin: Point2(10, 0), width: 4, depth: 4)
-        let inB = [Point3(11, 1, -1), Point3(13, 1, -1)]
-        XCTAssertEqual(TapeRoomLocator.roomID(forPoints: inB, in: [a, b], focusRoomID: nil), b.id)
-        XCTAssertEqual(TapeRoomLocator.roomID(forPoints: inB, in: [a, b], focusRoomID: a.id), a.id, "the focused room wins")
-        let nowhere = [Point3(100, 0, 100), Point3(101, 0, 100)]
-        XCTAssertEqual(TapeRoomLocator.roomID(forPoints: nowhere, in: [a, b], focusRoomID: nil), a.id)
-        XCTAssertEqual(TapeRoomLocator.roomID(forPoints: nowhere, in: [a, b], focusRoomID: UUID()), a.id)
-        XCTAssertNil(TapeRoomLocator.roomID(forPoints: nowhere, in: [], focusRoomID: nil))
-        // One end in room A, one in the open: the midpoint is outside both, so fall back to the point in A.
-        let straddle = [Point3(1, 1, -1), Point3(8, 1, -1)]
-        XCTAssertEqual(TapeRoomLocator.roomID(forPoints: straddle, in: [b, a], focusRoomID: nil), a.id)
+        func locate(_ p: Point3, _ q: Point3, in rooms: [Room], focus: UUID? = nil) -> UUID? {
+            MeasurementRoomLocator.roomID(forPointA: p, pointB: q, in: rooms, focusRoomID: focus)
+        }
+        let inB = (Point3(11, 1, -1), Point3(13, 1, -1))
+        XCTAssertEqual(locate(inB.0, inB.1, in: [a, b]), b.id)
+        // The room selected on screen is not forced on a measurement taken in another room.
+        XCTAssertEqual(locate(inB.0, inB.1, in: [a, b], focus: a.id), b.id)
+        XCTAssertEqual(locate(inB.0, inB.1, in: [a, b], focus: b.id), b.id)
+        // Both ends in the open: the nearest room, not the first one in the list.
+        XCTAssertEqual(locate(Point3(20, 0, 1), Point3(21, 0, 1), in: [a, b]), b.id)
+        XCTAssertNil(locate(Point3(100, 0, 100), Point3(101, 0, 100), in: []))
+        // One end in room A, one in the open: the midpoint is outside both, so fall back to the point in A,
+        // whichever order the rooms are listed in.
+        let straddle = (Point3(1, 1, -1), Point3(8, 1, -1))
+        XCTAssertEqual(locate(straddle.0, straddle.1, in: [b, a]), a.id)
+        XCTAssertEqual(locate(straddle.0, straddle.1, in: [a, b]), a.id)
     }
 }
 

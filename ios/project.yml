@@ -135,7 +135,7 @@ targets:
         # Not needed (checked against Apple's documentation): NSMotionUsageDescription is only for the Core Motion
         # activity APIs, which the app does not use; NSPhotoLibraryAddUsageDescription only for code that writes
         # to the photo library (exports go through the share sheet as files); no microphone, location or Bluetooth.
-        NSCameraUsageDescription: "NexaFix Scan uses the camera and LiDAR sensor to measure and map rooms. Nothing leaves your device unless you export it."
+        NSCameraUsageDescription: "NexaFix Scan uses the camera and LiDAR sensor to measure and map rooms. Your scans stay on this iPhone, and in its backup if you back it up; nothing is sent anywhere unless you export it."
         # Make saved properties and exports visible in the Files app (On My iPhone > NexaFix Scan).
         # The app keeps its data in Documents/Properties, which is where UIFileSharingEnabled looks.
         UIFileSharingEnabled: true

@@ -23,7 +23,7 @@ the 3D model, the export button.
 |---|---|
 | Purpose | One primary action per screen. No dashboards, no onboarding carousel. |
 | Agency / forgiveness | Every verification can be edited or cleared. Confirmation dialogs only for deleting a property or room. Scan can be cancelled at any moment without losing earlier rooms. |
-| Responsibility | A scanned number is never styled like a verified one. The joinery disclaimer (`ScanAccuracy.joineryDisclaimer`) sits on the export sheet and every PDF. Camera permission is explained before the system prompt. Nothing leaves the phone unless the user exports. |
+| Responsibility | A scanned number is never styled like a verified one. The joinery disclaimer (`ScanAccuracy.joineryDisclaimer`) sits on the export sheet and every PDF. Camera permission is explained before the system prompt. Scans stay on the phone, and in its backup if the user backs it up; nothing is sent anywhere unless the user exports. |
 | Familiarity | `NavigationStack`, large titles, sheets with detents, swipe actions, context menus, `ShareLink`, SF Symbols. No custom navigation. |
 | Flexibility | Units are the user's choice (mm / cm / m / in / ft-in; m² / sq ft). Dynamic Type everywhere. iPad and landscape work. A device without LiDAR can still open, measure (3D viewer), verify and export saved scans. |
 | Simplicity | Show the common path; advanced options (scale, paper, layers) are one tap deeper. Labels name what a thing is ("Wall A", "Door 1"), never "Item". |
