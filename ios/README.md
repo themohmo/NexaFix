@@ -13,45 +13,90 @@ verified number whenever there is one, and a scanned number is never styled like
 | | |
 |---|---|
 | iPhone | Pro or Pro Max with LiDAR (you have an iPhone 17 Pro Max). iOS 17 or later. |
-| Mac | Xcode 26 or later (you have Xcode 27). |
+| Mac | Xcode 26 or later (you have Xcode 27, which needs macOS Tahoe 26.6 or later). |
 | Account | A free Apple ID is enough to run it on your own phone. The paid developer account ($99/yr) is only needed for TestFlight / App Store, which an internal tool does not need. |
-| Homebrew | To install XcodeGen. If you do not have it: <https://brew.sh> |
+| Homebrew | Only for the optional Terminal route (XcodeGen). Not needed to install the app. |
 
 Without LiDAR (an older iPhone, an iPad without LiDAR, or the Simulator) everything except scanning
 still works: demo data, verification, plans, the 3D viewer and exports. The Simulator even offers a
 "Simulate a scan" button so you can try the whole flow.
 
-## Install it on your iPhone (first time, about 10 minutes, no Terminal)
+## Install it on your iPhone (first time, about 30 minutes, no Terminal)
 
 The repository contains a ready-made Xcode project. GitHub's own Macs build the app with Apple's real SDKs
 on every change (see the **Actions** tab on GitHub), and save the finished project into the repo.
 
-1. **Get the code into Xcode.** Open Xcode. On the Welcome window choose **Clone Git Repository…** (or
-   *Source Control ▸ Clone…*), paste `https://github.com/themohmo/NexaFix.git` (the repository is public, so
-   no sign-in is needed), and when it asks which branch to check out, choose **`claude/gallant-ride-jzhsjk`**.
-   *Alternative without Git:* open
-   `https://github.com/themohmo/NexaFix/archive/refs/heads/claude/gallant-ride-jzhsjk.zip`, unzip it, and
-   go to step 2 inside the unzipped folder.
-2. **Open the project.** In Xcode choose *File ▸ Open…* and select **`ios/NexaFixScan.xcodeproj`** inside
-   the repository folder. Xcode shows a project called NexaFixScan. (Do not open the folder
-   `NexaFixCore`: that is only the library.)
-3. **Signing.** Click the blue **NexaFixScan** project icon at the top of the left sidebar, choose the
-   **NexaFixScan** target, open the **Signing & Capabilities** tab, and under **Team** pick your Apple ID
-   (add it with *Add an Account…* if it is not listed; a free Apple ID is enough). If Xcode says the bundle
-   identifier is not available, change **Bundle Identifier** to something unique, for example
-   `com.yourname.nexafixscan`.
-4. **Prepare the phone.** Plug it in with a cable, unlock it and tap *Trust This Computer*. Then on the phone
-   turn on **Settings ▸ Privacy & Security ▸ Developer Mode** (it restarts once; confirm *Turn On* afterwards).
-5. **Run.** Choose your iPhone in the device menu at the top of Xcode and press **▶**. The first time, Xcode
-   spends a few minutes preparing the phone, then builds (a minute or two). Use the **NexaFixScan** scheme to
-   start; for real site scans choose the **NexaFixScan Release** scheme (Debug builds are unoptimised and the
-   geometry and AR code is noticeably slower in them).
-6. **First launch with a free Apple ID.** If the phone says the developer is not trusted, go to
-   **Settings ▸ General ▸ VPN & Device Management**, tap your Apple ID and choose **Trust**. A free-account
-   install stops opening after 7 days; press ▶ in Xcode again to renew it. Your saved scans are kept.
+**Which branch?** The app lives on the branch **`claude/gallant-ride-jzhsjk`**. The repository's default branch
+holds only the costing tool and has no `ios` folder, so a plain "Clone" of the repository shows no app. The zip
+link below always gives the right branch.
 
-Optional, once: so that your Team survives when the project is regenerated, save it with
-`bash ios/tools/remember-signing.sh` (this writes `ios/Config/Local.xcconfig`, which git ignores).
+0. **First time ever with Xcode:** open it once from Applications, click *Agree*, let it install its extra
+   components, and type your Mac password when it asks (it asks a few times; that is normal). Xcode 27 needs
+   macOS Tahoe 26.6 or later on an Apple silicon Mac.
+1. **Get the code (on the Mac).** In Safari on the Mac, open
+   `https://github.com/themohmo/NexaFix/archive/refs/heads/claude/gallant-ride-jzhsjk.zip`. It downloads a zip
+   (the repository is public, so no sign-in). If Safari has not unzipped it, double-click the zip. You get a folder
+   called **`NexaFix-claude-gallant-ride-jzhsjk`**; drag it into *Documents*. Inside it there must be a folder
+   called `ios`.
+   *Alternative with Git:* in Xcode choose *Window ▸ Welcome to Xcode ▸ Clone Git Repository…* (or *Source
+   Control ▸ Clone…*), paste `https://github.com/themohmo/NexaFix.git`, press Return, click *Clone*, and when a
+   branch menu appears choose `claude/gallant-ride-jzhsjk`; then choose a folder. If there is no `ios` folder
+   afterwards you are on the wrong branch: delete the folder and use the zip. An empty Xcode window after a clone
+   is normal; go on to step 2.
+2. **Open the project.** In the menu bar at the top of the screen choose *File ▸ Open…*, go into the `ios`
+   folder and select **`NexaFixScan`** (the file with the small blue icon; it may show as `NexaFixScan.xcodeproj`),
+   then *Open*. Or double-click that file in Finder. Do not open the `NexaFixCore` folder: that is only the library
+   and has no Run button for a phone. Wait until the top bar stops saying *Resolving Package Graph* or
+   *Indexing* (there is no download; it takes a moment). Yellow warnings are fine.
+3. **Signing.** First sign in: *Xcode ▸ Settings ▸ Apple Accounts*, click **+**, sign in with your Apple Account (the
+   one on your iPhone) and enter the two-factor code. Then, in the project window: press ⌘1 if the left sidebar
+   is hidden, click the blue **NexaFixScan** item at the very top, under **TARGETS** click **NexaFixScan**, open
+   **Signing & Capabilities**, tick **Automatically manage signing**, and under **Team** choose *Your Name
+   (Personal Team)*. A free account is enough. If a red message says *Failed to register bundle identifier*,
+   type your own **Bundle Identifier**, all lower case, no spaces, for example `com.yourname.nexafixscan`, press
+   Return and click *Try Again*. Choose it once and do not keep changing it: a free account can only create about
+   ten new IDs a week, and a new ID installs as a new app with no scans in it.
+4. **Connect and prepare the phone.** Use the cable that came with the iPhone, straight into the Mac (no hub).
+   Unlock the phone, tap **Trust** and enter its passcode. In Xcode choose *Xcode ▸ Open Developer Tool ▸ Device
+   Hub*, click your iPhone and click **Pair** if that button shows. Only now, on the iPhone, open **Settings ▸
+   Privacy & Security**, scroll to the very bottom, and turn on **Developer Mode** (the switch appears only once the
+   phone has been paired with Xcode). Tap **Restart**; when the phone is back, unlock it, tap **Enable** and enter
+   the passcode. The restart is expected.
+5. **Run.** At the top of Xcode, next to the scheme **NexaFixScan**, click the second menu and choose your own iPhone
+   by name under *iOS Devices* (not anything under *Simulators*: the Simulator cannot scan). Press **▶**. The first
+   time Xcode spends several minutes preparing the phone (it can take 5 to 10): keep the phone unlocked and plugged in
+   and leave Xcode in front. If the Mac asks to let `codesign` use a key, type the Mac password and click *Always
+   Allow*. After the app starts you can press Stop and unplug; the app stays on the phone. For real site scans switch
+   the scheme (the menu left of the phone's name) to **NexaFixScan Release** and press ▶ again (Debug builds are
+   unoptimised and the geometry and AR code is noticeably slower in them).
+6. **First launch with a free Apple ID.** The first Run usually ends with a red message such as *profile has not
+   been explicitly trusted*, and the phone says *Untrusted Developer*. That is expected; the app is already on the
+   phone. On the phone open **Settings ▸ General ▸ VPN & Device Management**, under *Developer App* tap
+   **Apple Development: your Apple Account**, tap **Trust** (the phone needs internet), then press ▶ in Xcode again
+   or tap the NexaFix Scan icon.
+7. **You should see:** in Xcode *Running NexaFixScan on <your iPhone>* and the ▶ turns into a square Stop button;
+   on the phone the app opens with a large title **Properties**, a gear at top right, and the buttons **Scan a
+   property** and **Try the demo apartment**. Tap **Try the demo apartment** first. When you start a scan the phone
+   asks to use the camera: tap **Allow** (if you tapped *Don't Allow*, switch it on in the iPhone's Settings under
+   NexaFix Scan).
+
+**If the Run button is grey:** wait for the progress text at the top to finish; check the destination is your named
+iPhone (not *Any iOS Device*) and the scheme says NexaFixScan; check the left sidebar shows a *NexaFixScan* project and not
+just *NexaFixCore*; unlock the phone; if a *Get* button appears next to the destination, click it (it installs the
+iOS 27 support files).
+**If your iPhone is not in the list:** unlock it and look for the Trust prompt; try the original cable and another
+port; check it shows in *Device Hub* (or use *Manage Devices…* in the destination menu); check Developer Mode is on;
+restart the iPhone, then the Mac.
+
+**Every 7 days:** a free-account install stops opening after 7 days. Plug the phone in, open the project and press
+▶ again. **Never delete the app to fix this**: that would delete the scans on the phone. Export important scans
+before the week is up. Free accounts also allow only 3 apps per phone.
+
+**After downloading a newer zip later:** your Team and Bundle Identifier are stored in the project file, so enter
+the same ones again (write down your Bundle Identifier). This is also why changing it creates a new, empty app.
+
+Optional, for Terminal users: `bash ios/tools/remember-signing.sh` saves your Team in `ios/Config/Local.xcconfig`,
+which git ignores, so it survives the project being regenerated.
 
 If Xcode shows build errors, copy the red messages to Claude. The app has been compiled with Xcode 26 and 27
 on GitHub's Macs with no errors, so a build error on your Mac would be new information.
@@ -136,7 +181,7 @@ to trust a scan in your kind of rooms.
 | What you see | What to do |
 |---|---|
 | `xcodegen: command not found` | `brew install xcodegen` (install Homebrew first from brew.sh) |
-| *Signing requires a development team* | Pick your Team (step 4), then run `ios/tools/remember-signing.sh` so it survives re-generating. |
+| *Signing requires a development team* | Pick your Team (step 3), then run `ios/tools/remember-signing.sh` so it survives re-generating. |
 | *Failed to register bundle identifier* / *not available* | Change the Bundle Identifier in Signing & Capabilities to something unique, then run `ios/tools/remember-signing.sh`. |
 | `xcodegen generate` fails | Send the message to Claude. The least essential lines in `project.yml` are `xcodeVersion`, the `configFiles` block and the second scheme; removing them still leaves a working project. |
 | *Untrusted developer* on the phone | Settings ▸ General ▸ VPN & Device Management ▸ Trust. |
@@ -182,7 +227,7 @@ Please go through these once and tell Claude what you see:
 
 ```
 ios/
-  project.yml          XcodeGen project definition (the .xcodeproj is generated, not committed)
+  project.yml          XcodeGen project definition (the .xcodeproj is generated from it and committed by CI)
   NexaFixCore/         Swift package, Foundation only, tested on Linux and in Xcode
     Sources/NexaFixCore  Model, Geometry, Units, Capture (RoomReconstructor), Measure, Overlay,
                          Scene, Plan, Drawing, Export (PDF, DXF, JSON, CSV, costing), Storage, Flow, Sample
