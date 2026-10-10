@@ -1,0 +1,2115 @@
+{
+  "floors" : [
+    {
+      "assets" : {
+        "structureUSDZ" : "floors/C5B08AAE-176C-5B94-BB1F-7A36DE6FB9D8/model.usdz",
+        "worldMap" : null
+      },
+      "id" : "C5B08AAE-176C-5B94-BB1F-7A36DE6FB9D8",
+      "level" : 23,
+      "name" : "Level 23",
+      "rooms" : [
+        {
+          "capturedRoomFile" : "rooms/982FE2E9-E292-5DB7-8B06-2B261488437E.roomplan.json",
+          "ceilingHeight" : {
+            "deviationM" : null,
+            "note" : null,
+            "scannedM" : 2.8037,
+            "source" : null,
+            "valueM" : 2.8037,
+            "verifiedAt" : null,
+            "verifiedM" : null
+          },
+          "corners" : [
+            {
+              "deviationFrom90Deg" : 0.032,
+              "index" : 0,
+              "interiorAngleDeg" : 90.032,
+              "isOutOfSquare" : false,
+              "isReflex" : false,
+              "x" : 6.1963,
+              "y" : -0.0044
+            },
+            {
+              "deviationFrom90Deg" : -0.031,
+              "index" : 1,
+              "interiorAngleDeg" : 89.969,
+              "isOutOfSquare" : false,
+              "isReflex" : false,
+              "x" : 6.2026,
+              "y" : 4.5007
+            },
+            {
+              "deviationFrom90Deg" : -0.071,
+              "index" : 2,
+              "interiorAngleDeg" : 89.929,
+              "isOutOfSquare" : false,
+              "isReflex" : false,
+              "x" : -0.0034,
+              "y" : 4.506
+            },
+            {
+              "deviationFrom90Deg" : 0.07,
+              "index" : 3,
+              "interiorAngleDeg" : 90.07,
+              "isOutOfSquare" : false,
+              "isReflex" : false,
+              "x" : -0.0017,
+              "y" : 0.0007
+            }
+          ],
+          "customMeasurements" : [
+            {
+              "a" : {
+                "x" : 1,
+                "y" : -0.3,
+                "z" : -0.5
+              },
+              "b" : {
+                "x" : 2.8,
+                "y" : -0.3,
+                "z" : -0.5
+              },
+              "createdAt" : "2026-10-12T05:30:00.000Z",
+              "id" : "4BE0E0DC-DD6F-564B-9BC8-AE507E2F2694",
+              "label" : "Wardrobe wall",
+              "length" : {
+                "deviationM" : 0.005,
+                "note" : null,
+                "scannedM" : 1.8,
+                "source" : "laser",
+                "valueM" : 1.805,
+                "verifiedAt" : "2026-10-12T09:00:00.000Z",
+                "verifiedM" : 1.805
+              },
+              "note" : "built-in, floor to ceiling"
+            }
+          ],
+          "effectiveFloorAreaM2" : 28.1034,
+          "effectiveFloorAreaScannedM2" : 27.9414,
+          "effectiveFloorAreaVerified" : false,
+          "floorAreaM2" : 27.9414,
+          "floorElevationM" : 0,
+          "grossWallAreaM2" : 60.2028,
+          "id" : "982FE2E9-E292-5DB7-8B06-2B261488437E",
+          "isRectangular" : true,
+          "kind" : "livingRoom",
+          "lengthM" : 6.238,
+          "lengthScannedM" : 6.202,
+          "lengthVerified" : true,
+          "name" : "Living Room",
+          "netWallAreaM2" : 51.1128,
+          "notes" : "",
+          "objects" : [
+            {
+              "center" : {
+                "x" : 3.1052,
+                "y" : 0.4991
+              },
+              "depthM" : 0.9,
+              "elevationM" : 0,
+              "heightM" : 0.85,
+              "id" : "119A727B-C834-518F-A240-6F2B4F2D2B74",
+              "kind" : "sofa",
+              "widthM" : 2,
+              "yawDeg" : 0
+            },
+            {
+              "center" : {
+                "x" : 5.5978,
+                "y" : 3.9082
+              },
+              "depthM" : 0.5,
+              "elevationM" : 0,
+              "heightM" : 0.9,
+              "id" : "3C0EF780-970C-557D-B07D-D8B6B400036C",
+              "kind" : "chair",
+              "widthM" : 0.5,
+              "yawDeg" : 45
+            },
+            {
+              "center" : {
+                "x" : 3.1031,
+                "y" : 1.5086
+              },
+              "depthM" : 0.5,
+              "elevationM" : 0,
+              "heightM" : 0.4,
+              "id" : "71698860-5646-5278-88BD-0026770D1E84",
+              "kind" : "table",
+              "widthM" : 1,
+              "yawDeg" : 0
+            },
+            {
+              "center" : {
+                "x" : 0.3072,
+                "y" : 2.255
+              },
+              "depthM" : 0.6,
+              "elevationM" : 0,
+              "heightM" : 2.2,
+              "id" : "F58BD7DF-941F-53FA-8369-029A4540E253",
+              "kind" : "storage",
+              "widthM" : 1.8,
+              "yawDeg" : 90
+            }
+          ],
+          "openingAreaM2" : 9.09,
+          "openings" : [
+            {
+              "height" : {
+                "deviationM" : null,
+                "note" : null,
+                "scannedM" : 2.4,
+                "source" : null,
+                "valueM" : 2.4,
+                "verifiedAt" : null,
+                "verifiedM" : null
+              },
+              "id" : "7EB15E3B-5EBE-5631-A144-6B1302DA1E3F",
+              "kind" : "window",
+              "label" : "Window 1",
+              "offsetFromEndM" : 2.1971,
+              "offsetFromStartM" : 1.0089,
+              "sillHeight" : {
+                "deviationM" : null,
+                "note" : null,
+                "scannedM" : 0.3,
+                "source" : null,
+                "valueM" : 0.3,
+                "verifiedAt" : null,
+                "verifiedM" : null
+              },
+              "wallId" : "265DBFD1-48A0-5995-BF0F-0DDE6346EAE1",
+              "wallIndex" : 1,
+              "width" : {
+                "deviationM" : null,
+                "note" : null,
+                "scannedM" : 3,
+                "source" : null,
+                "valueM" : 3,
+                "verifiedAt" : null,
+                "verifiedM" : null
+              }
+            },
+            {
+              "height" : {
+                "deviationM" : null,
+                "note" : null,
+                "scannedM" : 2.1,
+                "source" : null,
+                "valueM" : 2.1,
+                "verifiedAt" : null,
+                "verifiedM" : null
+              },
+              "id" : "C9FD1B09-7AD4-53DD-8612-FD1CFE6C0FA7",
+              "kind" : "door",
+              "label" : "Door 1",
+              "offsetFromEndM" : 4.8028,
+              "offsetFromStartM" : 0.4952,
+              "sillHeight" : {
+                "deviationM" : null,
+                "note" : null,
+                "scannedM" : 0,
+                "source" : null,
+                "valueM" : 0,
+                "verifiedAt" : null,
+                "verifiedM" : null
+              },
+              "wallId" : "34D34FB2-3711-5B38-81A2-65F7AF85E3E0",
+              "wallIndex" : 3,
+              "width" : {
+                "deviationM" : null,
+                "note" : null,
+                "scannedM" : 0.9,
+                "source" : null,
+                "valueM" : 0.9,
+                "verifiedAt" : null,
+                "verifiedM" : null
+              }
+            }
+          ],
+          "perimeterM" : 21.4864,
+          "perimeterScannedM" : 21.4145,
+          "perimeterVerified" : false,
+          "scannedAt" : "2026-10-09T10:00:00.000Z",
+          "verification" : {
+            "joineryTotal" : 10,
+            "joineryVerified" : 3,
+            "total" : 15,
+            "verified" : 3
+          },
+          "volumeM3" : 78.3393,
+          "wallPerimeterM" : 21.4864,
+          "wallPerimeterScannedM" : 21.4145,
+          "wallPerimeterVerified" : false,
+          "walls" : [
+            {
+              "end" : {
+                "x" : 6.2026,
+                "y" : 4.5007
+              },
+              "height" : {
+                "deviationM" : null,
+                "note" : null,
+                "scannedM" : 2.8046,
+                "source" : null,
+                "valueM" : 2.8046,
+                "verifiedAt" : null,
+                "verifiedM" : null
+              },
+              "id" : "33504B04-BEE4-5118-B429-1B56DF97E553",
+              "index" : 0,
+              "isCurved" : false,
+              "kind" : "solid",
+              "label" : "Wall A",
+              "length" : {
+                "deviationM" : null,
+                "note" : null,
+                "scannedM" : 4.5051,
+                "source" : null,
+                "valueM" : 4.5051,
+                "verifiedAt" : null,
+                "verifiedM" : null
+              },
+              "start" : {
+                "x" : 6.1963,
+                "y" : -0.0044
+              }
+            },
+            {
+              "end" : {
+                "x" : -0.0034,
+                "y" : 4.506
+              },
+              "height" : {
+                "deviationM" : null,
+                "note" : null,
+                "scannedM" : 2.8045,
+                "source" : null,
+                "valueM" : 2.8045,
+                "verifiedAt" : null,
+                "verifiedM" : null
+              },
+              "id" : "265DBFD1-48A0-5995-BF0F-0DDE6346EAE1",
+              "index" : 1,
+              "isCurved" : false,
+              "kind" : "solid",
+              "label" : "Wall B",
+              "length" : {
+                "deviationM" : 0.034,
+                "note" : null,
+                "scannedM" : 6.206,
+                "source" : "laser",
+                "valueM" : 6.24,
+                "verifiedAt" : "2026-10-12T09:00:00.000Z",
+                "verifiedM" : 6.24
+              },
+              "start" : {
+                "x" : 6.2026,
+                "y" : 4.5007
+              }
+            },
+            {
+              "end" : {
+                "x" : -0.0017,
+                "y" : 0.0007
+              },
+              "height" : {
+                "deviationM" : null,
+                "note" : null,
+                "scannedM" : 2.8029,
+                "source" : null,
+                "valueM" : 2.8029,
+                "verifiedAt" : null,
+                "verifiedM" : null
+              },
+              "id" : "915E4A07-807C-5AFA-8A21-71436B35C604",
+              "index" : 2,
+              "isCurved" : false,
+              "kind" : "solid",
+              "label" : "Wall C",
+              "length" : {
+                "deviationM" : null,
+                "note" : null,
+                "scannedM" : 4.5053,
+                "source" : null,
+                "valueM" : 4.5053,
+                "verifiedAt" : null,
+                "verifiedM" : null
+              },
+              "start" : {
+                "x" : -0.0034,
+                "y" : 4.506
+              }
+            },
+            {
+              "end" : {
+                "x" : 6.1963,
+                "y" : -0.0044
+              },
+              "height" : {
+                "deviationM" : null,
+                "note" : null,
+                "scannedM" : 2.7967,
+                "source" : null,
+                "valueM" : 2.7967,
+                "verifiedAt" : null,
+                "verifiedM" : null
+              },
+              "id" : "34D34FB2-3711-5B38-81A2-65F7AF85E3E0",
+              "index" : 3,
+              "isCurved" : false,
+              "kind" : "solid",
+              "label" : "Wall D",
+              "length" : {
+                "deviationM" : 0.038,
+                "note" : null,
+                "scannedM" : 6.198,
+                "source" : "laser",
+                "valueM" : 6.236,
+                "verifiedAt" : "2026-10-12T09:00:00.000Z",
+                "verifiedM" : 6.236
+              },
+              "start" : {
+                "x" : -0.0017,
+                "y" : 0.0007
+              }
+            }
+          ],
+          "widthM" : 4.5052,
+          "widthScannedM" : 4.5052,
+          "widthVerified" : false
+        },
+        {
+          "capturedRoomFile" : "rooms/548EA052-281D-5F40-AABB-3E1BB02C7770.roomplan.json",
+          "ceilingHeight" : {
+            "deviationM" : -0.0433,
+            "note" : null,
+            "scannedM" : 2.8033,
+            "source" : "laser",
+            "valueM" : 2.76,
+            "verifiedAt" : "2026-10-12T09:00:00.000Z",
+            "verifiedM" : 2.76
+          },
+          "corners" : [
+            {
+              "deviationFrom90Deg" : -0.02,
+              "index" : 0,
+              "interiorAngleDeg" : 89.98,
+              "isOutOfSquare" : false,
+              "isReflex" : false,
+              "x" : 6.3497,
+              "y" : -0.0059
+            },
+            {
+              "deviationFrom90Deg" : 0.48,
+              "index" : 1,
+              "interiorAngleDeg" : 90.48,
+              "isOutOfSquare" : false,
+              "isReflex" : false,
+              "x" : 9.5489,
+              "y" : 0.0088
+            },
+            {
+              "deviationFrom90Deg" : -0.322,
+              "index" : 2,
+              "interiorAngleDeg" : 89.678,
+              "isOutOfSquare" : false,
+              "isReflex" : false,
+              "x" : 9.5594,
+              "y" : 2.7942
+            },
+            {
+              "deviationFrom90Deg" : -0.137,
+              "index" : 3,
+              "interiorAngleDeg" : 89.863,
+              "isOutOfSquare" : false,
+              "isReflex" : false,
+              "x" : 6.3378,
+              "y" : 2.7883
+            }
+          ],
+          "customMeasurements" : [
+
+          ],
+          "effectiveFloorAreaM2" : 9.0204,
+          "effectiveFloorAreaScannedM2" : 8.9566,
+          "effectiveFloorAreaVerified" : false,
+          "floorAreaM2" : 8.9565,
+          "floorElevationM" : 0,
+          "grossWallAreaM2" : 33.7516,
+          "id" : "548EA052-281D-5F40-AABB-3E1BB02C7770",
+          "isRectangular" : true,
+          "kind" : "kitchen",
+          "lengthM" : 3.2333,
+          "lengthScannedM" : 3.2105,
+          "lengthVerified" : false,
+          "name" : "Kitchen",
+          "netWallAreaM2" : 30.4396,
+          "notes" : "",
+          "objects" : [
+
+          ],
+          "openingAreaM2" : 3.312,
+          "openings" : [
+            {
+              "height" : {
+                "deviationM" : null,
+                "note" : null,
+                "scannedM" : 1.2,
+                "source" : null,
+                "valueM" : 1.2,
+                "verifiedAt" : null,
+                "verifiedM" : null
+              },
+              "id" : "0777B419-F6BD-5716-9A3C-6DA06748FB55",
+              "kind" : "window",
+              "label" : "Window 1",
+              "offsetFromEndM" : 0.9793,
+              "offsetFromStartM" : 1.02,
+              "sillHeight" : {
+                "deviationM" : null,
+                "note" : null,
+                "scannedM" : 1.05,
+                "source" : null,
+                "valueM" : 1.05,
+                "verifiedAt" : null,
+                "verifiedM" : null
+              },
+              "wallId" : "F141DAED-7650-54EB-A8A9-37E6E55A3D84",
+              "wallIndex" : 0,
+              "width" : {
+                "deviationM" : -0.015,
+                "note" : null,
+                "scannedM" : 1.2,
+                "source" : "tape",
+                "valueM" : 1.185,
+                "verifiedAt" : "2026-10-12T09:00:00.000Z",
+                "verifiedM" : 1.185
+              }
+            },
+            {
+              "height" : {
+                "deviationM" : null,
+                "note" : null,
+                "scannedM" : 2.1,
+                "source" : null,
+                "valueM" : 2.1,
+                "verifiedAt" : null,
+                "verifiedM" : null
+              },
+              "id" : "C87E9DD1-B3EA-57E4-9CBF-9FC6F773A208",
+              "kind" : "door",
+              "label" : "Door 1",
+              "offsetFromEndM" : 1.001,
+              "offsetFromStartM" : 0.8932,
+              "sillHeight" : {
+                "deviationM" : null,
+                "note" : null,
+                "scannedM" : 0,
+                "source" : null,
+                "valueM" : 0,
+                "verifiedAt" : null,
+                "verifiedM" : null
+              },
+              "wallId" : "515E5F19-28C1-50B6-8609-E792169076C4",
+              "wallIndex" : 3,
+              "width" : {
+                "deviationM" : null,
+                "note" : null,
+                "scannedM" : 0.9,
+                "source" : null,
+                "valueM" : 0.9,
+                "verifiedAt" : null,
+                "verifiedM" : null
+              }
+            }
+          ],
+          "perimeterM" : 12.0463,
+          "perimeterScannedM" : 12.0006,
+          "perimeterVerified" : false,
+          "scannedAt" : "2026-10-09T10:00:00.000Z",
+          "verification" : {
+            "joineryTotal" : 9,
+            "joineryVerified" : 3,
+            "total" : 14,
+            "verified" : 3
+          },
+          "volumeM3" : 24.7199,
+          "wallPerimeterM" : 12.0463,
+          "wallPerimeterScannedM" : 12.0006,
+          "wallPerimeterVerified" : false,
+          "walls" : [
+            {
+              "end" : {
+                "x" : 9.5489,
+                "y" : 0.0088
+              },
+              "height" : {
+                "deviationM" : null,
+                "note" : null,
+                "scannedM" : 2.807,
+                "source" : null,
+                "valueM" : 2.807,
+                "verifiedAt" : null,
+                "verifiedM" : null
+              },
+              "id" : "F141DAED-7650-54EB-A8A9-37E6E55A3D84",
+              "index" : 0,
+              "isCurved" : false,
+              "kind" : "solid",
+              "label" : "Wall A",
+              "length" : {
+                "deviationM" : 0.0457,
+                "note" : "skirting to skirting",
+                "scannedM" : 3.1993,
+                "source" : "laser",
+                "valueM" : 3.245,
+                "verifiedAt" : "2026-10-12T09:00:00.000Z",
+                "verifiedM" : 3.245
+              },
+              "start" : {
+                "x" : 6.3497,
+                "y" : -0.0059
+              }
+            },
+            {
+              "end" : {
+                "x" : 9.5594,
+                "y" : 2.7942
+              },
+              "height" : {
+                "deviationM" : null,
+                "note" : null,
+                "scannedM" : 2.7928,
+                "source" : null,
+                "valueM" : 2.7928,
+                "verifiedAt" : null,
+                "verifiedM" : null
+              },
+              "id" : "8F411B7A-794B-5D8E-AD96-2A9DD71D9BC9",
+              "index" : 1,
+              "isCurved" : false,
+              "kind" : "solid",
+              "label" : "Wall B",
+              "length" : {
+                "deviationM" : null,
+                "note" : null,
+                "scannedM" : 2.7854,
+                "source" : null,
+                "valueM" : 2.7854,
+                "verifiedAt" : null,
+                "verifiedM" : null
+              },
+              "start" : {
+                "x" : 9.5489,
+                "y" : 0.0088
+              }
+            },
+            {
+              "end" : {
+                "x" : 6.3378,
+                "y" : 2.7883
+              },
+              "height" : {
+                "deviationM" : null,
+                "note" : null,
+                "scannedM" : 2.802,
+                "source" : null,
+                "valueM" : 2.802,
+                "verifiedAt" : null,
+                "verifiedM" : null
+              },
+              "id" : "8B1A7C5A-9A4B-5670-A5AB-94253A6362DD",
+              "index" : 2,
+              "isCurved" : false,
+              "kind" : "solid",
+              "label" : "Wall C",
+              "length" : {
+                "deviationM" : null,
+                "note" : null,
+                "scannedM" : 3.2216,
+                "source" : null,
+                "valueM" : 3.2216,
+                "verifiedAt" : null,
+                "verifiedM" : null
+              },
+              "start" : {
+                "x" : 9.5594,
+                "y" : 2.7942
+              }
+            },
+            {
+              "end" : {
+                "x" : 6.3497,
+                "y" : -0.0059
+              },
+              "height" : {
+                "deviationM" : null,
+                "note" : null,
+                "scannedM" : 2.8046,
+                "source" : null,
+                "valueM" : 2.8046,
+                "verifiedAt" : null,
+                "verifiedM" : null
+              },
+              "id" : "515E5F19-28C1-50B6-8609-E792169076C4",
+              "index" : 3,
+              "isCurved" : false,
+              "kind" : "solid",
+              "label" : "Wall D",
+              "length" : {
+                "deviationM" : null,
+                "note" : null,
+                "scannedM" : 2.7942,
+                "source" : null,
+                "valueM" : 2.7942,
+                "verifiedAt" : null,
+                "verifiedM" : null
+              },
+              "start" : {
+                "x" : 6.3378,
+                "y" : 2.7883
+              }
+            }
+          ],
+          "widthM" : 2.7898,
+          "widthScannedM" : 2.7898,
+          "widthVerified" : false
+        },
+        {
+          "capturedRoomFile" : "rooms/A0C0866C-2DAF-5299-A9E9-F1BF1A85235E.roomplan.json",
+          "ceilingHeight" : {
+            "deviationM" : null,
+            "note" : null,
+            "scannedM" : 2.8031,
+            "source" : null,
+            "valueM" : 2.8031,
+            "verifiedAt" : null,
+            "verifiedM" : null
+          },
+          "corners" : [
+            {
+              "deviationFrom90Deg" : -0.079,
+              "index" : 0,
+              "interiorAngleDeg" : 89.921,
+              "isOutOfSquare" : false,
+              "isReflex" : false,
+              "x" : 6.0023,
+              "y" : 5.0009
+            },
+            {
+              "deviationFrom90Deg" : 0.02,
+              "index" : 1,
+              "interiorAngleDeg" : 90.02,
+              "isOutOfSquare" : false,
+              "isReflex" : false,
+              "x" : 6.0007,
+              "y" : 7.0002
+            },
+            {
+              "deviationFrom90Deg" : 179.926,
+              "index" : 2,
+              "interiorAngleDeg" : 269.926,
+              "isOutOfSquare" : false,
+              "isReflex" : true,
+              "x" : 4.0007,
+              "y" : 6.9993
+            },
+            {
+              "deviationFrom90Deg" : 0.08,
+              "index" : 3,
+              "interiorAngleDeg" : 90.08,
+              "isOutOfSquare" : false,
+              "isReflex" : false,
+              "x" : 3.9972,
+              "y" : 9.0029
+            },
+            {
+              "deviationFrom90Deg" : 0.086,
+              "index" : 4,
+              "interiorAngleDeg" : 90.086,
+              "isOutOfSquare" : false,
+              "isReflex" : false,
+              "x" : 0.0011,
+              "y" : 9.0015
+            },
+            {
+              "deviationFrom90Deg" : -0.033,
+              "index" : 5,
+              "interiorAngleDeg" : 89.967,
+              "isOutOfSquare" : false,
+              "isReflex" : false,
+              "x" : -0.0035,
+              "y" : 5.0045
+            }
+          ],
+          "customMeasurements" : [
+
+          ],
+          "effectiveFloorAreaM2" : 19.9981,
+          "effectiveFloorAreaScannedM2" : 19.9981,
+          "effectiveFloorAreaVerified" : false,
+          "floorAreaM2" : 19.9981,
+          "floorElevationM" : 0,
+          "grossWallAreaM2" : 56.0476,
+          "id" : "A0C0866C-2DAF-5299-A9E9-F1BF1A85235E",
+          "isRectangular" : false,
+          "kind" : "other",
+          "lengthM" : null,
+          "lengthScannedM" : null,
+          "lengthVerified" : null,
+          "name" : "Lounge",
+          "netWallAreaM2" : 54.1576,
+          "notes" : "",
+          "objects" : [
+
+          ],
+          "openingAreaM2" : 1.89,
+          "openings" : [
+            {
+              "height" : {
+                "deviationM" : null,
+                "note" : null,
+                "scannedM" : 2.1,
+                "source" : null,
+                "valueM" : 2.1,
+                "verifiedAt" : null,
+                "verifiedM" : null
+              },
+              "id" : "CFE5564D-34B1-5204-9240-1D9F5DB3F304",
+              "kind" : "door",
+              "label" : "Door 1",
+              "offsetFromEndM" : 4.1053,
+              "offsetFromStartM" : 1.0006,
+              "sillHeight" : {
+                "deviationM" : null,
+                "note" : null,
+                "scannedM" : 0,
+                "source" : null,
+                "valueM" : 0,
+                "verifiedAt" : null,
+                "verifiedM" : null
+              },
+              "wallId" : "EE8C58BE-29E5-5CA6-8CCB-83ABF57E2533",
+              "wallIndex" : 5,
+              "width" : {
+                "deviationM" : null,
+                "note" : null,
+                "scannedM" : 0.9,
+                "source" : null,
+                "valueM" : 0.9,
+                "verifiedAt" : null,
+                "verifiedM" : null
+              }
+            }
+          ],
+          "perimeterM" : 20.002,
+          "perimeterScannedM" : 20.002,
+          "perimeterVerified" : false,
+          "scannedAt" : "2026-10-09T10:00:00.000Z",
+          "verification" : {
+            "joineryTotal" : 9,
+            "joineryVerified" : 0,
+            "total" : 15,
+            "verified" : 0
+          },
+          "volumeM3" : 56.0559,
+          "wallPerimeterM" : 20.002,
+          "wallPerimeterScannedM" : 20.002,
+          "wallPerimeterVerified" : false,
+          "walls" : [
+            {
+              "end" : {
+                "x" : 6.0007,
+                "y" : 7.0002
+              },
+              "height" : {
+                "deviationM" : null,
+                "note" : null,
+                "scannedM" : 2.802,
+                "source" : null,
+                "valueM" : 2.802,
+                "verifiedAt" : null,
+                "verifiedM" : null
+              },
+              "id" : "6FD08005-1202-576B-B2E3-048BF3A651D0",
+              "index" : 0,
+              "isCurved" : false,
+              "kind" : "solid",
+              "label" : "Wall A",
+              "length" : {
+                "deviationM" : null,
+                "note" : null,
+                "scannedM" : 1.9993,
+                "source" : null,
+                "valueM" : 1.9993,
+                "verifiedAt" : null,
+                "verifiedM" : null
+              },
+              "start" : {
+                "x" : 6.0023,
+                "y" : 5.0009
+              }
+            },
+            {
+              "end" : {
+                "x" : 4.0007,
+                "y" : 6.9993
+              },
+              "height" : {
+                "deviationM" : null,
+                "note" : null,
+                "scannedM" : 2.8031,
+                "source" : null,
+                "valueM" : 2.8031,
+                "verifiedAt" : null,
+                "verifiedM" : null
+              },
+              "id" : "3EC00CD0-05AA-5A2D-AB51-CF9F761737FA",
+              "index" : 1,
+              "isCurved" : false,
+              "kind" : "solid",
+              "label" : "Wall B",
+              "length" : {
+                "deviationM" : null,
+                "note" : null,
+                "scannedM" : 2,
+                "source" : null,
+                "valueM" : 2,
+                "verifiedAt" : null,
+                "verifiedM" : null
+              },
+              "start" : {
+                "x" : 6.0007,
+                "y" : 7.0002
+              }
+            },
+            {
+              "end" : {
+                "x" : 3.9972,
+                "y" : 9.0029
+              },
+              "height" : {
+                "deviationM" : null,
+                "note" : null,
+                "scannedM" : 2.8032,
+                "source" : null,
+                "valueM" : 2.8032,
+                "verifiedAt" : null,
+                "verifiedM" : null
+              },
+              "id" : "69BC91F0-E8B3-5007-BE4E-28108B9FF40B",
+              "index" : 2,
+              "isCurved" : false,
+              "kind" : "solid",
+              "label" : "Wall C",
+              "length" : {
+                "deviationM" : null,
+                "note" : null,
+                "scannedM" : 2.0036,
+                "source" : null,
+                "valueM" : 2.0036,
+                "verifiedAt" : null,
+                "verifiedM" : null
+              },
+              "start" : {
+                "x" : 4.0007,
+                "y" : 6.9993
+              }
+            },
+            {
+              "end" : {
+                "x" : 0.0011,
+                "y" : 9.0015
+              },
+              "height" : {
+                "deviationM" : null,
+                "note" : null,
+                "scannedM" : 2.7986,
+                "source" : null,
+                "valueM" : 2.7986,
+                "verifiedAt" : null,
+                "verifiedM" : null
+              },
+              "id" : "7A2CE624-A1C7-5D3C-8A82-30CFFFD9C46D",
+              "index" : 3,
+              "isCurved" : false,
+              "kind" : "solid",
+              "label" : "Wall D",
+              "length" : {
+                "deviationM" : null,
+                "note" : null,
+                "scannedM" : 3.9961,
+                "source" : null,
+                "valueM" : 3.9961,
+                "verifiedAt" : null,
+                "verifiedM" : null
+              },
+              "start" : {
+                "x" : 3.9972,
+                "y" : 9.0029
+              }
+            },
+            {
+              "end" : {
+                "x" : -0.0035,
+                "y" : 5.0045
+              },
+              "height" : {
+                "deviationM" : null,
+                "note" : null,
+                "scannedM" : 2.803,
+                "source" : null,
+                "valueM" : 2.803,
+                "verifiedAt" : null,
+                "verifiedM" : null
+              },
+              "id" : "6B0DD8CB-F799-5E08-B8A7-327E8D8D11C1",
+              "index" : 4,
+              "isCurved" : false,
+              "kind" : "solid",
+              "label" : "Wall E",
+              "length" : {
+                "deviationM" : null,
+                "note" : null,
+                "scannedM" : 3.9971,
+                "source" : null,
+                "valueM" : 3.9971,
+                "verifiedAt" : null,
+                "verifiedM" : null
+              },
+              "start" : {
+                "x" : 0.0011,
+                "y" : 9.0015
+              }
+            },
+            {
+              "end" : {
+                "x" : 6.0023,
+                "y" : 5.0009
+              },
+              "height" : {
+                "deviationM" : null,
+                "note" : null,
+                "scannedM" : 2.8032,
+                "source" : null,
+                "valueM" : 2.8032,
+                "verifiedAt" : null,
+                "verifiedM" : null
+              },
+              "id" : "EE8C58BE-29E5-5CA6-8CCB-83ABF57E2533",
+              "index" : 5,
+              "isCurved" : false,
+              "kind" : "solid",
+              "label" : "Wall F",
+              "length" : {
+                "deviationM" : null,
+                "note" : null,
+                "scannedM" : 6.0058,
+                "source" : null,
+                "valueM" : 6.0058,
+                "verifiedAt" : null,
+                "verifiedM" : null
+              },
+              "start" : {
+                "x" : -0.0035,
+                "y" : 5.0045
+              }
+            }
+          ],
+          "widthM" : null,
+          "widthScannedM" : null,
+          "widthVerified" : null
+        },
+        {
+          "capturedRoomFile" : "rooms/FC721335-3D66-5AB2-9C90-3CD27F050DA5.roomplan.json",
+          "ceilingHeight" : {
+            "deviationM" : null,
+            "note" : null,
+            "scannedM" : 2.8009,
+            "source" : null,
+            "valueM" : 2.8009,
+            "verifiedAt" : null,
+            "verifiedM" : null
+          },
+          "corners" : [
+            {
+              "deviationFrom90Deg" : 0.014,
+              "index" : 0,
+              "interiorAngleDeg" : 90.014,
+              "isOutOfSquare" : false,
+              "isReflex" : false,
+              "x" : 4.9982,
+              "y" : 9.9954
+            },
+            {
+              "deviationFrom90Deg" : -0.152,
+              "index" : 1,
+              "interiorAngleDeg" : 89.848,
+              "isOutOfSquare" : false,
+              "isReflex" : false,
+              "x" : 5.0052,
+              "y" : 14.0051
+            },
+            {
+              "deviationFrom90Deg" : -0.22,
+              "index" : 2,
+              "interiorAngleDeg" : 89.78,
+              "isOutOfSquare" : false,
+              "isReflex" : false,
+              "x" : 0.0004,
+              "y" : 14.0006
+            },
+            {
+              "deviationFrom90Deg" : 0.357,
+              "index" : 3,
+              "interiorAngleDeg" : 90.357,
+              "isOutOfSquare" : false,
+              "isReflex" : false,
+              "x" : 0.0194,
+              "y" : 10.0029
+            }
+          ],
+          "customMeasurements" : [
+
+          ],
+          "effectiveFloorAreaM2" : 19.9854,
+          "effectiveFloorAreaScannedM2" : 19.9854,
+          "effectiveFloorAreaVerified" : false,
+          "floorAreaM2" : 19.9853,
+          "floorElevationM" : 0,
+          "grossWallAreaM2" : 39.2081,
+          "id" : "FC721335-3D66-5AB2-9C90-3CD27F050DA5",
+          "isRectangular" : true,
+          "kind" : "dining",
+          "lengthM" : 4.9918,
+          "lengthScannedM" : 4.9918,
+          "lengthVerified" : false,
+          "name" : "Open Dining",
+          "netWallAreaM2" : 37.1081,
+          "notes" : "SCAN CHECK (caution): No wall was scanned along a 4.00 m side near (0.01, 12.00). It was closed with a virtual wall (open-plan boundary); check it on site.",
+          "objects" : [
+
+          ],
+          "openingAreaM2" : 2.1,
+          "openings" : [
+            {
+              "height" : {
+                "deviationM" : null,
+                "note" : null,
+                "scannedM" : 1.4,
+                "source" : null,
+                "valueM" : 1.4,
+                "verifiedAt" : null,
+                "verifiedM" : null
+              },
+              "id" : "98D9A0B2-E1D4-587A-BB9F-130DDDF4E880",
+              "kind" : "window",
+              "label" : "Window 1",
+              "offsetFromEndM" : 1.5012,
+              "offsetFromStartM" : 1.0084,
+              "sillHeight" : {
+                "deviationM" : null,
+                "note" : null,
+                "scannedM" : 0.9,
+                "source" : null,
+                "valueM" : 0.9,
+                "verifiedAt" : null,
+                "verifiedM" : null
+              },
+              "wallId" : "4DF3F579-C5FC-5841-8FA6-12DB23D9F6D6",
+              "wallIndex" : 0,
+              "width" : {
+                "deviationM" : null,
+                "note" : null,
+                "scannedM" : 1.5,
+                "source" : null,
+                "valueM" : 1.5,
+                "verifiedAt" : null,
+                "verifiedM" : null
+              }
+            }
+          ],
+          "perimeterM" : 17.9909,
+          "perimeterScannedM" : 17.9909,
+          "perimeterVerified" : false,
+          "scannedAt" : "2026-10-09T10:00:00.000Z",
+          "verification" : {
+            "joineryTotal" : 6,
+            "joineryVerified" : 0,
+            "total" : 11,
+            "verified" : 0
+          },
+          "volumeM3" : 55.9771,
+          "wallPerimeterM" : 13.9932,
+          "wallPerimeterScannedM" : 13.9932,
+          "wallPerimeterVerified" : false,
+          "walls" : [
+            {
+              "end" : {
+                "x" : 5.0052,
+                "y" : 14.0051
+              },
+              "height" : {
+                "deviationM" : null,
+                "note" : null,
+                "scannedM" : 2.8007,
+                "source" : null,
+                "valueM" : 2.8007,
+                "verifiedAt" : null,
+                "verifiedM" : null
+              },
+              "id" : "4DF3F579-C5FC-5841-8FA6-12DB23D9F6D6",
+              "index" : 0,
+              "isCurved" : false,
+              "kind" : "solid",
+              "label" : "Wall A",
+              "length" : {
+                "deviationM" : null,
+                "note" : null,
+                "scannedM" : 4.0097,
+                "source" : null,
+                "valueM" : 4.0097,
+                "verifiedAt" : null,
+                "verifiedM" : null
+              },
+              "start" : {
+                "x" : 4.9982,
+                "y" : 9.9954
+              }
+            },
+            {
+              "end" : {
+                "x" : 0.0004,
+                "y" : 14.0006
+              },
+              "height" : {
+                "deviationM" : null,
+                "note" : null,
+                "scannedM" : 2.8009,
+                "source" : null,
+                "valueM" : 2.8009,
+                "verifiedAt" : null,
+                "verifiedM" : null
+              },
+              "id" : "4C343EB2-3805-55A6-9D89-984EAD6D440A",
+              "index" : 1,
+              "isCurved" : false,
+              "kind" : "solid",
+              "label" : "Wall B",
+              "length" : {
+                "deviationM" : null,
+                "note" : null,
+                "scannedM" : 5.0047,
+                "source" : null,
+                "valueM" : 5.0047,
+                "verifiedAt" : null,
+                "verifiedM" : null
+              },
+              "start" : {
+                "x" : 5.0052,
+                "y" : 14.0051
+              }
+            },
+            {
+              "end" : {
+                "x" : 0.0194,
+                "y" : 10.0029
+              },
+              "height" : {
+                "deviationM" : null,
+                "note" : null,
+                "scannedM" : 2.8009,
+                "source" : null,
+                "valueM" : 2.8009,
+                "verifiedAt" : null,
+                "verifiedM" : null
+              },
+              "id" : "CF399AA4-8411-566C-95B3-128EADD30DBC",
+              "index" : 2,
+              "isCurved" : false,
+              "kind" : "virtual",
+              "label" : "Wall C",
+              "length" : {
+                "deviationM" : null,
+                "note" : null,
+                "scannedM" : 3.9977,
+                "source" : null,
+                "valueM" : 3.9977,
+                "verifiedAt" : null,
+                "verifiedM" : null
+              },
+              "start" : {
+                "x" : 0.0004,
+                "y" : 14.0006
+              }
+            },
+            {
+              "end" : {
+                "x" : 4.9982,
+                "y" : 9.9954
+              },
+              "height" : {
+                "deviationM" : null,
+                "note" : null,
+                "scannedM" : 2.804,
+                "source" : null,
+                "valueM" : 2.804,
+                "verifiedAt" : null,
+                "verifiedM" : null
+              },
+              "id" : "EF83B33A-EFC3-5787-A324-0274C2E3E14C",
+              "index" : 3,
+              "isCurved" : false,
+              "kind" : "solid",
+              "label" : "Wall D",
+              "length" : {
+                "deviationM" : null,
+                "note" : null,
+                "scannedM" : 4.9788,
+                "source" : null,
+                "valueM" : 4.9788,
+                "verifiedAt" : null,
+                "verifiedM" : null
+              },
+              "start" : {
+                "x" : 0.0194,
+                "y" : 10.0029
+              }
+            }
+          ],
+          "widthM" : 4.0037,
+          "widthScannedM" : 4.0037,
+          "widthVerified" : false
+        }
+      ]
+    },
+    {
+      "assets" : {
+        "structureUSDZ" : "floors/86E05DFC-8192-5E6A-812F-3B421619C890/model.usdz",
+        "worldMap" : null
+      },
+      "id" : "86E05DFC-8192-5E6A-812F-3B421619C890",
+      "level" : 23,
+      "name" : "Level 23 (2)",
+      "rooms" : [
+        {
+          "capturedRoomFile" : "rooms/94C02470-02CD-5D4D-BA18-9376B9950180.roomplan.json",
+          "ceilingHeight" : {
+            "deviationM" : -0.0065,
+            "note" : null,
+            "scannedM" : 2.6989,
+            "source" : "drawing",
+            "valueM" : 2.6924,
+            "verifiedAt" : "2026-10-12T09:00:00.000Z",
+            "verifiedM" : 2.6924
+          },
+          "corners" : [
+            {
+              "deviationFrom90Deg" : -0.292,
+              "index" : 0,
+              "interiorAngleDeg" : 89.708,
+              "isOutOfSquare" : false,
+              "isReflex" : false,
+              "x" : -0.0015,
+              "y" : -0.0184
+            },
+            {
+              "deviationFrom90Deg" : 0.041,
+              "index" : 1,
+              "interiorAngleDeg" : 90.041,
+              "isOutOfSquare" : false,
+              "isReflex" : false,
+              "x" : 4.1073,
+              "y" : -0.0005
+            },
+            {
+              "deviationFrom90Deg" : 0.181,
+              "index" : 2,
+              "interiorAngleDeg" : 90.181,
+              "isOutOfSquare" : false,
+              "isReflex" : false,
+              "x" : 4.0946,
+              "y" : 3.4958
+            },
+            {
+              "deviationFrom90Deg" : 0.07,
+              "index" : 3,
+              "interiorAngleDeg" : 90.07,
+              "isOutOfSquare" : false,
+              "isReflex" : false,
+              "x" : 0.0012,
+              "y" : 3.4938
+            }
+          ],
+          "customMeasurements" : [
+
+          ],
+          "effectiveFloorAreaM2" : 14.3713,
+          "effectiveFloorAreaScannedM2" : 14.3713,
+          "effectiveFloorAreaVerified" : false,
+          "floorAreaM2" : 14.3713,
+          "floorElevationM" : 0,
+          "grossWallAreaM2" : 41.039,
+          "id" : "94C02470-02CD-5D4D-BA18-9376B9950180",
+          "isRectangular" : true,
+          "kind" : "bedroom",
+          "lengthM" : 4.1011,
+          "lengthScannedM" : 4.1011,
+          "lengthVerified" : false,
+          "name" : "Bedroom",
+          "netWallAreaM2" : 36.449,
+          "notes" : "",
+          "objects" : [
+
+          ],
+          "openingAreaM2" : 4.59,
+          "openings" : [
+            {
+              "height" : {
+                "deviationM" : null,
+                "note" : null,
+                "scannedM" : 2.1,
+                "source" : null,
+                "valueM" : 2.1,
+                "verifiedAt" : null,
+                "verifiedM" : null
+              },
+              "id" : "179098C8-BB31-5F84-A78E-6755F4DB720C",
+              "kind" : "door",
+              "label" : "Door 1",
+              "offsetFromEndM" : 2.8155,
+              "offsetFromStartM" : 0.3932,
+              "sillHeight" : {
+                "deviationM" : null,
+                "note" : null,
+                "scannedM" : 0,
+                "source" : null,
+                "valueM" : 0,
+                "verifiedAt" : null,
+                "verifiedM" : null
+              },
+              "wallId" : "3DA45B4A-458F-55A1-860F-216F2B501182",
+              "wallIndex" : 0,
+              "width" : {
+                "deviationM" : null,
+                "note" : null,
+                "scannedM" : 0.9,
+                "source" : null,
+                "valueM" : 0.9,
+                "verifiedAt" : null,
+                "verifiedM" : null
+              }
+            },
+            {
+              "height" : {
+                "deviationM" : null,
+                "note" : null,
+                "scannedM" : 1.5,
+                "source" : null,
+                "valueM" : 1.5,
+                "verifiedAt" : null,
+                "verifiedM" : null
+              },
+              "id" : "69D03A46-21F8-5D87-BCC7-0F10825846B6",
+              "kind" : "window",
+              "label" : "Window 1",
+              "offsetFromEndM" : 1.5025,
+              "offsetFromStartM" : 0.7909,
+              "sillHeight" : {
+                "deviationM" : null,
+                "note" : null,
+                "scannedM" : 0.8,
+                "source" : null,
+                "valueM" : 0.8,
+                "verifiedAt" : null,
+                "verifiedM" : null
+              },
+              "wallId" : "77975F15-D045-5903-8E49-EC061C5B58CD",
+              "wallIndex" : 2,
+              "width" : {
+                "deviationM" : null,
+                "note" : null,
+                "scannedM" : 1.8,
+                "source" : null,
+                "valueM" : 1.8,
+                "verifiedAt" : null,
+                "verifiedM" : null
+              }
+            }
+          ],
+          "perimeterM" : 15.2107,
+          "perimeterScannedM" : 15.2107,
+          "perimeterVerified" : false,
+          "scannedAt" : "2026-10-12T05:30:00.000Z",
+          "verification" : {
+            "joineryTotal" : 9,
+            "joineryVerified" : 1,
+            "total" : 14,
+            "verified" : 1
+          },
+          "volumeM3" : 38.6932,
+          "wallPerimeterM" : 15.2107,
+          "wallPerimeterScannedM" : 15.2107,
+          "wallPerimeterVerified" : false,
+          "walls" : [
+            {
+              "end" : {
+                "x" : 4.1073,
+                "y" : -0.0005
+              },
+              "height" : {
+                "deviationM" : null,
+                "note" : null,
+                "scannedM" : 2.6918,
+                "source" : null,
+                "valueM" : 2.6918,
+                "verifiedAt" : null,
+                "verifiedM" : null
+              },
+              "id" : "3DA45B4A-458F-55A1-860F-216F2B501182",
+              "index" : 0,
+              "isCurved" : false,
+              "kind" : "solid",
+              "label" : "Wall A",
+              "length" : {
+                "deviationM" : null,
+                "note" : null,
+                "scannedM" : 4.1088,
+                "source" : null,
+                "valueM" : 4.1088,
+                "verifiedAt" : null,
+                "verifiedM" : null
+              },
+              "start" : {
+                "x" : -0.0015,
+                "y" : -0.0184
+              }
+            },
+            {
+              "end" : {
+                "x" : 4.0946,
+                "y" : 3.4958
+              },
+              "height" : {
+                "deviationM" : null,
+                "note" : null,
+                "scannedM" : 2.7039,
+                "source" : null,
+                "valueM" : 2.7039,
+                "verifiedAt" : null,
+                "verifiedM" : null
+              },
+              "id" : "ACD54A30-52EE-549C-B633-9AD161CD3879",
+              "index" : 1,
+              "isCurved" : false,
+              "kind" : "solid",
+              "label" : "Wall B",
+              "length" : {
+                "deviationM" : null,
+                "note" : null,
+                "scannedM" : 3.4963,
+                "source" : null,
+                "valueM" : 3.4963,
+                "verifiedAt" : null,
+                "verifiedM" : null
+              },
+              "start" : {
+                "x" : 4.1073,
+                "y" : -0.0005
+              }
+            },
+            {
+              "end" : {
+                "x" : 0.0012,
+                "y" : 3.4938
+              },
+              "height" : {
+                "deviationM" : null,
+                "note" : null,
+                "scannedM" : 2.6961,
+                "source" : null,
+                "valueM" : 2.6961,
+                "verifiedAt" : null,
+                "verifiedM" : null
+              },
+              "id" : "77975F15-D045-5903-8E49-EC061C5B58CD",
+              "index" : 2,
+              "isCurved" : false,
+              "kind" : "solid",
+              "label" : "Wall C",
+              "length" : {
+                "deviationM" : null,
+                "note" : null,
+                "scannedM" : 4.0934,
+                "source" : null,
+                "valueM" : 4.0934,
+                "verifiedAt" : null,
+                "verifiedM" : null
+              },
+              "start" : {
+                "x" : 4.0946,
+                "y" : 3.4958
+              }
+            },
+            {
+              "end" : {
+                "x" : -0.0015,
+                "y" : -0.0184
+              },
+              "height" : {
+                "deviationM" : null,
+                "note" : null,
+                "scannedM" : 2.7017,
+                "source" : null,
+                "valueM" : 2.7017,
+                "verifiedAt" : null,
+                "verifiedM" : null
+              },
+              "id" : "7987518C-2048-5F20-BE44-FA3713BC1581",
+              "index" : 3,
+              "isCurved" : false,
+              "kind" : "solid",
+              "label" : "Wall D",
+              "length" : {
+                "deviationM" : null,
+                "note" : null,
+                "scannedM" : 3.5122,
+                "source" : null,
+                "valueM" : 3.5122,
+                "verifiedAt" : null,
+                "verifiedM" : null
+              },
+              "start" : {
+                "x" : 0.0012,
+                "y" : 3.4938
+              }
+            }
+          ],
+          "widthM" : 3.5043,
+          "widthScannedM" : 3.5043,
+          "widthVerified" : false
+        },
+        {
+          "capturedRoomFile" : "rooms/1FE0F7C9-E5BF-5B65-B06A-6C34DA18202B.roomplan.json",
+          "ceilingHeight" : {
+            "deviationM" : null,
+            "note" : null,
+            "scannedM" : 2.6993,
+            "source" : null,
+            "valueM" : 2.6993,
+            "verifiedAt" : null,
+            "verifiedM" : null
+          },
+          "corners" : [
+            {
+              "deviationFrom90Deg" : -0.493,
+              "index" : 0,
+              "interiorAngleDeg" : 89.507,
+              "isOutOfSquare" : false,
+              "isReflex" : false,
+              "x" : 4.9887,
+              "y" : -0.0012
+            },
+            {
+              "deviationFrom90Deg" : 0.392,
+              "index" : 1,
+              "interiorAngleDeg" : 90.392,
+              "isOutOfSquare" : false,
+              "isReflex" : false,
+              "x" : 7.8915,
+              "y" : 0.0121
+            },
+            {
+              "deviationFrom90Deg" : -0.238,
+              "index" : 2,
+              "interiorAngleDeg" : 89.762,
+              "isOutOfSquare" : false,
+              "isReflex" : false,
+              "x" : 7.897,
+              "y" : 2.4049
+            },
+            {
+              "deviationFrom90Deg" : 0.34,
+              "index" : 3,
+              "interiorAngleDeg" : 90.34,
+              "isOutOfSquare" : false,
+              "isReflex" : false,
+              "x" : 4.9984,
+              "y" : 2.3995
+            }
+          ],
+          "customMeasurements" : [
+
+          ],
+          "effectiveFloorAreaM2" : 6.9524,
+          "effectiveFloorAreaScannedM2" : 6.9524,
+          "effectiveFloorAreaVerified" : false,
+          "floorAreaM2" : 6.9522,
+          "floorElevationM" : 0,
+          "grossWallAreaM2" : 28.6037,
+          "id" : "1FE0F7C9-E5BF-5B65-B06A-6C34DA18202B",
+          "isRectangular" : true,
+          "kind" : "kitchen",
+          "lengthM" : 2.9008,
+          "lengthScannedM" : 2.9008,
+          "lengthVerified" : false,
+          "name" : "Kitchen 2",
+          "netWallAreaM2" : 28.6037,
+          "notes" : "",
+          "objects" : [
+
+          ],
+          "openingAreaM2" : 0,
+          "openings" : [
+
+          ],
+          "perimeterM" : 10.595,
+          "perimeterScannedM" : 10.595,
+          "perimeterVerified" : false,
+          "scannedAt" : "2026-10-12T05:30:00.000Z",
+          "verification" : {
+            "joineryTotal" : 5,
+            "joineryVerified" : 0,
+            "total" : 9,
+            "verified" : 0
+          },
+          "volumeM3" : 18.766,
+          "wallPerimeterM" : 10.595,
+          "wallPerimeterScannedM" : 10.595,
+          "wallPerimeterVerified" : false,
+          "walls" : [
+            {
+              "end" : {
+                "x" : 7.8915,
+                "y" : 0.0121
+              },
+              "height" : {
+                "deviationM" : null,
+                "note" : null,
+                "scannedM" : 2.7067,
+                "source" : null,
+                "valueM" : 2.7067,
+                "verifiedAt" : null,
+                "verifiedM" : null
+              },
+              "id" : "BC599A63-1405-5637-8165-49BEB945D27C",
+              "index" : 0,
+              "isCurved" : false,
+              "kind" : "solid",
+              "label" : "Wall A",
+              "length" : {
+                "deviationM" : null,
+                "note" : null,
+                "scannedM" : 2.9029,
+                "source" : null,
+                "valueM" : 2.9029,
+                "verifiedAt" : null,
+                "verifiedM" : null
+              },
+              "start" : {
+                "x" : 4.9887,
+                "y" : -0.0012
+              }
+            },
+            {
+              "end" : {
+                "x" : 7.897,
+                "y" : 2.4049
+              },
+              "height" : {
+                "deviationM" : null,
+                "note" : null,
+                "scannedM" : 2.7099,
+                "source" : null,
+                "valueM" : 2.7099,
+                "verifiedAt" : null,
+                "verifiedM" : null
+              },
+              "id" : "6829A800-199A-58A6-8CFA-8AA5D747A972",
+              "index" : 1,
+              "isCurved" : false,
+              "kind" : "solid",
+              "label" : "Wall B",
+              "length" : {
+                "deviationM" : null,
+                "note" : null,
+                "scannedM" : 2.3928,
+                "source" : null,
+                "valueM" : 2.3928,
+                "verifiedAt" : null,
+                "verifiedM" : null
+              },
+              "start" : {
+                "x" : 7.8915,
+                "y" : 0.0121
+              }
+            },
+            {
+              "end" : {
+                "x" : 4.9984,
+                "y" : 2.3995
+              },
+              "height" : {
+                "deviationM" : null,
+                "note" : null,
+                "scannedM" : 2.6919,
+                "source" : null,
+                "valueM" : 2.6919,
+                "verifiedAt" : null,
+                "verifiedM" : null
+              },
+              "id" : "4CFB6BA3-0AFC-5786-AA3F-51507557CBFE",
+              "index" : 2,
+              "isCurved" : false,
+              "kind" : "solid",
+              "label" : "Wall C",
+              "length" : {
+                "deviationM" : null,
+                "note" : null,
+                "scannedM" : 2.8986,
+                "source" : null,
+                "valueM" : 2.8986,
+                "verifiedAt" : null,
+                "verifiedM" : null
+              },
+              "start" : {
+                "x" : 7.897,
+                "y" : 2.4049
+              }
+            },
+            {
+              "end" : {
+                "x" : 4.9887,
+                "y" : -0.0012
+              },
+              "height" : {
+                "deviationM" : null,
+                "note" : null,
+                "scannedM" : 2.6906,
+                "source" : null,
+                "valueM" : 2.6906,
+                "verifiedAt" : null,
+                "verifiedM" : null
+              },
+              "id" : "CA9E4D9F-2FB3-51EE-A2B8-3D308BF59C76",
+              "index" : 3,
+              "isCurved" : false,
+              "kind" : "solid",
+              "label" : "Wall D",
+              "length" : {
+                "deviationM" : null,
+                "note" : null,
+                "scannedM" : 2.4006,
+                "source" : null,
+                "valueM" : 2.4006,
+                "verifiedAt" : null,
+                "verifiedM" : null
+              },
+              "start" : {
+                "x" : 4.9984,
+                "y" : 2.3995
+              }
+            }
+          ],
+          "widthM" : 2.3967,
+          "widthScannedM" : 2.3967,
+          "widthVerified" : false
+        },
+        {
+          "capturedRoomFile" : "rooms/9F4870B3-14DF-51D1-80EF-25445AD5540C.roomplan.json",
+          "ceilingHeight" : {
+            "deviationM" : null,
+            "note" : null,
+            "scannedM" : 2.6975,
+            "source" : null,
+            "valueM" : 2.6975,
+            "verifiedAt" : null,
+            "verifiedM" : null
+          },
+          "corners" : [
+            {
+              "deviationFrom90Deg" : -0.031,
+              "index" : 0,
+              "interiorAngleDeg" : 89.969,
+              "isOutOfSquare" : false,
+              "isReflex" : false,
+              "x" : 0.0095,
+              "y" : 4.0058
+            },
+            {
+              "deviationFrom90Deg" : -0.173,
+              "index" : 1,
+              "interiorAngleDeg" : 89.827,
+              "isOutOfSquare" : false,
+              "isReflex" : false,
+              "x" : 4.5024,
+              "y" : 4.0105
+            },
+            {
+              "deviationFrom90Deg" : 0.135,
+              "index" : 2,
+              "interiorAngleDeg" : 90.135,
+              "isOutOfSquare" : false,
+              "isReflex" : false,
+              "x" : 4.4964,
+              "y" : 5.5026
+            },
+            {
+              "deviationFrom90Deg" : 0.069,
+              "index" : 3,
+              "interiorAngleDeg" : 90.069,
+              "isOutOfSquare" : false,
+              "isReflex" : false,
+              "x" : 0.0088,
+              "y" : 5.495
+            }
+          ],
+          "customMeasurements" : [
+
+          ],
+          "effectiveFloorAreaM2" : 6.6932,
+          "effectiveFloorAreaScannedM2" : 6.6932,
+          "effectiveFloorAreaVerified" : false,
+          "floorAreaM2" : 6.6932,
+          "floorElevationM" : 0,
+          "grossWallAreaM2" : 32.2967,
+          "id" : "9F4870B3-14DF-51D1-80EF-25445AD5540C",
+          "isRectangular" : true,
+          "kind" : "balcony",
+          "lengthM" : 4.4902,
+          "lengthScannedM" : 4.4902,
+          "lengthVerified" : false,
+          "name" : "Balcony",
+          "netWallAreaM2" : 27.0167,
+          "notes" : "",
+          "objects" : [
+
+          ],
+          "openingAreaM2" : 5.28,
+          "openings" : [
+            {
+              "height" : {
+                "deviationM" : null,
+                "note" : null,
+                "scannedM" : 2.2,
+                "source" : null,
+                "valueM" : 2.2,
+                "verifiedAt" : null,
+                "verifiedM" : null
+              },
+              "id" : "207EFE13-11BE-5854-846B-33024EBEF2D7",
+              "kind" : "door",
+              "label" : "Door 1",
+              "offsetFromEndM" : 1.0737,
+              "offsetFromStartM" : 1.0139,
+              "sillHeight" : {
+                "deviationM" : null,
+                "note" : null,
+                "scannedM" : 0,
+                "source" : null,
+                "valueM" : 0,
+                "verifiedAt" : null,
+                "verifiedM" : null
+              },
+              "wallId" : "AE3B2B9C-983F-5E42-B2BD-B81C0558957A",
+              "wallIndex" : 2,
+              "width" : {
+                "deviationM" : null,
+                "note" : null,
+                "scannedM" : 2.4,
+                "source" : null,
+                "valueM" : 2.4,
+                "verifiedAt" : null,
+                "verifiedM" : null
+              }
+            }
+          ],
+          "perimeterM" : 11.9617,
+          "perimeterScannedM" : 11.9617,
+          "perimeterVerified" : false,
+          "scannedAt" : "2026-10-12T05:30:00.000Z",
+          "verification" : {
+            "joineryTotal" : 7,
+            "joineryVerified" : 0,
+            "total" : 11,
+            "verified" : 0
+          },
+          "volumeM3" : 18.0549,
+          "wallPerimeterM" : 11.9617,
+          "wallPerimeterScannedM" : 11.9617,
+          "wallPerimeterVerified" : false,
+          "walls" : [
+            {
+              "end" : {
+                "x" : 4.5024,
+                "y" : 4.0105
+              },
+              "height" : {
+                "deviationM" : null,
+                "note" : null,
+                "scannedM" : 2.7052,
+                "source" : null,
+                "valueM" : 2.7052,
+                "verifiedAt" : null,
+                "verifiedM" : null
+              },
+              "id" : "BA233CAB-9A7B-51EE-B0FE-B6455F0BD14F",
+              "index" : 0,
+              "isCurved" : false,
+              "kind" : "solid",
+              "label" : "Wall A",
+              "length" : {
+                "deviationM" : null,
+                "note" : null,
+                "scannedM" : 4.4929,
+                "source" : null,
+                "valueM" : 4.4929,
+                "verifiedAt" : null,
+                "verifiedM" : null
+              },
+              "start" : {
+                "x" : 0.0095,
+                "y" : 4.0058
+              }
+            },
+            {
+              "end" : {
+                "x" : 4.4964,
+                "y" : 5.5026
+              },
+              "height" : {
+                "deviationM" : null,
+                "note" : null,
+                "scannedM" : 2.6962,
+                "source" : null,
+                "valueM" : 2.6962,
+                "verifiedAt" : null,
+                "verifiedM" : null
+              },
+              "id" : "F42F9BB2-3E37-5087-9235-275DD1068CBF",
+              "index" : 1,
+              "isCurved" : false,
+              "kind" : "solid",
+              "label" : "Wall B",
+              "length" : {
+                "deviationM" : null,
+                "note" : null,
+                "scannedM" : 1.4921,
+                "source" : null,
+                "valueM" : 1.4921,
+                "verifiedAt" : null,
+                "verifiedM" : null
+              },
+              "start" : {
+                "x" : 4.5024,
+                "y" : 4.0105
+              }
+            },
+            {
+              "end" : {
+                "x" : 0.0088,
+                "y" : 5.495
+              },
+              "height" : {
+                "deviationM" : null,
+                "note" : null,
+                "scannedM" : 2.6988,
+                "source" : null,
+                "valueM" : 2.6988,
+                "verifiedAt" : null,
+                "verifiedM" : null
+              },
+              "id" : "AE3B2B9C-983F-5E42-B2BD-B81C0558957A",
+              "index" : 2,
+              "isCurved" : false,
+              "kind" : "solid",
+              "label" : "Wall C",
+              "length" : {
+                "deviationM" : null,
+                "note" : null,
+                "scannedM" : 4.4876,
+                "source" : null,
+                "valueM" : 4.4876,
+                "verifiedAt" : null,
+                "verifiedM" : null
+              },
+              "start" : {
+                "x" : 4.4964,
+                "y" : 5.5026
+              }
+            },
+            {
+              "end" : {
+                "x" : 0.0095,
+                "y" : 4.0058
+              },
+              "height" : {
+                "deviationM" : null,
+                "note" : null,
+                "scannedM" : 2.6919,
+                "source" : null,
+                "valueM" : 2.6919,
+                "verifiedAt" : null,
+                "verifiedM" : null
+              },
+              "id" : "59333B9F-40E1-52BB-A0B6-E2ED17F671E2",
+              "index" : 3,
+              "isCurved" : false,
+              "kind" : "solid",
+              "label" : "Wall D",
+              "length" : {
+                "deviationM" : null,
+                "note" : null,
+                "scannedM" : 1.4891,
+                "source" : null,
+                "valueM" : 1.4891,
+                "verifiedAt" : null,
+                "verifiedM" : null
+              },
+              "start" : {
+                "x" : 0.0088,
+                "y" : 5.495
+              }
+            }
+          ],
+          "widthM" : 1.4906,
+          "widthScannedM" : 1.4906,
+          "widthVerified" : false
+        }
+      ]
+    }
+  ],
+  "generatedAt" : "2026-10-12T10:00:00.000Z",
+  "generator" : "NexaFix Scan",
+  "property" : {
+    "address" : "Marina Gate 2, Dubai Marina, Dubai",
+    "client" : "Mr. Ahmed Khan",
+    "createdAt" : "2026-10-09T10:00:00.000Z",
+    "id" : "A2C933A6-529A-535E-A1EA-E5F748F176C6",
+    "kind" : "apartment",
+    "name" : "Marina Gate 2 - Unit 2304",
+    "notes" : "end to end",
+    "reference" : "NF-2026-1009-01",
+    "updatedAt" : "2026-10-12T09:00:00.000Z"
+  },
+  "schema" : "nexafix.scan",
+  "summary" : {
+    "floorCount" : 2,
+    "indoorFloorAreaM2" : 98.431,
+    "joineryMeasurementCount" : 55,
+    "joineryVerifiedCount" : 7,
+    "measurementCount" : 89,
+    "roomCount" : 7,
+    "totalFloorAreaM2" : 105.1242,
+    "verifiedCount" : 7
+  },
+  "units" : {
+    "angles" : "degrees",
+    "coordinates" : "plan space: x east, y north when drawn top-down; world points (custom measurements) are Y up",
+    "storage" : "metres"
+  },
+  "version" : 1
+}

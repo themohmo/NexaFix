@@ -3,7 +3,10 @@ import NexaFixCore
 
 /// The floor plan you can pan, pinch, double-tap and tap.
 ///
-/// - Direct manipulation: a drag moves the plan exactly with the finger; a pinch zooms about the fingers. The
+/// - Direct manipulation: a drag moves the plan exactly with the finger; a pinch zooms about the fingers, and
+///   pans with them while it does. The fingers are read from the touches by `PlanTouchHost` (UIKit ends or
+///   cancels every touch exactly once, so the plan always settles when the last finger is gone, however the touch
+///   ended); the maths of the fingers is `PlanTouchTracker` and `PlanInteraction` in PlanTouchInput.swift. The
 ///   viewport maths (zoom about an anchor, rubber band past the drawing and the zoom limits, where a flick comes
 ///   to rest) is `PlanViewport` in NexaFixCore, with its own tests.
 /// - Interruptible: the plan is drawn by `PlanLayerView`, an `Animatable` view that reports the viewport actually
@@ -20,13 +23,14 @@ struct PlanCanvasView: View {
     private let drawing: PlanDrawing
     private let units: DisplayUnits
     private let hapticsEnabled: Bool
+    private let bottomInset: CGFloat
     @Binding private var selection: PlanSelection?
 
     @State private var cache = PlanSceneCache()
     @State private var viewport = PlanViewport(scale: 1, offset: .zero)
     @State private var hasLayout = false
     @State private var followsFit = true
-    @State private var lastSize = ScreenSize(width: 0, height: 0)
+    @State private var lastContent: PlanContent?
     @State private var interaction = PlanInteraction()
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -41,18 +45,25 @@ struct PlanCanvasView: View {
     ///   - units: How lengths and areas are written on the plan and in the selection's description.
     ///   - selection: What is selected; the plan sets it on a tap, the caller may set it too.
     ///   - hapticsEnabled: The Settings switch. The only haptic here is the tick when a tap snaps to a corner.
+    ///   - bottomInset: Height of whatever floats over the bottom of the view (the selection card), points. The
+    ///     plan is fitted, panned and zoomed within the part of the view above it, so nothing on the plan can be
+    ///     hidden under it and everything can be moved clear of it. Never more than half the view. 0 for none.
     init(rooms: [Room], drawing: PlanDrawing, units: DisplayUnits, selection: Binding<PlanSelection?>,
-         hapticsEnabled: Bool) {
+         hapticsEnabled: Bool, bottomInset: CGFloat = 0) {
         self.rooms = rooms
         self.drawing = drawing
         self.units = units
         self.hapticsEnabled = hapticsEnabled
+        self.bottomInset = bottomInset
         self._selection = selection
     }
 
     var body: some View {
         GeometryReader { proxy in
-            let size = ScreenSize(width: Double(proxy.size.width), height: Double(proxy.size.height))
+            // The plan lives in the part of the view above whatever floats over its bottom.
+            let height = Double(proxy.size.height)
+            let reserved = PlanCanvasView.reservedHeight(bottomInset, in: height)
+            let size = ScreenSize(width: Double(proxy.size.width), height: height - reserved)
             let content = PlanContent(bounds: drawing.bounds, size: size, padding: Double(Spacing.xl))
             let scene = cache.scene(rooms: rooms, drawing: drawing, units: units)
             // Until the first layout has been committed to state, show the fitted plan directly.
@@ -61,17 +72,7 @@ struct PlanCanvasView: View {
             ZStack(alignment: .topTrailing) {
                 PlanLayerView(scene: scene, viewport: shown, highlight: scene.highlight(for: selection),
                               increasedContrast: contrast == .increased, interaction: interaction)
-                    .contentShape(Rectangle())
-                    .gesture(
-                        DragGesture(minimumDistance: 0)
-                            .onChanged { dragChanged($0, content: content) }
-                            .onEnded { _ in dragEnded(content: content) })
-                    .simultaneousGesture(
-                        MagnifyGesture()
-                            .onChanged { magnifyChanged($0, content: content) }
-                            .onEnded { _ in magnifyEnded(content: content) })
-                    .simultaneousGesture(SpatialTapGesture().onEnded { tapped(at: $0.location, scene: scene) })
-                    .simultaneousGesture(SpatialTapGesture(count: 2).onEnded { _ in fit(content, animated: true) })
+                    .overlay { PlanTouchHost(handlers: touchHandlers(content: content, scene: scene)) }
                     .accessibilityHidden(true)
 
                 roomElements(scene, shown: shown)
@@ -83,10 +84,18 @@ struct PlanCanvasView: View {
             .accessibilityElement(children: .contain)
             .accessibilityLabel("Floor plan")
             .onAppear { layoutChanged(content) }
-            .onChange(of: proxy.size) { _, _ in layoutChanged(content) }
+            // The view turning, or the card rising over the bottom of it.
+            .onChange(of: size) { _, _ in layoutChanged(content) }
             // A new drawing (other units, a verified value) can change the extent of the labels.
             .onChange(of: drawing.bounds) { _, _ in layoutChanged(content) }
         }
+    }
+
+    /// How much of a view `height` points tall is given to what floats over its bottom: `inset`, but never more
+    /// than half the view, so the plan always keeps room.
+    private static func reservedHeight(_ inset: CGFloat, in height: Double) -> Double {
+        guard inset.isFinite, height.isFinite, height > 0 else { return 0 }
+        return Swift.min(Swift.max(Double(inset), 0), height / 2)
     }
 
     // MARK: Fit control
@@ -142,130 +151,84 @@ struct PlanCanvasView: View {
     // MARK: Layout
 
     private func layoutChanged(_ content: PlanContent) {
-        guard content.isUsable else { return }
+        guard content.isUsable, content != lastContent else { return }
         let fitted = PlanViewport.fit(content)
         if !hasLayout {
             interaction.live = fitted
             interaction.raw = fitted
             followsFit = true
             commit(fitted, animation: nil)
-        } else if followsFit {
-            interaction.raw = fitted
-            commit(fitted, animation: nil)
         } else {
-            // Keep the same part of the plan in the middle of the view (a rotation, a keyboard, a split view).
-            let shift = content.size.center - lastSize.center
-            let moved = interaction.live.translated(by: shift).constrained(to: content, rubberBand: false)
-            interaction.raw = moved
-            commit(moved, animation: nil)
+            // Only the height changed (the card over the bottom rising or leaving): ease to the new fit. A
+            // rotation or a split view changes the width too and jumps, because the old picture no longer fits.
+            let easing = lastContent.map { $0.bounds == content.bounds && abs($0.size.width - content.size.width) < 0.5 }
+                ?? false
+            let animation = easing ? Motion.resolved(Motion.standard, reduceMotion: reduceMotion) : nil
+            if followsFit {
+                interaction.raw = fitted
+                commit(fitted, animation: animation)
+            } else {
+                // Keep the same part of the plan in the middle of the view (a rotation, a keyboard, a split view).
+                let previous = lastContent?.size ?? content.size
+                let shift = content.size.center - previous.center
+                let moved = interaction.live.translated(by: shift).constrained(to: content, rubberBand: false)
+                interaction.raw = moved
+                commit(moved, animation: animation)
+            }
         }
-        lastSize = content.size
+        lastContent = content
     }
 
     private func fit(_ content: PlanContent, animated: Bool) {
         guard content.isUsable else { return }
         let target = PlanViewport.fit(content)
-        interaction.raw = target
+        interaction.fit(to: target)
         followsFit = true
         commit(target, animation: animated ? Motion.resolved(Motion.standard, reduceMotion: reduceMotion) : nil)
     }
 
-    // MARK: Gestures
+    // MARK: Touches
 
-    private func dragChanged(_ value: DragGesture.Value, content: PlanContent) {
-        if !interaction.dragActive {
-            interaction.dragActive = true
-            activate()
-            interaction.lastTranslation = .zero
-        }
-        let t = value.translation
-        let delta = Point2(Double(t.width - interaction.lastTranslation.width),
-                           Double(t.height - interaction.lastTranslation.height))
-        interaction.lastTranslation = t
-        interaction.travel = max(interaction.travel, Double(hypot(t.width, t.height)))
-        interaction.raw = interaction.raw.translated(by: delta)
-        interaction.velocity.add(time: value.time.timeIntervalSinceReferenceDate, x: Double(t.width), y: Double(t.height))
-        applyRaw(content)
-    }
-
-    private func dragEnded(content: PlanContent) {
-        guard interaction.dragActive else { return }
-        interaction.dragActive = false
-        deactivate(content)
-    }
-
-    private func magnifyChanged(_ value: MagnifyGesture.Value, content: PlanContent) {
-        if !interaction.magnifyActive {
-            interaction.magnifyActive = true
-            activate()
-            interaction.lastMagnification = value.magnification
-        }
-        let last = interaction.lastMagnification
-        guard last > 0, value.magnification > 0 else { return }
-        let ratio = Double(value.magnification / last)
-        interaction.lastMagnification = value.magnification
-        let anchor = Point2(Double(value.startLocation.x), Double(value.startLocation.y))
-        interaction.anchor = anchor
-        interaction.didZoom = true
-        interaction.raw = interaction.raw.zoomed(by: ratio, about: anchor)
-        applyRaw(content)
-    }
-
-    private func magnifyEnded(content: PlanContent) {
-        guard interaction.magnifyActive else { return }
-        interaction.magnifyActive = false
-        deactivate(content)
+    /// What the touch layer reports, tied to the layout it was made for.
+    private func touchHandlers(content: PlanContent, scene: PlanScene) -> PlanTouchHandlers {
+        PlanTouchHandlers(
+            began: { touchBegan() },
+            moved: { step, time in touchMoved(step, time: time, content: content) },
+            ended: { time in touchEnded(at: time, content: content) },
+            tapped: { location in tapped(at: location, scene: scene) },
+            doubleTapped: { fit(content, animated: true) })
     }
 
     /// The first finger down takes over: whatever animation is running freezes at the value on screen.
-    private func activate() {
-        if interaction.active == 0 {
-            let live = interaction.live
-            interaction.raw = live
-            interaction.start = live
-            interaction.travel = 0
-            interaction.didZoom = false
-            interaction.anchor = nil
-            interaction.velocity.reset()
-            commit(live, animation: nil)
-        }
-        interaction.active += 1
+    private func touchBegan() {
+        commit(interaction.begin(), animation: nil)
     }
 
-    private func deactivate(_ content: PlanContent) {
-        interaction.active = max(0, interaction.active - 1)
-        if interaction.active == 0 { settle(content) }
+    private func touchMoved(_ step: PlanTouchStep, time: TimeInterval, content: PlanContent) {
+        guard interaction.isTouching else { return }
+        interaction.move(step, time: time)
+        applyRaw(content)
     }
 
-    /// Shows the dragged or pinched plan, with rubber-banding past its limits, following the finger closely.
-    private func applyRaw(_ content: PlanContent) {
-        let shown = interaction.raw.constrained(to: content, rubberBand: true, anchor: interaction.anchor)
-        commit(shown, animation: reduceMotion ? nil : Motion.interactive)
-    }
-
-    /// The last finger lifted: carry the flick on and bring the plan to rest inside its limits.
-    private func settle(_ content: PlanContent) {
-        let target: PlanViewport
-        var speed = 0.0
-        if interaction.travel < 3 && !interaction.didZoom {
-            // A tap, not a drag: the plan stays exactly where it was (and stops, if it was gliding).
-            target = interaction.start.settleTarget(velocity: .zero, content: content, momentum: false)
-        } else {
-            var velocity = Point2.zero
-            if !interaction.didZoom {
-                velocity = interaction.velocity.velocity(at: Date().timeIntervalSinceReferenceDate)
-            }
-            speed = velocity.length
-            target = interaction.raw.settleTarget(velocity: velocity, content: content, anchor: interaction.anchor,
-                                                  momentum: !reduceMotion)
-        }
-        interaction.raw = target
+    /// The last finger is gone, lifted or taken by the system: carry the flick on and bring the plan to rest
+    /// inside its limits.
+    private func touchEnded(at time: TimeInterval?, content: PlanContent) {
+        guard interaction.isTouching else { return }
+        // Nothing to settle when the whole plan was brought into view while the finger was down (a double tap).
+        guard let settlement = interaction.finish(content: content, time: time, momentum: !reduceMotion) else { return }
+        let target = settlement.target
         let fitted = PlanViewport.fit(content)
         followsFit = abs(target.scale - fitted.scale) < 1e-6 * max(fitted.scale, 1)
             && target.offset.distance(to: fitted.offset) < 0.5
         // A flick gets the spring with a little life; everything else settles without bounce.
-        let animation = speed > 300 ? Motion.momentum : Motion.standard
+        let animation = settlement.speed > 300 ? Motion.momentum : Motion.standard
         commit(target, animation: Motion.resolved(animation, reduceMotion: reduceMotion))
+    }
+
+    /// Shows the dragged or pinched plan, with rubber-banding past its limits, following the fingers closely.
+    private func applyRaw(_ content: PlanContent) {
+        let shown = interaction.raw.constrained(to: content, rubberBand: true, anchor: interaction.anchor)
+        commit(shown, animation: reduceMotion ? nil : Motion.interactive)
     }
 
     private func commit(_ target: PlanViewport, animation: Animation?) {
@@ -280,6 +243,8 @@ struct PlanCanvasView: View {
     // MARK: Selecting
 
     private func tapped(at location: CGPoint, scene: PlanScene) {
+        // A finger that slid a little and lifted can still count as a tap to the recogniser; it was a drag.
+        guard !interaction.wasDrag else { return }
         // What the person saw when they tapped, even if the plan was still settling.
         let live = interaction.live
         let plan = live.plan(Point2(Double(location.x), Double(location.y)))
@@ -294,26 +259,6 @@ struct PlanCanvasView: View {
 }
 
 // MARK: - The animated layer
-
-/// What the finger is doing and the viewport on screen. A reference type held in `@State`: changing it never
-/// redraws anything, it only remembers.
-private final class PlanInteraction {
-    /// The viewport actually drawn, written by `PlanLayerView` every frame (so it includes any animation in flight).
-    var live = PlanViewport(scale: 1, offset: .zero)
-    /// The viewport the fingers asked for, before rubber-banding.
-    var raw = PlanViewport(scale: 1, offset: .zero)
-    /// The viewport when the first finger came down.
-    var start = PlanViewport(scale: 1, offset: .zero)
-    var active = 0
-    var dragActive = false
-    var magnifyActive = false
-    var lastTranslation = CGSize.zero
-    var lastMagnification: CGFloat = 1
-    var anchor: Point2?
-    var travel = 0.0
-    var didZoom = false
-    var velocity = PanVelocityTracker()
-}
 
 /// Draws the plan. Conforming to `Animatable` makes SwiftUI feed it the in-between viewport on every frame of
 /// an animation, which is what lets a new touch pick the plan up exactly where it is.

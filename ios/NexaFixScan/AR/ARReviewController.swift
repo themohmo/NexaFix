@@ -331,6 +331,25 @@ final class ARReviewController {
     /// be saved to, and the saved line would be drawn in the wrong place on every later visit.
     var canSaveMeasurement: Bool { tape.canSave }
 
+    /// The room a finished measurement would be saved on: the room whose outline holds the points (the same
+    /// rule the 3D viewer uses, `MeasurementRoomLocator`). The room selected in the chip row is only a
+    /// tie-break between rooms that both hold the points, never a destination of its own: the first room is
+    /// pre-selected whenever AR opens without a focus room, and a wardrobe wall measured in the master
+    /// bedroom must not end up on the living room because of that. Nil when there is no finished measurement
+    /// or no saved room. Computed from the points and the rooms only, so the naming card and the save agree.
+    var measurementRoom: Room? {
+        guard let (a, b) = measure.points,
+              let id = MeasurementRoomLocator.roomID(forPointA: a, pointB: b, in: rooms, focusRoomID: selectedRoomID)
+        else { return nil }
+        return rooms.first { $0.id == id }
+    }
+
+    /// What a room is called on screen: its name, else its kind ("Bedroom").
+    static func title(of room: Room) -> String {
+        let trimmed = room.name.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.isEmpty ? room.kind.displayName : trimmed
+    }
+
     /// The sentence shown when a measurement was dropped because the frame of reference changed.
     private static func message(for reset: AlignedTapeMeasure.Reset) -> String {
         switch reset {
@@ -354,9 +373,17 @@ final class ARReviewController {
     }
 
     /// Places a measurement point where the centre reticle is.
+    ///
+    /// Only while ARKit is tracking normally: in any limited state the camera pose can be off, and a point
+    /// placed from a bad pose would be saved to a joinery drawing as if it were as good as any other.
     func addPoint() {
-        guard isMeasuring, let hit = raycastFromCentre() else {
-            if isMeasuring { show(notice: "Couldn't find a surface. Move closer and try again.") }
+        guard isMeasuring else { return }
+        if let advice = placementAdvice() {
+            show(notice: advice)
+            return
+        }
+        guard let hit = raycastFromCentre() else {
+            show(notice: "Couldn't find a surface. Move closer and try again.")
             return
         }
         let snap = status.overlayAllowed ? TapeMeasure.snap(hit, to: snapCandidates) : TapeSnap(point: hit)
@@ -380,22 +407,47 @@ final class ARReviewController {
 
     func cancelNaming() { isNaming = false }
 
-    /// Stores the measurement on the right room and starts over.
+    /// Stores the measurement on the room that holds it (see `measurementRoom`) and starts over.
     func commitMeasurement(named name: String) {
         guard canSaveMeasurement, let (a, b) = measure.points else { return }
         let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
         let label = trimmed.isEmpty ? "Measurement" : trimmed
-        guard let roomID = TapeRoomLocator.roomID(forPoints: [a, b], in: rooms, focusRoomID: selectedRoomID) else {
+        guard let room = measurementRoom else {
             // Only happens when there are no rooms at all. Say so rather than leaving the card open and silent.
             isNaming = false
             show(notice: "There is no saved room to keep this measurement in.")
             return
         }
-        saveHandler(CustomMeasurement(label: label, a: a, b: b), roomID)
+        // Read the name before the points are cleared: the room is worked out from them.
+        let roomName = ARReviewController.title(of: room)
+        saveHandler(CustomMeasurement(label: label, a: a, b: b), room.id)
         if hapticsEnabled { Haptics.success() }
         tape.clear()
         isNaming = false
-        show(notice: "Saved \(label).")
+        show(notice: "Saved \(label) to \(roomName).")
+    }
+
+    /// Why a point cannot be placed right now, or nil when tracking is good enough. The wording follows the
+    /// status pill so the two never disagree.
+    private func placementAdvice() -> String? {
+        guard let snapshot = lastSnapshot else {
+            return "AR is still starting. Move your phone slowly, then try again."
+        }
+        if snapshot.isInterrupted {
+            return "AR is paused while another app uses the camera."
+        }
+        switch snapshot.tracking {
+        case .normal:
+            return nil
+        case .excessiveMotion:
+            return "Move your phone more slowly, then try again."
+        case .insufficientFeatures:
+            return "Point at walls, corners or furniture, then try again."
+        case .relocalizing:
+            return "AR is still finding its place. Look at the walls, then try again."
+        case .initializing, .notAvailable:
+            return "AR is still starting. Move your phone slowly, then try again."
+        }
     }
 
     private func raycastFromCentre() -> Point3? {
@@ -466,11 +518,38 @@ final class ARReviewController {
 
     fileprivate func sessionFailed(_ error: Error) {
         if hapticsEnabled { Haptics.warning() }
-        if let arError = error as? ARError, arError.code == .cameraUnauthorized {
-            access = .denied
-        } else {
-            access = .failed("AR stopped working. Close this screen and open it again.")
+        if let arError = error as? ARError {
+            if arError.code == .cameraUnauthorized {
+                access = .denied
+                return
+            }
+            // The saved map decoded fine (see `readWorldMap`) but ARKit would not use it, for example after an
+            // iOS update. Reopening would load the same file and fail the same way, so carry on without it,
+            // exactly as for a map that could not be read: no overlay, but the tape measure still works.
+            // (Only once: after this the map counts as unreadable, so this branch cannot repeat.)
+            if arError.code == .invalidWorldMap, case .loaded = worldMapLoad {
+                restartWithoutMap()
+                return
+            }
         }
+        access = .failed("AR stopped working. Try again, or close this screen and open it again.")
+    }
+
+    /// Starts a fresh session with no saved map and shows the "AR map unreadable" card straight away.
+    private func restartWithoutMap() {
+        worldMapLoad = .unreadable
+        // A restarted session measures in a frame of its own: nothing seen so far, including tape points, counts.
+        resetAlignment()
+        let snapshot = TrackingSnapshot(tracking: .initializing, worldMap: .unreadable)
+        let phase = tracker.ingest(snapshot)
+        status = ARStatusSummary.make(phase: phase, snapshot: snapshot)
+        run(resetting: true)
+    }
+
+    /// "Try again" on the "AR stopped" card: back to the AR screen, which builds a new AR view and session.
+    func retry() {
+        guard case .failed = access else { return }
+        access = .ready
     }
 
     private func makeSnapshot(from frame: ARFrame) -> TrackingSnapshot {

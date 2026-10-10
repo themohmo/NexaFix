@@ -1,0 +1,2 @@
+# file (relative to ios/NexaFixScan)	line	sha1[:12] of the stripped line	why it is not an app error
+Viewer/ModelBridge.swift	66	de86af2b70f6	inout-to-pointer arguments of UIColor.getRed(_:green:blue:alpha:); argument types checked by hand: var r, g, b, a: CGFloat passed as &r, &g, &b, &a to UnsafeMutablePointer<CGFloat>?

@@ -1,0 +1,12 @@
+// Bundle identifier (and, optionally, signing team) for NexaFix Scan.
+// project.yml attaches this file to the app target's Debug and Release configurations.
+//
+// Do not put your own team or identifier in THIS file (it is committed). Put them in Local.xcconfig next to it:
+// that file is git-ignored, is included below, and survives `xcodegen generate` and `git pull`.
+// Easiest way: pick your Team in Xcode (Signing & Capabilities), then run  ios/tools/remember-signing.sh
+
+PRODUCT_BUNDLE_IDENTIFIER = com.nexafix.scan
+
+// Optional personal overrides. "#include?" means: no error if the file does not exist.
+// Keep this line LAST so that the values in Local.xcconfig win.
+#include? "Local.xcconfig"

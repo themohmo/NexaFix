@@ -10,6 +10,8 @@ struct RoomNameSheet: View {
     let flow: ScanFlow
     let draft: RoomDraft
     let units: DisplayUnits
+    /// False after the camera session failed with rooms already finished: only finishing is offered.
+    let canScanNext: Bool
     let onScanNext: (String, RoomKind) -> Void
     let onFinishProperty: (String, RoomKind) -> Void
     let onRescan: () -> Void
@@ -25,6 +27,7 @@ struct RoomNameSheet: View {
     init(flow: ScanFlow,
          draft: RoomDraft,
          units: DisplayUnits,
+         canScanNext: Bool = true,
          onScanNext: @escaping (String, RoomKind) -> Void,
          onFinishProperty: @escaping (String, RoomKind) -> Void,
          onRescan: @escaping () -> Void,
@@ -32,6 +35,7 @@ struct RoomNameSheet: View {
         self.flow = flow
         self.draft = draft
         self.units = units
+        self.canScanNext = canScanNext
         self.onScanNext = onScanNext
         self.onFinishProperty = onFinishProperty
         self.onRescan = onRescan
@@ -209,12 +213,18 @@ struct RoomNameSheet: View {
     private var actions: some View {
         let isValid = check.isValid
         return VStack(spacing: Spacing.s) {
-            Button("Scan next room") { onScanNext(name, kind) }
-                .buttonStyle(.primaryFullWidth)
-                .disabled(!isValid)
-            Button("Finish property") { onFinishProperty(name, kind) }
-                .buttonStyle(.secondaryFullWidth)
-                .disabled(!isValid)
+            if canScanNext {
+                Button("Scan next room") { onScanNext(name, kind) }
+                    .buttonStyle(.primaryFullWidth)
+                    .disabled(!isValid)
+                Button("Finish property") { onFinishProperty(name, kind) }
+                    .buttonStyle(.secondaryFullWidth)
+                    .disabled(!isValid)
+            } else {
+                Button("Finish property") { onFinishProperty(name, kind) }
+                    .buttonStyle(.primaryFullWidth)
+                    .disabled(!isValid)
+            }
             ViewThatFits(in: .horizontal) {
                 HStack(spacing: Spacing.xl) { quietButtons }
                 VStack(spacing: 0) { quietButtons }

@@ -29,7 +29,7 @@ struct AboutView: View {
                 }
 
                 SectionCard("Your data") {
-                    Text(verbatim: "All data stays on this device unless you export it.")
+                    Text(verbatim: "All data stays on this device unless you export it. Like other app data, it is included when you back up this iPhone.")
                         .font(.body)
                         .foregroundStyle(Palette.ink)
                         .fixedSize(horizontal: false, vertical: true)

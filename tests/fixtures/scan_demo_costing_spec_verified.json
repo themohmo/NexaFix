@@ -1,0 +1,257 @@
+{
+  "project" : {
+    "ceiling_height" : 2.81,
+    "client" : "Mr. Ahmed Khan",
+    "location" : "Marina Gate 2, Dubai Marina, Dubai",
+    "name" : "Marina Gate 2 - Unit 2304",
+    "ref" : "NF-2026-1009-01"
+  },
+  "rooms" : [
+    {
+      "doors" : [
+        [
+          0.903,
+          2.103
+        ]
+      ],
+      "height" : 2.8067,
+      "length" : 6.205,
+      "name" : "Living Room",
+      "tags" : [
+        "living"
+      ],
+      "wet" : false,
+      "width" : 4.5082,
+      "windows" : [
+        [
+          3.003,
+          2.403
+        ]
+      ]
+    },
+    {
+      "doors" : [
+        [
+          0.903,
+          2.103
+        ]
+      ],
+      "height" : 2.8063,
+      "length" : 3.2135,
+      "name" : "Kitchen",
+      "tags" : [
+        "kitchen"
+      ],
+      "wet" : false,
+      "width" : 2.7928,
+      "windows" : [
+        [
+          1.203,
+          1.203
+        ]
+      ]
+    },
+    {
+      "area" : 19.9981,
+      "doors" : [
+        [
+          0.903,
+          2.103
+        ]
+      ],
+      "height" : 2.8061,
+      "name" : "Lounge",
+      "perimeter" : 20.0199,
+      "tags" : [
+
+      ],
+      "windows" : [
+
+      ]
+    },
+    {
+      "doors" : [
+
+      ],
+      "height" : 2.8039,
+      "length" : 4.9948,
+      "name" : "Open Dining",
+      "perimeter" : 14.0022,
+      "tags" : [
+        "living"
+      ],
+      "wet" : false,
+      "width" : 4.0067,
+      "windows" : [
+        [
+          1.503,
+          1.403
+        ]
+      ]
+    },
+    {
+      "doors" : [
+        [
+          0.903,
+          2.103
+        ]
+      ],
+      "height" : 2.7019,
+      "length" : 4.1041,
+      "name" : "Bedroom",
+      "tags" : [
+        "bedroom"
+      ],
+      "wet" : false,
+      "width" : 3.5073,
+      "windows" : [
+        [
+          1.803,
+          1.503
+        ]
+      ]
+    },
+    {
+      "doors" : [
+
+      ],
+      "height" : 2.7023,
+      "length" : 2.9037,
+      "name" : "Kitchen 2",
+      "tags" : [
+        "kitchen"
+      ],
+      "wet" : false,
+      "width" : 2.3997,
+      "windows" : [
+
+      ]
+    },
+    {
+      "doors" : [
+        [
+          2.403,
+          2.203
+        ]
+      ],
+      "height" : 2.7005,
+      "length" : 4.4933,
+      "name" : "Balcony",
+      "tags" : [
+        "outdoor"
+      ],
+      "wet" : false,
+      "width" : 1.4936,
+      "windows" : [
+
+      ]
+    }
+  ],
+  "scope" : [
+
+  ],
+  "x_nexafix_scan" : {
+    "generator" : "NexaFix Scan",
+    "joinery_measurement_count" : 55,
+    "joinery_verified_count" : 55,
+    "measurement_count" : 89,
+    "notes" : [
+
+    ],
+    "property_id" : "A2C933A6-529A-535E-A1EA-E5F748F176C6",
+    "rooms" : [
+      {
+        "area_verified" : true,
+        "floor" : "Level 23",
+        "height_verified" : true,
+        "joinery_total" : 10,
+        "joinery_verified" : 10,
+        "kind" : "livingRoom",
+        "name" : "Living Room",
+        "perimeter_verified" : true,
+        "total" : 15,
+        "verified" : 15
+      },
+      {
+        "area_verified" : true,
+        "floor" : "Level 23",
+        "height_verified" : true,
+        "joinery_total" : 9,
+        "joinery_verified" : 9,
+        "kind" : "kitchen",
+        "name" : "Kitchen",
+        "perimeter_verified" : true,
+        "total" : 14,
+        "verified" : 14
+      },
+      {
+        "area_verified" : false,
+        "floor" : "Level 23",
+        "height_verified" : true,
+        "joinery_total" : 9,
+        "joinery_verified" : 9,
+        "kind" : "other",
+        "name" : "Lounge",
+        "perimeter_verified" : true,
+        "total" : 15,
+        "verified" : 15
+      },
+      {
+        "area_verified" : true,
+        "floor" : "Level 23",
+        "height_verified" : true,
+        "joinery_total" : 6,
+        "joinery_verified" : 6,
+        "kind" : "dining",
+        "name" : "Open Dining",
+        "perimeter_verified" : true,
+        "total" : 11,
+        "verified" : 11
+      },
+      {
+        "area_verified" : true,
+        "floor" : "Level 23 (2)",
+        "height_verified" : true,
+        "joinery_total" : 9,
+        "joinery_verified" : 9,
+        "kind" : "bedroom",
+        "name" : "Bedroom",
+        "perimeter_verified" : true,
+        "total" : 14,
+        "verified" : 14
+      },
+      {
+        "area_verified" : true,
+        "floor" : "Level 23 (2)",
+        "height_verified" : true,
+        "joinery_total" : 5,
+        "joinery_verified" : 5,
+        "kind" : "kitchen",
+        "name" : "Kitchen 2",
+        "perimeter_verified" : true,
+        "total" : 9,
+        "verified" : 9
+      },
+      {
+        "area_verified" : true,
+        "floor" : "Level 23 (2)",
+        "height_verified" : true,
+        "joinery_total" : 7,
+        "joinery_verified" : 7,
+        "kind" : "balcony",
+        "name" : "Balcony",
+        "perimeter_verified" : true,
+        "total" : 11,
+        "verified" : 11
+      }
+    ],
+    "scan_date" : "2026-10-12",
+    "schema" : "nexafix.costing-spec",
+    "unverified_joinery" : [
+
+    ],
+    "verified_count" : 89,
+    "version" : 1,
+    "warning" : null
+  }
+}

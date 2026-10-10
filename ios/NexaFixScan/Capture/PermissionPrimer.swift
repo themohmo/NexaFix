@@ -81,6 +81,9 @@ struct PermissionPrimer: View {
                     PrimerRow(symbol: "camera.viewfinder", title: "What it measures",
                               detail: "Walls, doors, windows and furniture, as you walk slowly through each room.")
                     RowDivider()
+                    PrimerRow(symbol: "lightbulb", title: "For the best result",
+                              detail: DeviceCapability.sizeAndLightNote)
+                    RowDivider()
                     PrimerRow(symbol: "lock", title: "Stays on this device",
                               detail: DeviceCapability.privacyNote)
                 }

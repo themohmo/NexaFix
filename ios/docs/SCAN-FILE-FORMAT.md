@@ -7,7 +7,7 @@ not hand-written (see [Regenerating the examples](#regenerating-the-examples)).
 | File | Made by | Format | Use it for |
 |---|---|---|---|
 | `NexaFix_<Property>_<date>_scan.json` | `ScanExport` | JSON, schema `nexafix.scan` v1 | Archive of everything: geometry, every dimension with its provenance. Scripts, audits, re-import. |
-| `rooms.csv`, `walls.csv`, `openings.csv`, `objects.csv` (+ `custom_measurements.csv`) | `CSVExport` | CSV, UTF-8 with BOM | Excel / Numbers / pandas: cut lists, measurement review, checking what was verified. |
+| `NexaFix_<Property>_<date>_rooms.csv`, `..._walls.csv`, `..._openings.csv`, `..._objects.csv` (+ `..._custom-measurements.csv`) | `CSVExport` | CSV, UTF-8 with BOM | Excel / Numbers / pandas: cut lists, measurement review, checking what was verified. |
 | `NexaFix_<Property>_<date>_costing-spec.json` | `CostingSpecExport` | JSON for the nexa-costing engine | Pricing. Finish it with `skills/nexa-costing/scripts/from_scan.py`, then `estimate.py`. |
 | `<app storage>/<PROPERTY-UUID>/property.json` | `PropertyStore` | JSON envelope, schema version 1 | The app's own working copy. Not an interchange format. |
 
@@ -288,7 +288,10 @@ for floor in scan["floors"]:
 
 ## The CSV files
 
-Four files, always, plus `custom_measurements.csv` when the property has at least one custom measurement.
+Four files, always (`rooms`, `walls`, `openings`, `objects`), plus `custom-measurements` when the property has at least one
+custom measurement. They are named like every export, `NexaFix_<Property>_<yyyy-MM-dd>_rooms.csv` and so on. `CSVExport` itself
+calls the last one `custom_measurements.csv`; the file-name rules turn the underscore into a hyphen, so the file you receive is
+`NexaFix_<Property>_<yyyy-MM-dd>_custom-measurements.csv`. The names used below (`rooms.csv`, ...) are the short forms.
 
 - **UTF-8 with a byte order mark** (`EF BB BF`). Excel on Windows opens a BOM-less CSV in the old ANSI code page and
   garbles Arabic, accents and degree signs; the BOM is how it recognises UTF-8. In pandas use
@@ -583,7 +586,8 @@ The app keeps one folder per property under its storage root, named by the prope
 ## Regenerating the examples
 
 The examples in this document, and the fixture `tests/fixtures/scan_costing_spec.json` used by `tests/test_from_scan.py`,
-come from a Swift test that writes them when asked:
+come from a Swift test that writes them when asked (the end-to-end fixtures `tests/fixtures/scan_demo_*.json`, read by
+`tests/test_scan_pipeline.py`, come from `EndToEndTests/testWriteFixturesWhenRequested` the same way):
 
 ```
 cd ios/NexaFixCore

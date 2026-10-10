@@ -315,8 +315,19 @@ enum PropertyListFilter {
         }
     }
 
-    static func summaries(_ list: [PropertySummary], query: String) -> [PropertySummary] {
-        list.filter { matches(query, fields: [$0.name, $0.client]) }
+    /// Saved properties that match. A summary carries only the name and the client, so `details` is asked for
+    /// the whole property (address and job reference) when there is something to search for. It is never
+    /// called for a blank query, so an unfiltered list reads nothing, and never for an unreadable property.
+    static func summaries(_ list: [PropertySummary], query: String,
+                          details: (UUID) -> Property? = { _ in nil }) -> [PropertySummary] {
+        guard !query.allSatisfy({ $0.isWhitespace }) else { return list }
+        return list.filter { summary in
+            var fields = [summary.name, summary.client]
+            if summary.health != .unreadable, let property = details(summary.id) {
+                fields += [property.address, property.reference]
+            }
+            return matches(query, fields: fields)
+        }
     }
 
     static func properties(_ list: [Property], query: String) -> [Property] {
@@ -364,7 +375,7 @@ struct PropertyCardInfo {
     /// The same for VoiceOver: "8 rooms, 112 square metres, 14 of 52 dimensions checked".
     func spoken(units: DisplayUnits) -> String {
         var parts = [roomCount == 1 ? "1 room" : "\(roomCount) rooms"]
-        if roomCount > 0 { parts.append(SpokenMeasurement.area(areaM2.rounded(), unit: units.area)) }
+        if roomCount > 0 { parts.append(PropertyCardInfo.areaSpoken(areaM2, unit: units.area)) }
         parts.append(summary.spoken)
         return parts.joined(separator: ", ")
     }
@@ -372,8 +383,24 @@ struct PropertyCardInfo {
     /// Whole units, because a card is a glance: "112 m\u{00B2}", "1205 sq ft".
     static func areaText(_ squareMetres: Double, unit: AreaUnit) -> String {
         guard squareMetres.isFinite else { return "\u{2013} \(unit.symbol)" }
+        return "\(wholeArea(squareMetres, unit: unit)) \(unit.symbol)"
+    }
+
+    /// The same figure for VoiceOver: "112 square metres", "1205 square feet". Rounded in the unit the card
+    /// shows, so the card and the voice never disagree (rounding in square metres first read 987 sq ft as 990).
+    static func areaSpoken(_ squareMetres: Double, unit: AreaUnit) -> String {
+        guard squareMetres.isFinite else { return "No value" }
+        let whole = String(wholeArea(squareMetres, unit: unit))
+        switch unit {
+        case .squareMetres: return SpokenMeasurement.withNoun(whole, "square metre", "square metres")
+        case .squareFeet: return SpokenMeasurement.withNoun(whole, "square foot", "square feet")
+        }
+    }
+
+    /// `squareMetres` in `unit`, rounded to a whole number (never negative).
+    private static func wholeArea(_ squareMetres: Double, unit: AreaUnit) -> Int {
         let value = unit == .squareMetres ? squareMetres : squareMetres / UnitFormatter.squareMetresPerSquareFoot
-        return "\(Int(min(max(value, 0), 1e9).rounded())) \(unit.symbol)"
+        return Int(min(max(value, 0), 1e9).rounded())
     }
 }
 
@@ -482,6 +509,8 @@ struct SelectionCardInfo: Equatable {
     let corner: CornerReading?
     let areaM2: Double?
     let objectSize: ObjectSize?
+    /// Where the room's area comes from (the scan, or wall lengths somebody checked); nil for everything but a room.
+    var areaBasis: AreaBasis? = nil
 
     /// nil when what was tapped is no longer in the property.
     static func make(selection: PlanSelection, in property: Property) -> SelectionCardInfo? {
@@ -491,7 +520,8 @@ struct SelectionCardInfo: Equatable {
             return SelectionCardInfo(
                 kind: .room, roomID: roomID, title: roomTitle(room), subtitle: room.kind.displayName,
                 rows: [Row(target: .ceilingHeight, label: "Ceiling height", measured: room.ceilingHeight)],
-                corner: nil, areaM2: room.metrics.effectiveFloorArea, objectSize: nil)
+                corner: nil, areaM2: room.metrics.effectiveFloorArea, objectSize: nil,
+                areaBasis: AreaBasis.of(room, metrics: room.metrics))
 
         case .wall(let roomID, let wallID):
             guard let room = property.findRoom(roomID), let wall = room.wall(withID: wallID) else { return nil }
@@ -615,6 +645,18 @@ enum AreaBasis: Equatable {
         case .scan: return "Floor area, from the scan"
         case .partlyChecked: return "Floor area, partly from checked wall lengths"
         case .checked: return "Floor area, from checked wall lengths"
+        }
+    }
+
+    /// The line under the length x width, perimeter and volume figures, which are worked out from the same wall
+    /// lengths as the area and so rest on the same ground. (Volume also uses the ceiling height, which carries
+    /// its own mark.) `hasSize` is false for a room that is not a rectangle and so shows no length x width.
+    func derivedCaption(hasSize: Bool = true) -> String {
+        let figures = hasSize ? "Size, perimeter and volume" : "Perimeter and volume"
+        switch self {
+        case .scan: return "\(figures) are worked out from the scan."
+        case .partlyChecked: return "\(figures) are worked out from the wall lengths: some checked, some from the scan."
+        case .checked: return "Size and perimeter are worked out from checked wall lengths. Volume also uses the ceiling height."
         }
     }
 
@@ -857,21 +899,31 @@ enum SettingsChoices {
     }
 }
 
-/// How close the scans were to the laser across every property on this device.
+/// How close the scans were to the laser or tape across every real property on this device.
+///
+/// Two things are left out on purpose, because either would make the phone look better or worse than it is:
+/// - the demo apartment (and copies of it), whose laser checks are made up (`DemoMarker`);
+/// - checks copied from a drawing, which are a document and say nothing about how well the phone scans
+///   (`AccuracyReport.measuredSources`).
 struct AccuracyOverview: Equatable {
     let sampleCount: Int
-    /// "12 checks: typically 6 mm (0.3 %), worst 21 mm", or "No laser checks yet".
+    /// "12 checks: typically 6 mm (0.3 %), worst 21 mm", or "No laser or tape checks yet".
     let summary: String
     /// "Scans read about 4 mm short on average", or "".
     let bias: String
 
+    static let emptySummary = "No laser or tape checks yet"
+
     static func make(properties: [Property], unit: LengthUnit) -> AccuracyOverview {
-        let report = AccuracyReport(rooms: properties.flatMap(\.allRooms))
-        return AccuracyOverview(sampleCount: report.sampleCount, summary: report.summary(unit: unit),
+        let real = properties.filter { !DemoMarker.isDemo($0) }
+        let report = AccuracyReport(rooms: real.flatMap(\.allRooms), sources: AccuracyReport.measuredSources)
+        // The Core wording for "nothing yet" says laser only; tape checks count here too.
+        let summary = report.sampleCount == 0 ? emptySummary : report.summary(unit: unit)
+        return AccuracyOverview(sampleCount: report.sampleCount, summary: summary,
                                 bias: report.biasDescription(unit: unit))
     }
 
     /// The question and the answer under the row.
     static let footerTitle = "How accurate is my phone?"
-    static let footerText = "The scan reads every wall and opening with LiDAR, typically within 1\u{2013}2 %. Each time you check a dimension with a laser, tape or drawing, the app compares it with what the scan read, and this row adds up all your checks on this device. The more rooms you check, the better it describes your phone. Until then, treat scanned numbers as estimates and check anything joinery will be cut to."
+    static let footerText = "The scan reads every wall and opening with LiDAR, typically within 1\u{2013}2 %. Each time you check a dimension with a laser or tape, the app compares it with what the scan read, and this row adds up all your checks on this device. Checks copied from a drawing and the demo apartment are not counted: neither measures how well your phone scans. The more rooms you check, the better it describes your phone. Until then, treat scanned numbers as estimates and check anything joinery will be cut to."
 }

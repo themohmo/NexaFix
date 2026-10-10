@@ -76,6 +76,11 @@ enum DeviceCapability: Equatable {
 
     /// The reassurance shown with the camera request.
     static let privacyNote = "Scans stay on this device. Nothing leaves it unless you export."
+
+    /// What RoomPlan needs to join the rooms of a floor into one 3D model: Apple recommends good lighting of 50 lux
+    /// or more and a total area of at most about 186 m² (2,000 sq ft) (WWDC23 session 10192). A bigger floor
+    /// can still be scanned: the plans are saved, the joined model may not be possible.
+    static let sizeAndLightNote = "Switch the lights on and scan one floor at a time. RoomPlan can join about 186 m\u{00B2} (2,000 sq ft) into one 3D model; on a bigger floor the plans are still saved."
 }
 
 // MARK: - Reading the system

@@ -389,13 +389,12 @@ private struct ViewerToggle: View {
     }
 }
 
-/// The accent capsule for the one thing to do next: Measure, then Save.
+/// The accent capsule for the one thing to do next: Measure, then Save. `PressableButtonStyle` dims it while
+/// pressed and while disabled; dimming it here as well would draw a disabled button at 0.4 x 0.4 = 16 %.
 private struct ViewerAccentButton: View {
     let title: String
     let systemImage: String
     let action: () -> Void
-
-    @Environment(\.isEnabled) private var isEnabled
 
     var body: some View {
         Button(action: action) {
@@ -406,7 +405,6 @@ private struct ViewerAccentButton: View {
                 .frame(minHeight: 44)
                 .background { Capsule(style: .continuous).fill(Palette.accent) }
                 .contentShape(Capsule(style: .continuous))
-                .opacity(isEnabled ? 1 : 0.4)
         }
         .buttonStyle(PressableButtonStyle())
     }

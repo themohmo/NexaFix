@@ -407,10 +407,16 @@ final class Viewer3DController {
 
     // MARK: Screen and world
 
-    /// Where a world point is in the view, nil when it is behind the camera.
+    /// Where a world point is in the view, nil when it is behind the camera. Apple does not say when
+    /// `ARView.project(_:)` returns nil, and a point behind a perspective camera that was projected anyway would
+    /// land mirrored in the picture, so a point at or behind the near plane is rejected here, whatever the view says.
     func screenPoint(_ p: Point3) -> CGPoint? {
-        projector?(p)
+        guard (p - camera.position).dot(camera.forward) > Viewer3DController.nearPlane else { return nil }
+        return projector?(p)
     }
+
+    /// The renderer's near clipping plane, metres (`ModelRenderer` sets 0.05).
+    private static let nearPlane = 0.05
 
     /// The labels that can be seen from where the camera is: not hidden behind a wall (while walls are solid).
     /// Re-tested only when the camera has moved a few centimetres or a setting changed.

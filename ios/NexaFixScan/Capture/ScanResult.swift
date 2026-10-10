@@ -6,6 +6,9 @@ import NexaFixCore
 
 /// What the scan screen needs to know before it starts.
 struct ScanConfiguration {
+    /// Which property the scan is for. Not used on the camera screen; it is written into the safety copy of the
+    /// scan (see `ScanRecoveryStore`) so a scan recovered after the app closed can go back to the same property.
+    var propertyID: UUID?
     /// Shown nowhere on the camera screen; carried so the result screen can name what was scanned.
     var propertyName: String
     /// Names of rooms the property already has. New rooms never reuse them.
@@ -18,10 +21,12 @@ struct ScanConfiguration {
     var story: Int
 
     init(propertyName: String,
+         propertyID: UUID? = nil,
          existingRoomNames: [String] = [],
          units: DisplayUnits = .default,
          hapticsEnabled: Bool = true,
          story: Int = 0) {
+        self.propertyID = propertyID
         self.propertyName = propertyName
         self.existingRoomNames = existingRoomNames
         self.units = units
@@ -46,19 +51,25 @@ struct ScanResult {
     /// Plain-language things the person should know, such as "the AR map could not be saved".
     /// Show them on the result screen; an empty list means nothing went wrong.
     var warnings: [String]
+    /// Names this scan's safety copy on disk (`ScanRecoveryStore`). The copy stays until the caller has saved the
+    /// scan: then call `ScanRecoveryStore.discard(scanID:)` with this id. nil when there is no copy (a Simulator
+    /// practice scan).
+    var recoveryID: UUID?
 
     init(rooms: [Room] = [],
          capturedRoomJSON: [UUID: Data] = [:],
          structureUSDZ: Data? = nil,
          worldMapData: Data? = nil,
          story: Int = 0,
-         warnings: [String] = []) {
+         warnings: [String] = [],
+         recoveryID: UUID? = nil) {
         self.rooms = rooms
         self.capturedRoomJSON = capturedRoomJSON
         self.structureUSDZ = structureUSDZ
         self.worldMapData = worldMapData
         self.story = story
         self.warnings = warnings
+        self.recoveryID = recoveryID
     }
 
     /// True when AR review can work for this scan: there is a saved world map.

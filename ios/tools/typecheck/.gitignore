@@ -1,0 +1,3 @@
+# Everything run.sh builds (Core snapshot, shim modules, macro plugin, logs) lives here.
+.build/
+__pycache__/

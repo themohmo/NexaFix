@@ -114,6 +114,11 @@ struct PropertyView: View {
         let floor = property.activeFloor(preferring: floorID)
         let units = model.settings.units
         VStack(spacing: 0) {
+            if model.needsRecoveryNotice(propertyID) {
+                RecoveryBanner { model.acknowledgeRecovery(propertyID) }
+                    .padding(.horizontal, Spacing.l)
+                    .padding(.bottom, Spacing.s)
+            }
             if property.roomCount == 0 {
                 header(property)
                 EmptyStateView(
@@ -806,6 +811,13 @@ private struct SelectionCard: View {
         VStack(alignment: .leading, spacing: Spacing.m) {
             if let area = info.areaM2 {
                 MeasurementText(area: area, units: units, style: .title)
+                // Where the figure comes from, so a scanned area is never mistaken for a checked one.
+                if let basis = info.areaBasis {
+                    Text(verbatim: basis.caption)
+                        .font(.footnote)
+                        .foregroundStyle(Palette.muted)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
             }
             rowsContent
             Button(action: onOpenRoom) {

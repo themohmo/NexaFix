@@ -21,7 +21,9 @@ struct PropertiesListView: View {
 
     private var sources: [PropertySource] {
         let memory = PropertyListFilter.properties(model.memoryOnlyProperties, query: query).map(PropertySource.memory)
-        let saved = PropertyListFilter.summaries(model.summaries, query: query).map(PropertySource.saved)
+        // Searching reads each property once (and remembers it), so an address or a job reference is found too.
+        let saved = PropertyListFilter.summaries(model.summaries, query: query) { model.property($0) }
+            .map(PropertySource.saved)
         return memory + saved
     }
 
@@ -194,10 +196,13 @@ private struct PropertyRow: View {
         let unreadable = summary?.health == .unreadable
         let property: Property? = unreadable ? nil : (model.property(source.id) ?? source.memoryProperty)
         let info = property.map { cache.info(for: $0) }
+        // A restored property keeps saying so after the next edit, until the person has been through the notice.
+        let problem = summary?.problem ?? (model.needsRecoveryNotice(source.id) ? RecoveryWording.card : nil)
         PropertyCard(name: property?.name ?? summary?.name ?? "Property",
                      client: property?.client ?? summary?.client ?? "",
                      info: info,
-                     problem: summary?.problem,
+                     problem: problem,
+                     isDemo: property.map(DemoMarker.isDemo) ?? false,
                      isUnsaved: model.unsavedPropertyIDs.contains(source.id),
                      units: model.settings.units,
                      isOpenable: !unreadable,
@@ -236,6 +241,8 @@ private struct PropertyCard: View {
     let client: String
     let info: PropertyCardInfo?
     let problem: String?
+    /// The demo apartment (or a copy): its numbers are made up, and the card says so.
+    let isDemo: Bool
     let isUnsaved: Bool
     let units: DisplayUnits
     let isOpenable: Bool
@@ -246,30 +253,40 @@ private struct PropertyCard: View {
     @ScaledMetric(relativeTo: .body) private var thumbnailSize: CGFloat = 76
 
     var body: some View {
-        let shape = RoundedRectangle(cornerRadius: Radius.card, style: .continuous)
-        Button(action: onOpen) {
-            let layout = typeSize.isAccessibilitySize
-                ? AnyLayout(VStackLayout(alignment: .leading, spacing: Spacing.m))
-                : AnyLayout(HStackLayout(alignment: .top, spacing: Spacing.l))
-            layout {
-                CardThumbnail(drawing: info?.thumbnail)
-                    .frame(width: typeSize.isAccessibilitySize ? nil : thumbnailSize,
-                           height: typeSize.isAccessibilitySize ? thumbnailSize * 1.6 : thumbnailSize)
-                    .frame(maxWidth: typeSize.isAccessibilitySize ? .infinity : nil)
-                texts
-            }
-            .padding(Spacing.l)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .background { shape.fill(Palette.surface) }
-            .overlay { shape.strokeBorder(Palette.line, lineWidth: Hairline.adaptive(contrast)) }
-            .contentShape(shape)
+        if isOpenable {
+            Button(action: onOpen) { content }
+                .buttonStyle(.pressable)
+                .accessibilityElement(children: .ignore)
+                .accessibilityLabel(spokenLabel)
+                .accessibilityHint("Opens the property.")
+                .accessibilityAddTraits(.isButton)
+        } else {
+            // Not a button: a disabled button draws its whole label at 40 % opacity, and what this card has to
+            // say (why the property cannot be opened) must stay readable. Delete is still in the swipe actions
+            // and the context menu.
+            content
+                .accessibilityElement(children: .ignore)
+                .accessibilityLabel(spokenLabel)
         }
-        .buttonStyle(.pressable)
-        .disabled(!isOpenable)
-        .accessibilityElement(children: .ignore)
-        .accessibilityLabel(spokenLabel)
-        .accessibilityHint(isOpenable ? "Opens the property." : "")
-        .accessibilityAddTraits(isOpenable ? .isButton : [])
+    }
+
+    private var content: some View {
+        let shape = RoundedRectangle(cornerRadius: Radius.card, style: .continuous)
+        let layout = typeSize.isAccessibilitySize
+            ? AnyLayout(VStackLayout(alignment: .leading, spacing: Spacing.m))
+            : AnyLayout(HStackLayout(alignment: .top, spacing: Spacing.l))
+        return layout {
+            CardThumbnail(drawing: info?.thumbnail)
+                .frame(width: typeSize.isAccessibilitySize ? nil : thumbnailSize,
+                       height: typeSize.isAccessibilitySize ? thumbnailSize * 1.6 : thumbnailSize)
+                .frame(maxWidth: typeSize.isAccessibilitySize ? .infinity : nil)
+            texts
+        }
+        .padding(Spacing.l)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background { shape.fill(Palette.surface) }
+        .overlay { shape.strokeBorder(Palette.line, lineWidth: Hairline.adaptive(contrast)) }
+        .contentShape(shape)
     }
 
     private var texts: some View {
@@ -296,6 +313,9 @@ private struct PropertyCard: View {
                 VerifiedBar(fraction: info.summary.fraction)
                     .padding(.top, Spacing.xxs)
             }
+            if isDemo {
+                demoLine
+            }
             if isUnsaved {
                 notice("Not saved yet. Keep the app open.")
             }
@@ -305,6 +325,23 @@ private struct PropertyCard: View {
         }
         .frame(maxWidth: .infinity, alignment: .leading)
     }
+
+    /// The demo's laser checks are made up; a real job never says this.
+    private var demoLine: some View {
+        HStack(alignment: .firstTextBaseline, spacing: Spacing.xs) {
+            Image(systemName: "info.circle")
+                .font(.footnote)
+                .foregroundStyle(Palette.muted)
+                .accessibilityHidden(true)
+            Text(verbatim: PropertyCard.demoText)
+                .font(.footnote.weight(.semibold))
+                .foregroundStyle(Palette.muted)
+                .multilineTextAlignment(.leading)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+    }
+
+    private static let demoText = "Demo data, not a real site."
 
     private func notice(_ text: String) -> some View {
         HStack(alignment: .firstTextBaseline, spacing: Spacing.xs) {
@@ -324,6 +361,7 @@ private struct PropertyCard: View {
         var parts = [name]
         if !client.isEmpty { parts.append(client) }
         if let info { parts.append(info.spoken(units: units)) }
+        if isDemo { parts.append("demo data, not a real site") }
         if isUnsaved { parts.append("not saved yet") }
         if let problem, !problem.isEmpty { parts.append(problem) }
         return parts.joined(separator: ", ")

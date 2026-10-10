@@ -64,7 +64,10 @@ final class ScanSessionController {
     private(set) var mergeStep: ScanMergeStep = .joiningRooms
     /// True when tracking has been lost for long enough that the person needs another way out.
     private(set) var needsRelocalizationHelp = false
-    /// False after AR failed in a way that cannot be recovered: only finishing is offered.
+    /// False after AR failed in a way that cannot be recovered: only finishing is offered. That is the case
+    /// when rooms were already finished (a restarted session is another coordinate space, so a new room could
+    /// not be joined to them) or when the failure cannot be fixed by trying again (the camera is not allowed).
+    /// With no finished room, a failed session can simply be started again, so the flag stays true.
     private(set) var canContinueScanning = true
     /// An alert to show now. Setting it to nil dismisses it.
     var alert: ScanAlert?
@@ -106,6 +109,14 @@ final class ScanSessionController {
 
     @ObservationIgnored private var records: [UUID: Record] = [:]
     @ObservationIgnored private var pendingResult: ScanResult?
+    /// A copy of every built room on disk, so an app that is ended between rooms does not take the scan with it.
+    /// nil in the Simulator, whose practice rooms are not worth recovering.
+    @ObservationIgnored private let recovery: ScanRecoveryStore?
+    /// Whether the app is in the foreground. The timeouts only count time spent there (see `ForegroundClock`).
+    @ObservationIgnored private let foreground = ForegroundClock()
+    /// True when the AR session was stopped by an error or paused by this controller, so the next capture has
+    /// to run it again first.
+    @ObservationIgnored private var arSessionNeedsRestart = false
 
     @ObservationIgnored private var isCaptureRunning = false
     @ObservationIgnored private var endMode: EndMode?
@@ -123,6 +134,7 @@ final class ScanSessionController {
     /// When the AR session was first seen without any camera frame during this capture.
     @ObservationIgnored private var noFrameSince: TimeInterval?
     @ObservationIgnored private var isTornDown = false
+    @ObservationIgnored private var didAnnounceFloorSize = false
     @ObservationIgnored private var didLeave = false
     @ObservationIgnored private var didStart = false
     /// Bumps when AR tracking is known to have restarted, which starts a new coordinate space. Rooms from
@@ -153,8 +165,11 @@ final class ScanSessionController {
 
     // MARK: Creating
 
+    /// - Parameter recoveryRoot: Where the safety copy of the scan is written (see `ScanRecoveryStore`). Only
+    ///   tests pass something else.
     init(configuration: ScanConfiguration,
          isSimulated: Bool,
+         recoveryRoot: URL = ScanRecoveryStore.defaultRoot,
          onFinish: @escaping (ScanResult) -> Void,
          onCancel: @escaping () -> Void) {
         self.configuration = configuration
@@ -163,6 +178,11 @@ final class ScanSessionController {
         self.onCancel = onCancel
         self.flow = ScanFlow(existingRoomNames: configuration.existingRoomNames)
         self.coach = ScanCoach.progress(.empty)
+        self.recovery = isSimulated ? nil : ScanRecoveryStore(root: recoveryRoot,
+                                                              propertyID: configuration.propertyID,
+                                                              propertyName: configuration.propertyName,
+                                                              story: configuration.story,
+                                                              existingRoomNames: configuration.existingRoomNames)
         // The Simulator has no tracking to report.
         self.tracking = isSimulated ? .none : .initializing
 
@@ -190,21 +210,23 @@ final class ScanSessionController {
             view.captureSession.delegate = bridge
             view.delegate = bridge
             claimSessionDelegate()
+
+            // Old safety copies nobody came back for. Off the main thread: it lists a folder.
+            DispatchQueue.global(qos: .utility).async { ScanRecoveryStore.prune(root: recoveryRoot) }
         }
     }
 
-    /// The configuration RoomPlan's AR session runs with: world tracking, plus the LiDAR features this device
-    /// has. RoomPlan "preserves all of the AR session's settings", so scene reconstruction and scene depth are
-    /// not left out when the device offers them.
+    /// The configuration RoomPlan's AR session runs with: a plain `ARWorldTrackingConfiguration`, nothing added.
+    ///
+    /// Apple's one stated contract for the session handed to RoomPlan is "a world-tracking session that your app
+    /// creates and runs with an ARWorldTrackingConfiguration"; every Apple example (WWDC23 session 10192) runs
+    /// an unmodified one, and `RoomCaptureSession.CaptureError.invalidARConfiguration` ("the ARKit session runs
+    /// an unsupported configuration") is documented without saying which settings it means. Scene
+    /// reconstruction and scene depth were switched on here before, but nothing in the scan reads this
+    /// session's mesh or depth (the AR review session has its own configuration), so they only risked that
+    /// error and added thermal load. Add a feature only if a device test shows RoomPlan needs it.
     static func worldTrackingConfiguration() -> ARWorldTrackingConfiguration {
-        let configuration = ARWorldTrackingConfiguration()
-        if ARWorldTrackingConfiguration.supportsSceneReconstruction(.mesh) {
-            configuration.sceneReconstruction = .mesh
-        }
-        if ARWorldTrackingConfiguration.supportsFrameSemantics(.sceneDepth) {
-            configuration.frameSemantics.insert(.sceneDepth)
-        }
-        return configuration
+        ARWorldTrackingConfiguration()
     }
 
     /// Puts the bridge in front of whatever the AR session's delegate is. RoomPlan owns this session and may
@@ -238,6 +260,28 @@ final class ScanSessionController {
     /// Rooms that would be thrown away by leaving now.
     var roomsAtRisk: Int { flow.rooms.count + (flow.draftAwaitingName == nil ? 0 : 1) }
 
+    /// Apple's recommended largest total area for joining rooms into one model is "2,000 square feet or around
+    /// 186 square meters", with good lighting of 50 lux or more (WWDC23 session 10192, "Merge limits"). Beyond it
+    /// the join may fail with `exceedSceneSizeLimit`; the rooms are kept either way. The warning appears at this
+    /// area, a little under the limit, so the person hears about it while there is still a choice (scan the
+    /// rest of the floor as its own level).
+    static let sizeCautionAreaM2 = 150.0
+
+    /// Floor area scanned so far on this level: the finished rooms plus a rough figure for the one in progress.
+    /// A progress hint, never a measurement.
+    var scannedFloorAreaM2: Double {
+        let finished = flow.rooms.reduce(0.0) { $0 + ($1.draft.floorAreaM2 ?? 0) }
+        let current = flow.isCapturing ? (stats.roughFloorAreaM2 ?? 0) : 0
+        return finished + current
+    }
+
+    /// A warning for the top of the scan screen once the floor is getting too big for one joined 3D model. nil
+    /// before that, and in the Simulator.
+    var floorSizeCaution: String? {
+        guard !isSimulated, scannedFloorAreaM2 >= Self.sizeCautionAreaM2 else { return nil }
+        return "Large floor. RoomPlan recommends joining no more than about 186 m\u{00B2} (2,000 sq ft) into one 3D model. The plans are still saved."
+    }
+
     // MARK: Actions from the interface
 
     /// Starts scanning the first room. Call it once the capture view is in a window; a second call does nothing.
@@ -269,20 +313,39 @@ final class ScanSessionController {
     @discardableResult
     func nameRoom(_ name: String, kind: RoomKind, then next: AfterNaming) -> ScanFlow.NameCheck {
         let check = flow.validate(name: name)
-        guard check.isValid else { return check }
+        guard case .valid(let cleaned) = check, let id = flow.draftAwaitingName?.id else { return check }
         send(.named(name: name, kind: kind))
+        recovery?.setName(id: id, name: cleaned, kind: kind)
         switch next {
-        case .scanNextRoom: send(.scanNext)
-        case .finishProperty: send(.finishProperty)
+        case .scanNextRoom:
+            // After an AR failure only finishing is offered (see `canContinueScanning`); the name sheet hides
+            // "Scan next room" then, and this keeps a stray call from starting a capture on a dead session.
+            if canContinueScanning { send(.scanNext) }
+        case .finishProperty:
+            send(.finishProperty)
         }
         return check
     }
 
     /// Throws the room waiting for a name away and scans it again.
-    func rescanRoom() { send(.rescanRoom) }
+    func rescanRoom() {
+        forgetWaitingRoom()
+        send(.rescanRoom)
+    }
 
     /// Throws the room waiting for a name away. Earlier rooms are kept.
-    func discardWaitingRoom() { send(.cancelRoom) }
+    func discardWaitingRoom() {
+        forgetWaitingRoom()
+        send(.cancelRoom)
+    }
+
+    /// The room waiting for a name is being thrown away: its kept data goes too, in memory and on disk, so it
+    /// cannot come back after a restart.
+    private func forgetWaitingRoom() {
+        guard let id = flow.draftAwaitingName?.id else { return }
+        records[id] = nil
+        recovery?.removeRoom(id: id)
+    }
 
     func scanNextRoom() { send(.scanNext) }
 
@@ -291,6 +354,9 @@ final class ScanSessionController {
     /// After an alert that offered to try again.
     func scanAgain() {
         alert = nil
+        // The person chose to try again, and with no finished room a restarted session costs nothing. (The AR
+        // session itself is run again by `beginCapture`.) A new ARKit failure clears this again.
+        if flow.rooms.isEmpty { canContinueScanning = true }
         switch flow.state {
         case .idle:
             keepScreenAwake(true)
@@ -316,9 +382,17 @@ final class ScanSessionController {
     /// The app came back to the foreground. Time spent away is not time spent failing to find the place again,
     /// so the "tracking hasn't come back" clock starts over.
     func sceneBecameActive() {
+        foreground.setActive(true)
         guard !isTornDown else { return }
         pollTracking()
         restartRelocalizationClock()
+    }
+
+    /// The app is no longer in the foreground (another app, the lock screen, the app switcher). The merge and
+    /// map timeouts stop counting: iOS may suspend the app for any length of time, and the work that was
+    /// running would then be reported as failed although it only had no time to finish.
+    func sceneBecameInactive() {
+        foreground.setActive(false)
     }
 
     /// Leave the scanner without a result. Whatever was scanned is discarded.
@@ -326,6 +400,8 @@ final class ScanSessionController {
         guard !didLeave else { return }
         didLeave = true
         send(.reset)
+        // The person chose to drop the scan: its safety copy goes with it.
+        recovery?.discard()
         teardown()
         onCancel()
     }
@@ -398,6 +474,7 @@ final class ScanSessionController {
         noFrameSince = nil
 
         if let view = captureView {
+            restartARSessionIfStopped()
             var configuration = RoomCaptureSession.Configuration()
             // Coaching on means RoomPlan's view prints its instructions and also hands each one to
             // `captureSession(_:didProvide:)`. The view's text is hidden from VoiceOver with the camera, so the
@@ -411,8 +488,26 @@ final class ScanSessionController {
         if !isSimulated { startMonitor() }
     }
 
+    /// Runs the AR session again when it is not running: ARKit says a session that failed "has stopped running
+    /// due to an error", and a session this controller paused (`stop(pauseARSession: true)`) is paused too.
+    /// Apple's contract is that the session handed to RoomPlan is already running with a world-tracking
+    /// configuration; `RoomCaptureSession.run(configuration:)` is not documented to start a stopped one.
+    ///
+    /// With no finished room the new session starts from scratch (`resetTracking`): there is no earlier space to
+    /// keep. With finished rooms it only resumes; `sessionFailed` already counted the restart as a new
+    /// coordinate space, so the merge reports rooms from before it honestly.
+    private func restartARSessionIfStopped() {
+        guard arSessionNeedsRestart else { return }
+        arSessionNeedsRestart = false
+        let options: ARSession.RunOptions = flow.rooms.isEmpty ? [.resetTracking, .removeExistingAnchors] : []
+        arSession.run(Self.worldTrackingConfiguration(), options: options)
+        claimSessionDelegate()
+        if flow.rooms.isEmpty { canContinueScanning = true }
+    }
+
     /// Stops the capture. `keepARSession` is true while more rooms may follow.
     private func endCapture(keepARSession: Bool, expectingData: Bool) {
+        if !keepARSession { arSessionNeedsRestart = true }
         if isCaptureRunning {
             isCaptureRunning = false
             if let view = captureView {
@@ -493,15 +588,17 @@ final class ScanSessionController {
         processingTask = Task { [weak self] in await self?.process(end) }
     }
 
-    /// How long to wait for RoomPlan to report the end of a stopped capture, seconds.
+    /// How long to wait for RoomPlan to report the end of a stopped capture, seconds of time in the foreground.
     static var endTimeout: TimeInterval = 15
 
-    /// If RoomPlan never reports the end of a capture, say so instead of waiting for ever.
+    /// If RoomPlan never reports the end of a capture, say so instead of waiting for ever. Time spent in
+    /// another app does not count: a report that arrives late because the app was suspended is not a failure.
     private func startWatchdog() {
         watchdogTask?.cancel()
         let timeout = Self.endTimeout
+        let clock = foreground
         watchdogTask = Task { [weak self] in
-            try? await Task.sleep(nanoseconds: UInt64(timeout * 1_000_000_000))
+            guard await clock.wait(seconds: timeout) else { return }
             guard !Task.isCancelled, let self, self.isAwaitingEndData, self.flow.isProcessingRoom else { return }
             self.failRoom(.internalError)
         }
@@ -520,16 +617,24 @@ final class ScanSessionController {
             let captured = try await builder.capturedRoom(from: end.data)
             guard flow.isProcessingRoom, !Task.isCancelled else { return }
 
-            let raw = CapturedRoomMapper.rawCapture(from: captured, story: configuration.story)
+            // Copying the room and encoding its JSON are the heavy parts of a big room: off the main actor, so the
+            // "Building the room" state keeps animating. `CapturedRoom` is documented as Sendable.
+            let story = configuration.story
+            let (raw, encoded) = await Task.detached(priority: .userInitiated) { () -> (RawCapture, Swift.Result<Data, Error>) in
+                (CapturedRoomMapper.rawCapture(from: captured, story: story),
+                 Swift.Result { try JSONEncoder().encode(captured) })
+            }.value
+            guard flow.isProcessingRoom, !Task.isCancelled else { return }
+
             var notes: [String] = []
             if let failure {
                 let text = failure.text(hasFinishedRooms: false)
                 notes.append("\(text.title). This room may be incomplete.")
             }
             var json: Data?
-            do {
-                json = try JSONEncoder().encode(captured)
-            } catch {
+            switch encoded {
+            case .success(let data): json = data
+            case .failure:
                 notes.append("The raw scan of this room could not be kept, so it is missing from the saved scan data.")
             }
             await finishProcessing(raw: raw, captured: captured, json: json, notes: notes)
@@ -561,6 +666,9 @@ final class ScanSessionController {
 
         let id = UUID()
         records[id] = Record(raw: raw, captured: captured, json: json, epoch: spaceEpoch)
+        // On disk straight away, before the room is even named: if the app is ended from here on, the scan
+        // can be put back (`ScanRecoveryStore`).
+        recovery?.addRoom(id: id, raw: raw, capturedJSON: json)
         let live = LiveScanStats(capture: raw)
         stats = live
         // Routine clean-up (merged wall pieces, an estimated floor level) is not worth a person's attention.
@@ -581,9 +689,8 @@ final class ScanSessionController {
 
         let hadRooms = !flow.rooms.isEmpty
         let text = failure.text(hasFinishedRooms: hadRooms)
-        let unrecoverable = failure == .deviceNotSupported || failure == .cameraNotAllowed
         alert = ScanAlert(title: text.title, message: text.message + " " + text.recovery,
-                          offersRescan: !hadRooms && !unrecoverable)
+                          offersRescan: !hadRooms && !Self.isUnrecoverable(failure))
         haptic { Haptics.warning() }
         if flow.isCapturing || flow.isProcessingRoom { send(.cancelRoom) }
     }
@@ -691,9 +798,15 @@ final class ScanSessionController {
         setTracking(issue)
     }
 
+    /// ARKit says the session "has stopped running due to an error". It has to be run again before anything
+    /// can be scanned (`restartARSessionIfStopped`), and what comes after depends on the rooms already finished:
+    /// a restarted session is another coordinate space, so a new room could not be joined to them and only
+    /// finishing is offered. With no finished room the person can scan again.
     fileprivate func sessionFailed(_ error: Error) {
         spaceEpoch += 1
+        arSessionNeedsRestart = true
         let failure = Self.failure(for: error)
+        canContinueScanning = flow.rooms.isEmpty && !Self.isUnrecoverable(failure)
         if flow.isCapturing || flow.isProcessingRoom {
             failRoom(failure)
         } else {
@@ -701,7 +814,11 @@ final class ScanSessionController {
             alert = ScanAlert(title: text.title, message: text.message + " " + text.recovery, offersRescan: false)
             haptic { Haptics.warning() }
         }
-        canContinueScanning = false
+    }
+
+    /// Failures that trying again cannot fix.
+    private static func isUnrecoverable(_ failure: ScanFailure) -> Bool {
+        failure == .deviceNotSupported || failure == .cameraNotAllowed
     }
 
     private func startMonitor() {
@@ -781,6 +898,11 @@ final class ScanSessionController {
     private func refreshCoach() {
         let shown = ScanCoach.companionMessage(tracking: tracking, stats: stats)
         if shown != coach { coach = shown }
+        // The size warning is a pill VoiceOver would not reach by itself: say it once, when it first appears.
+        if !didAnnounceFloorSize, let caution = floorSizeCaution {
+            didAnnounceFloorSize = true
+            if UIAccessibility.isVoiceOverRunning { UIAccessibility.post(notification: .announcement, argument: caution) }
+        }
         // VoiceOver hears RoomPlan's instructions too: the capture view, with its printed text, is hidden from it.
         let spoken = ScanCoach.message(instruction: instruction, tracking: tracking, stats: stats)
         guard flow.isCapturing || (flow.state == .betweenRooms && spoken.level == .critical) else { return }
@@ -867,7 +989,8 @@ final class ScanSessionController {
         guard !Task.isCancelled, flow.state == .merging else { return }
 
         pendingResult = ScanResult(rooms: rooms, capturedRoomJSON: capturedJSON, structureUSDZ: usdz,
-                                   worldMapData: worldMap, story: configuration.story, warnings: warnings)
+                                   worldMapData: worldMap, story: configuration.story, warnings: warnings,
+                                   recoveryID: recovery?.scanID)
         send(.mergeCompleted)
     }
 
@@ -880,66 +1003,76 @@ final class ScanSessionController {
             .appendingPathComponent("nexafix-scan-\(UUID().uuidString)", isDirectory: false)
             .appendingPathExtension("usdz")
         defer { try? FileManager.default.removeItem(at: url) }
+        let clock = foreground
 
         if rooms.count == 1, let only = rooms.first {
             mergeStep = .writingModel
-            return try await Self.withTimeout(seconds: Self.modelTimeout) {
+            return try await Self.withTimeout(seconds: Self.modelTimeout, clock: clock) {
                 try only.export(to: url, exportOptions: .mesh)
                 return try Data(contentsOf: url)
             }
         }
 
-        let structure = try await Self.withTimeout(seconds: Self.modelTimeout) {
+        let structure = try await Self.withTimeout(seconds: Self.modelTimeout, clock: clock) {
             try await StructureBuilder(options: [.beautifyObjects]).capturedStructure(from: rooms)
         }
         mergeStep = .writingModel
-        return try await Self.withTimeout(seconds: Self.modelTimeout) {
+        return try await Self.withTimeout(seconds: Self.modelTimeout, clock: clock) {
             try structure.export(to: url, exportOptions: .mesh)
             return try Data(contentsOf: url)
         }
     }
 
-    /// How long joining the rooms or writing the file may take before it is given up, seconds.
+    /// How long joining the rooms or writing the file may take before it is given up, seconds in the foreground.
     private static let modelTimeout: TimeInterval = 90
 
-    /// Runs `work` off the main thread and stops waiting for it after `seconds`. The work itself cannot be
-    /// cancelled, so a late result is simply dropped.
+    /// Runs `work` off the main thread and stops waiting for it after `seconds` of time in the foreground (see
+    /// `ForegroundClock`). The work itself cannot be cancelled, so a late result is simply dropped.
     private static func withTimeout<T: Sendable>(seconds: TimeInterval,
+                                                 clock: ForegroundClock,
                                                  _ work: @escaping @Sendable () async throws -> T) async throws -> T {
         try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<T, Error>) in
             let gate = ResumeOnce<T>(continuation)
+            let timer = Task.detached(priority: .utility) {
+                if await clock.wait(seconds: seconds) { gate.resume(throwing: TimeoutError()) }
+            }
             Task.detached(priority: .userInitiated) {
                 do {
                     gate.resume(returning: try await work())
                 } catch {
                     gate.resume(throwing: error)
                 }
-            }
-            DispatchQueue.main.asyncAfter(deadline: .now() + seconds) {
-                gate.resume(throwing: TimeoutError())
+                timer.cancel()
             }
         }
     }
 
-    /// The current `ARWorldMap` as archived data. Gives up after `timeout` seconds, because ARKit may never
-    /// call back when the session is interrupted.
+    /// The current `ARWorldMap` as archived data. Gives up after `timeout` seconds in the foreground, because
+    /// ARKit may never call back when the session is interrupted.
     private func archivedWorldMap(timeout: TimeInterval) async throws -> Data {
-        try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Data, Error>) in
+        let clock = foreground
+        return try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Data, Error>) in
             let gate = ResumeOnce<Data>(continuation)
+            let timer = Task.detached(priority: .utility) {
+                if await clock.wait(seconds: timeout) { gate.resume(throwing: TimeoutError()) }
+            }
             arSession.getCurrentWorldMap { map, error in
                 guard let map else {
                     gate.resume(throwing: error ?? WorldMapError.unavailable)
+                    timer.cancel()
                     return
                 }
-                do {
-                    let data = try NSKeyedArchiver.archivedData(withRootObject: map, requiringSecureCoding: true)
-                    gate.resume(returning: data)
-                } catch {
-                    gate.resume(throwing: error)
+                // ARKit calls this on the main queue (the session has no `delegateQueue`), and archiving a big
+                // map there would stall the progress screen. Apple: "do so on an appropriate dispatch queue".
+                DispatchQueue.global(qos: .userInitiated).async {
+                    do {
+                        let data = try NSKeyedArchiver.archivedData(withRootObject: map, requiringSecureCoding: true)
+                        gate.resume(returning: data)
+                    } catch {
+                        gate.resume(throwing: error)
+                    }
+                    timer.cancel()
                 }
-            }
-            DispatchQueue.main.asyncAfter(deadline: .now() + timeout) {
-                gate.resume(throwing: TimeoutError())
             }
         }
     }
@@ -947,6 +1080,8 @@ final class ScanSessionController {
     private func deliverResult() {
         guard let result = pendingResult else { return }
         pendingResult = nil
+        // Handed over: the safety copy stays until the app confirms the scan is saved (`ScanResult.recoveryID`).
+        recovery?.markDelivered()
         haptic { Haptics.success() }
         teardown()
         onFinish(result)
@@ -1103,6 +1238,47 @@ private enum WorldMapError: Error {
 
 /// A step took longer than it was allowed to.
 private struct TimeoutError: Error {}
+
+/// Counts time only while the app is in the foreground.
+///
+/// A plain timer keeps running while iOS has suspended the app. When the person switches to another app during
+/// "Building the 3D model" and comes back, every timeout has run out at once, so a 3D file that would have
+/// finished a moment later, or an AR map that ARKit could not deliver while its camera was away, is reported
+/// as failed. The controller tells this clock when the scene becomes active or leaves it, and a timeout waits
+/// through the time away.
+///
+/// A tick is counted only if the app was in the foreground when it ended, so the first tick after coming back
+/// (which can end before the scene reports it is active again) is not counted: the wait errs on the long side.
+private final class ForegroundClock: @unchecked Sendable {
+    private let lock = NSLock()
+    private var active = true
+
+    func setActive(_ value: Bool) {
+        lock.lock()
+        active = value
+        lock.unlock()
+    }
+
+    var isActive: Bool {
+        lock.lock()
+        defer { lock.unlock() }
+        return active
+    }
+
+    /// Returns true after `seconds` of time spent in the foreground, false when the waiting task is cancelled.
+    func wait(seconds: TimeInterval, tick: TimeInterval = 0.5) async -> Bool {
+        var waited: TimeInterval = 0
+        while waited < seconds {
+            do {
+                try await Task.sleep(nanoseconds: UInt64(tick * 1_000_000_000))
+            } catch {
+                return false
+            }
+            if isActive { waited += tick }
+        }
+        return !Task.isCancelled
+    }
+}
 
 /// Lets a continuation be resumed from whichever of two callbacks arrives first. The second is ignored.
 private final class ResumeOnce<Value: Sendable>: @unchecked Sendable {

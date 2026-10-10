@@ -1,0 +1,15 @@
+// Your personal signing settings. To use: copy this file to Local.xcconfig (same folder), remove the leading
+// "//" from the lines you need, and put in your own values. Local.xcconfig is git-ignored and is read by
+// Signing.xcconfig, so it survives `xcodegen generate` and `git pull`. Then run `xcodegen generate` again.
+//
+// Or let a script do it: pick your Team in Xcode (Signing & Capabilities) once, then run
+//     ios/tools/remember-signing.sh
+//
+// Your Team ID is 10 letters/digits. The easy way to get it is the script above. By hand: pick your Team in
+// Xcode once, then look for the "DEVELOPMENT_TEAM = ..." line in NexaFixScan.xcodeproj/project.pbxproj.
+
+// DEVELOPMENT_TEAM = ABCDE12345
+
+// Only needed if "com.nexafix.scan" is not available to your team ("Failed to register bundle identifier").
+// Use something unique to you:
+// PRODUCT_BUNDLE_IDENTIFIER = com.yourname.nexafixscan

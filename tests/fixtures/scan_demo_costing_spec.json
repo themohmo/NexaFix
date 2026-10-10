@@ -1,0 +1,592 @@
+{
+  "project" : {
+    "ceiling_height" : 2.8,
+    "client" : "Mr. Ahmed Khan",
+    "location" : "Marina Gate 2, Dubai Marina, Dubai",
+    "name" : "Marina Gate 2 - Unit 2304",
+    "ref" : "NF-2026-1009-01"
+  },
+  "rooms" : [
+    {
+      "doors" : [
+        [
+          0.9,
+          2.1
+        ]
+      ],
+      "height" : 2.8037,
+      "length" : 6.238,
+      "name" : "Living Room",
+      "tags" : [
+        "living"
+      ],
+      "wet" : false,
+      "width" : 4.5052,
+      "windows" : [
+        [
+          3,
+          2.4
+        ]
+      ]
+    },
+    {
+      "doors" : [
+        [
+          0.9,
+          2.1
+        ]
+      ],
+      "height" : 2.76,
+      "length" : 3.2333,
+      "name" : "Kitchen",
+      "tags" : [
+        "kitchen"
+      ],
+      "wet" : false,
+      "width" : 2.7898,
+      "windows" : [
+        [
+          1.185,
+          1.2
+        ]
+      ]
+    },
+    {
+      "area" : 19.9981,
+      "doors" : [
+        [
+          0.9,
+          2.1
+        ]
+      ],
+      "height" : 2.8031,
+      "name" : "Lounge",
+      "perimeter" : 20.002,
+      "tags" : [
+
+      ],
+      "windows" : [
+
+      ]
+    },
+    {
+      "doors" : [
+
+      ],
+      "height" : 2.8009,
+      "length" : 4.9918,
+      "name" : "Open Dining",
+      "perimeter" : 13.9932,
+      "tags" : [
+        "living"
+      ],
+      "wet" : false,
+      "width" : 4.0037,
+      "windows" : [
+        [
+          1.5,
+          1.4
+        ]
+      ]
+    },
+    {
+      "doors" : [
+        [
+          0.9,
+          2.1
+        ]
+      ],
+      "height" : 2.6924,
+      "length" : 4.1011,
+      "name" : "Bedroom",
+      "tags" : [
+        "bedroom"
+      ],
+      "wet" : false,
+      "width" : 3.5043,
+      "windows" : [
+        [
+          1.8,
+          1.5
+        ]
+      ]
+    },
+    {
+      "doors" : [
+
+      ],
+      "height" : 2.6993,
+      "length" : 2.9008,
+      "name" : "Kitchen 2",
+      "tags" : [
+        "kitchen"
+      ],
+      "wet" : false,
+      "width" : 2.3967,
+      "windows" : [
+
+      ]
+    },
+    {
+      "doors" : [
+        [
+          2.4,
+          2.2
+        ]
+      ],
+      "height" : 2.6975,
+      "length" : 4.4902,
+      "name" : "Balcony",
+      "tags" : [
+        "outdoor"
+      ],
+      "wet" : false,
+      "width" : 1.4906,
+      "windows" : [
+
+      ]
+    }
+  ],
+  "scope" : [
+
+  ],
+  "x_nexafix_scan" : {
+    "generator" : "NexaFix Scan",
+    "joinery_measurement_count" : 55,
+    "joinery_verified_count" : 7,
+    "measurement_count" : 89,
+    "notes" : [
+      "Wall area differs between the scan file and the costing engine in 1 room(s): the scan file multiplies each wall by its own height, the engine multiplies the perimeter by the room's ceiling height and subtracts the doors and windows. The quote uses the engine's figure. Largest difference: Kitchen, 30.44 m2 in the scan file, 29.94 m2 in the costing engine."
+    ],
+    "property_id" : "A2C933A6-529A-535E-A1EA-E5F748F176C6",
+    "rooms" : [
+      {
+        "area_verified" : false,
+        "floor" : "Level 23",
+        "height_verified" : false,
+        "joinery_total" : 10,
+        "joinery_verified" : 3,
+        "kind" : "livingRoom",
+        "name" : "Living Room",
+        "perimeter_verified" : false,
+        "total" : 15,
+        "verified" : 3
+      },
+      {
+        "area_verified" : false,
+        "floor" : "Level 23",
+        "height_verified" : true,
+        "joinery_total" : 9,
+        "joinery_verified" : 3,
+        "kind" : "kitchen",
+        "name" : "Kitchen",
+        "perimeter_verified" : false,
+        "total" : 14,
+        "verified" : 3
+      },
+      {
+        "area_verified" : false,
+        "floor" : "Level 23",
+        "height_verified" : false,
+        "joinery_total" : 9,
+        "joinery_verified" : 0,
+        "kind" : "other",
+        "name" : "Lounge",
+        "perimeter_verified" : false,
+        "total" : 15,
+        "verified" : 0
+      },
+      {
+        "area_verified" : false,
+        "floor" : "Level 23",
+        "height_verified" : false,
+        "joinery_total" : 6,
+        "joinery_verified" : 0,
+        "kind" : "dining",
+        "name" : "Open Dining",
+        "perimeter_verified" : false,
+        "total" : 11,
+        "verified" : 0
+      },
+      {
+        "area_verified" : false,
+        "floor" : "Level 23 (2)",
+        "height_verified" : true,
+        "joinery_total" : 9,
+        "joinery_verified" : 1,
+        "kind" : "bedroom",
+        "name" : "Bedroom",
+        "perimeter_verified" : false,
+        "total" : 14,
+        "verified" : 1
+      },
+      {
+        "area_verified" : false,
+        "floor" : "Level 23 (2)",
+        "height_verified" : false,
+        "joinery_total" : 5,
+        "joinery_verified" : 0,
+        "kind" : "kitchen",
+        "name" : "Kitchen 2",
+        "perimeter_verified" : false,
+        "total" : 9,
+        "verified" : 0
+      },
+      {
+        "area_verified" : false,
+        "floor" : "Level 23 (2)",
+        "height_verified" : false,
+        "joinery_total" : 7,
+        "joinery_verified" : 0,
+        "kind" : "balcony",
+        "name" : "Balcony",
+        "perimeter_verified" : false,
+        "total" : 11,
+        "verified" : 0
+      }
+    ],
+    "scan_date" : "2026-10-12",
+    "schema" : "nexafix.costing-spec",
+    "unverified_joinery" : [
+      {
+        "floor" : "Level 23",
+        "item" : "Wall A length",
+        "room" : "Living Room",
+        "scanned_m" : 4.5051,
+        "typical_tolerance_m" : 0.0676
+      },
+      {
+        "floor" : "Level 23",
+        "item" : "Wall C length",
+        "room" : "Living Room",
+        "scanned_m" : 4.5053,
+        "typical_tolerance_m" : 0.0676
+      },
+      {
+        "floor" : "Level 23",
+        "item" : "Ceiling height",
+        "room" : "Living Room",
+        "scanned_m" : 2.8037,
+        "typical_tolerance_m" : 0.0421
+      },
+      {
+        "floor" : "Level 23",
+        "item" : "Window 1 width",
+        "room" : "Living Room",
+        "scanned_m" : 3,
+        "typical_tolerance_m" : 0.045
+      },
+      {
+        "floor" : "Level 23",
+        "item" : "Window 1 height",
+        "room" : "Living Room",
+        "scanned_m" : 2.4,
+        "typical_tolerance_m" : 0.036
+      },
+      {
+        "floor" : "Level 23",
+        "item" : "Door 1 width",
+        "room" : "Living Room",
+        "scanned_m" : 0.9,
+        "typical_tolerance_m" : 0.0135
+      },
+      {
+        "floor" : "Level 23",
+        "item" : "Door 1 height",
+        "room" : "Living Room",
+        "scanned_m" : 2.1,
+        "typical_tolerance_m" : 0.0315
+      },
+      {
+        "floor" : "Level 23",
+        "item" : "Wall B length",
+        "room" : "Kitchen",
+        "scanned_m" : 2.7854,
+        "typical_tolerance_m" : 0.0418
+      },
+      {
+        "floor" : "Level 23",
+        "item" : "Wall C length",
+        "room" : "Kitchen",
+        "scanned_m" : 3.2216,
+        "typical_tolerance_m" : 0.0483
+      },
+      {
+        "floor" : "Level 23",
+        "item" : "Wall D length",
+        "room" : "Kitchen",
+        "scanned_m" : 2.7942,
+        "typical_tolerance_m" : 0.0419
+      },
+      {
+        "floor" : "Level 23",
+        "item" : "Window 1 height",
+        "room" : "Kitchen",
+        "scanned_m" : 1.2,
+        "typical_tolerance_m" : 0.018
+      },
+      {
+        "floor" : "Level 23",
+        "item" : "Door 1 width",
+        "room" : "Kitchen",
+        "scanned_m" : 0.9,
+        "typical_tolerance_m" : 0.0135
+      },
+      {
+        "floor" : "Level 23",
+        "item" : "Door 1 height",
+        "room" : "Kitchen",
+        "scanned_m" : 2.1,
+        "typical_tolerance_m" : 0.0315
+      },
+      {
+        "floor" : "Level 23",
+        "item" : "Wall A length",
+        "room" : "Lounge",
+        "scanned_m" : 1.9993,
+        "typical_tolerance_m" : 0.03
+      },
+      {
+        "floor" : "Level 23",
+        "item" : "Wall B length",
+        "room" : "Lounge",
+        "scanned_m" : 2,
+        "typical_tolerance_m" : 0.03
+      },
+      {
+        "floor" : "Level 23",
+        "item" : "Wall C length",
+        "room" : "Lounge",
+        "scanned_m" : 2.0036,
+        "typical_tolerance_m" : 0.0301
+      },
+      {
+        "floor" : "Level 23",
+        "item" : "Wall D length",
+        "room" : "Lounge",
+        "scanned_m" : 3.9961,
+        "typical_tolerance_m" : 0.0599
+      },
+      {
+        "floor" : "Level 23",
+        "item" : "Wall E length",
+        "room" : "Lounge",
+        "scanned_m" : 3.9971,
+        "typical_tolerance_m" : 0.06
+      },
+      {
+        "floor" : "Level 23",
+        "item" : "Wall F length",
+        "room" : "Lounge",
+        "scanned_m" : 6.0058,
+        "typical_tolerance_m" : 0.0901
+      },
+      {
+        "floor" : "Level 23",
+        "item" : "Ceiling height",
+        "room" : "Lounge",
+        "scanned_m" : 2.8031,
+        "typical_tolerance_m" : 0.042
+      },
+      {
+        "floor" : "Level 23",
+        "item" : "Door 1 width",
+        "room" : "Lounge",
+        "scanned_m" : 0.9,
+        "typical_tolerance_m" : 0.0135
+      },
+      {
+        "floor" : "Level 23",
+        "item" : "Door 1 height",
+        "room" : "Lounge",
+        "scanned_m" : 2.1,
+        "typical_tolerance_m" : 0.0315
+      },
+      {
+        "floor" : "Level 23",
+        "item" : "Wall A length",
+        "room" : "Open Dining",
+        "scanned_m" : 4.0097,
+        "typical_tolerance_m" : 0.0601
+      },
+      {
+        "floor" : "Level 23",
+        "item" : "Wall B length",
+        "room" : "Open Dining",
+        "scanned_m" : 5.0047,
+        "typical_tolerance_m" : 0.0751
+      },
+      {
+        "floor" : "Level 23",
+        "item" : "Wall D length",
+        "room" : "Open Dining",
+        "scanned_m" : 4.9788,
+        "typical_tolerance_m" : 0.0747
+      },
+      {
+        "floor" : "Level 23",
+        "item" : "Ceiling height",
+        "room" : "Open Dining",
+        "scanned_m" : 2.8009,
+        "typical_tolerance_m" : 0.042
+      },
+      {
+        "floor" : "Level 23",
+        "item" : "Window 1 width",
+        "room" : "Open Dining",
+        "scanned_m" : 1.5,
+        "typical_tolerance_m" : 0.0225
+      },
+      {
+        "floor" : "Level 23",
+        "item" : "Window 1 height",
+        "room" : "Open Dining",
+        "scanned_m" : 1.4,
+        "typical_tolerance_m" : 0.021
+      },
+      {
+        "floor" : "Level 23 (2)",
+        "item" : "Wall A length",
+        "room" : "Bedroom",
+        "scanned_m" : 4.1088,
+        "typical_tolerance_m" : 0.0616
+      },
+      {
+        "floor" : "Level 23 (2)",
+        "item" : "Wall B length",
+        "room" : "Bedroom",
+        "scanned_m" : 3.4963,
+        "typical_tolerance_m" : 0.0524
+      },
+      {
+        "floor" : "Level 23 (2)",
+        "item" : "Wall C length",
+        "room" : "Bedroom",
+        "scanned_m" : 4.0934,
+        "typical_tolerance_m" : 0.0614
+      },
+      {
+        "floor" : "Level 23 (2)",
+        "item" : "Wall D length",
+        "room" : "Bedroom",
+        "scanned_m" : 3.5122,
+        "typical_tolerance_m" : 0.0527
+      },
+      {
+        "floor" : "Level 23 (2)",
+        "item" : "Door 1 width",
+        "room" : "Bedroom",
+        "scanned_m" : 0.9,
+        "typical_tolerance_m" : 0.0135
+      },
+      {
+        "floor" : "Level 23 (2)",
+        "item" : "Door 1 height",
+        "room" : "Bedroom",
+        "scanned_m" : 2.1,
+        "typical_tolerance_m" : 0.0315
+      },
+      {
+        "floor" : "Level 23 (2)",
+        "item" : "Window 1 width",
+        "room" : "Bedroom",
+        "scanned_m" : 1.8,
+        "typical_tolerance_m" : 0.027
+      },
+      {
+        "floor" : "Level 23 (2)",
+        "item" : "Window 1 height",
+        "room" : "Bedroom",
+        "scanned_m" : 1.5,
+        "typical_tolerance_m" : 0.0225
+      },
+      {
+        "floor" : "Level 23 (2)",
+        "item" : "Wall A length",
+        "room" : "Kitchen 2",
+        "scanned_m" : 2.9029,
+        "typical_tolerance_m" : 0.0435
+      },
+      {
+        "floor" : "Level 23 (2)",
+        "item" : "Wall B length",
+        "room" : "Kitchen 2",
+        "scanned_m" : 2.3928,
+        "typical_tolerance_m" : 0.0359
+      },
+      {
+        "floor" : "Level 23 (2)",
+        "item" : "Wall C length",
+        "room" : "Kitchen 2",
+        "scanned_m" : 2.8986,
+        "typical_tolerance_m" : 0.0435
+      },
+      {
+        "floor" : "Level 23 (2)",
+        "item" : "Wall D length",
+        "room" : "Kitchen 2",
+        "scanned_m" : 2.4006,
+        "typical_tolerance_m" : 0.036
+      },
+      {
+        "floor" : "Level 23 (2)",
+        "item" : "Ceiling height",
+        "room" : "Kitchen 2",
+        "scanned_m" : 2.6993,
+        "typical_tolerance_m" : 0.0405
+      },
+      {
+        "floor" : "Level 23 (2)",
+        "item" : "Wall A length",
+        "room" : "Balcony",
+        "scanned_m" : 4.4929,
+        "typical_tolerance_m" : 0.0674
+      },
+      {
+        "floor" : "Level 23 (2)",
+        "item" : "Wall B length",
+        "room" : "Balcony",
+        "scanned_m" : 1.4921,
+        "typical_tolerance_m" : 0.0224
+      },
+      {
+        "floor" : "Level 23 (2)",
+        "item" : "Wall C length",
+        "room" : "Balcony",
+        "scanned_m" : 4.4876,
+        "typical_tolerance_m" : 0.0673
+      },
+      {
+        "floor" : "Level 23 (2)",
+        "item" : "Wall D length",
+        "room" : "Balcony",
+        "scanned_m" : 1.4891,
+        "typical_tolerance_m" : 0.0223
+      },
+      {
+        "floor" : "Level 23 (2)",
+        "item" : "Ceiling height",
+        "room" : "Balcony",
+        "scanned_m" : 2.6975,
+        "typical_tolerance_m" : 0.0405
+      },
+      {
+        "floor" : "Level 23 (2)",
+        "item" : "Door 1 width",
+        "room" : "Balcony",
+        "scanned_m" : 2.4,
+        "typical_tolerance_m" : 0.036
+      },
+      {
+        "floor" : "Level 23 (2)",
+        "item" : "Door 1 height",
+        "room" : "Balcony",
+        "scanned_m" : 2.2,
+        "typical_tolerance_m" : 0.033
+      }
+    ],
+    "verified_count" : 7,
+    "version" : 1,
+    "warning" : "48 of 55 joinery-critical dimensions are LiDAR-scanned only and have not been verified on site. LiDAR dimensions are typically within 1-2 %. Verify every dimension joinery will be cut to with a laser measure. Treat this as a budget estimate until they are verified."
+  }
+}

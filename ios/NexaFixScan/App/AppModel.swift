@@ -13,6 +13,10 @@ import NexaFixCore
 ///   change is held in memory (and its id listed in `unsavedPropertyIDs`) and applied by
 ///   `retryUnsavedSaves()`; the error is shown on every such call, not just the first.
 /// - Everything goes through `save`, `update` and `delete`, so `summaries` and `revision` stay current.
+/// - A property restored from its backup is flagged (`needsRecoveryNotice`) until the person has seen the
+///   notice, and the flag survives the next save and a relaunch. The store only reports a restore while
+///   it is happening (`PropertySummary.health`); after the next edit the property looks healthy even
+///   though the changes made before the damage are gone.
 ///
 /// What the home screen must draw: `summaries` comes from storage, so a property whose first save
 /// failed is not in it. Draw a row for every item of `memoryOnlyProperties` above the list, and show a
@@ -44,6 +48,11 @@ final class AppModel {
     /// Properties whose latest changes could not be written to storage. They exist only in memory.
     /// Show a persistent banner while this is not empty, and offer `retryUnsavedSaves()`.
     private(set) var unsavedPropertyIDs: Set<UUID> = []
+
+    /// Properties that were restored from their backup (or whose damaged file was set aside by a later save)
+    /// and whose notice the person has not yet dismissed. Kept in `UserDefaults`, so it survives a relaunch.
+    /// Read it through `needsRecoveryNotice(_:)`; clear it with `acknowledgeRecovery(_:)`.
+    private(set) var recoveredPropertyIDs: Set<UUID> = []
 
     /// Bumps after every save, delete and refresh. `property(_:)` reads it, so a view that calls
     /// `property(_:)` in its body is redrawn when anything changes.
@@ -95,6 +104,7 @@ final class AppModel {
         self.hapticsSink = hapticsSink
         self.settings = AppSettings.load(from: defaults)
         self.presentedError = startupError
+        self.recoveredPropertyIDs = AppModel.storedRecoveredIDs(in: defaults)
 
         hapticsSink(settings.hapticsEnabled)
         refresh()
@@ -115,6 +125,7 @@ final class AppModel {
             let list = try store.list()
             summaries = list.sorted { $0.updatedAt > $1.updatedAt }
             pruneCache(against: list)
+            syncRecovery(with: list)
             failedLoads.removeAll()
             revision += 1
         } catch {
@@ -140,13 +151,19 @@ final class AppModel {
         }
     }
 
-    /// The in-memory copy, or a fresh read from storage (which is then remembered).
-    private func load(_ id: UUID) -> Result<Property, Error> {
+    /// The in-memory copy, or a fresh read from storage (which is then remembered). A read that had to use the
+    /// backup flags the property for the recovery notice, unless `announcingRecovery` is false.
+    private func load(_ id: UUID, announcingRecovery: Bool = true) -> Result<Property, Error> {
         if let cached = cache[id] { return .success(cached) }
         do {
-            let loaded = try store.load(id: id)
-            cache[id] = loaded
-            return .success(loaded)
+            // `load(id:)` would hide that the property came from its backup; this one says so.
+            let loaded = try store.loadWithStatus(id: id)
+            cache[id] = loaded.property
+            if loaded.recoveredFromBackup, announcingRecovery {
+                // After the current view update: `property(_:)` calls this from view bodies.
+                Task { @MainActor [weak self] in self?.noteRecovery(id) }
+            }
+            return .success(loaded.property)
         } catch {
             return .failure(error)
         }
@@ -180,10 +197,14 @@ final class AppModel {
     /// (which grows with the number of properties and would stall the main thread). Falls back to a full
     /// refresh when the single read fails.
     private func updateSummary(for id: UUID) {
-        guard let summary = try? store.summary(id: id) else {
+        guard var summary = try? store.summary(id: id) else {
             refresh()
             return
         }
+        // `summary(id:)` does not look for a damaged file that an earlier save set aside (`list()` does), so
+        // without this the row would forget it after the first edit.
+        summary.damagedFileKept = store.damagedFileURL(for: id) != nil
+        if summary.health == .recoveredFromBackup || summary.damagedFileKept { noteRecovery(id) }
         if let index = summaries.firstIndex(where: { $0.id == id }) {
             summaries[index] = summary
         } else {
@@ -235,6 +256,7 @@ final class AppModel {
         pendingChanges[id] = nil
         unsavedPropertyIDs.remove(id)
         failedLoads.remove(id)
+        setRecovered(recoveredPropertyIDs.subtracting([id]))
         revision += 1
         refresh()
     }
@@ -287,6 +309,58 @@ final class AppModel {
         }
     }
 
+    // MARK: Recovery notices
+
+    private static let recoveredKey = "com.nexafix.scan.recoveredProperties.v1"
+
+    private static func storedRecoveredIDs(in defaults: UserDefaults) -> Set<UUID> {
+        Set((defaults.stringArray(forKey: recoveredKey) ?? []).compactMap { UUID(uuidString: $0) })
+    }
+
+    private func setRecovered(_ ids: Set<UUID>) {
+        guard ids != recoveredPropertyIDs else { return }
+        recoveredPropertyIDs = ids
+        defaults.set(ids.map(\.uuidString).sorted(), forKey: AppModel.recoveredKey)
+    }
+
+    private func noteRecovery(_ id: UUID) {
+        if !recoveredPropertyIDs.contains(id) { setRecovered(recoveredPropertyIDs.union([id])) }
+    }
+
+    /// Adds every listed property that reads from its backup or has a damaged file set aside, and forgets
+    /// properties that no longer exist. A property that looks healthy keeps its flag until it is dismissed:
+    /// the changes lost to the damage do not come back by themselves.
+    private func syncRecovery(with list: [PropertySummary]) {
+        var ids = recoveredPropertyIDs.intersection(Set(list.map(\.id)))
+        for row in list where row.health == .recoveredFromBackup || row.damagedFileKept { ids.insert(row.id) }
+        setRecovered(ids)
+    }
+
+    /// True while the person has not yet been through the "restored from an earlier save" notice for this
+    /// property. Reading it in a view body redraws the view when it changes.
+    func needsRecoveryNotice(_ id: UUID) -> Bool {
+        recoveredPropertyIDs.contains(id)
+    }
+
+    /// The person has read the notice. A property that is still being read from its backup is written back
+    /// first (the damaged file is set aside), so the next launch reads a good file; then the set-aside
+    /// damaged file is deleted and the flag goes. If either step fails the flag stays and the person is told.
+    func acknowledgeRecovery(_ id: UUID) {
+        if let row = try? store.summary(id: id), row.health == .recoveredFromBackup {
+            // The in-memory copy may hold edits that were never written; it is what must reach the disk.
+            guard case .success(let property) = load(id, announcingRecovery: false), save(property) else { return }
+        }
+        do {
+            try store.clearDamagedFile(id: id)
+        } catch {
+            present(UserFacingError(error, context: "clear this notice"))
+            return
+        }
+        setRecovered(recoveredPropertyIDs.subtracting([id]))
+        updateSummary(for: id)
+        revision += 1
+    }
+
     // MARK: Assets
 
     /// Writes a file (captured room, USDZ, world map, photo) into the property's folder.
@@ -324,6 +398,38 @@ final class AppModel {
             guard let savedAt = saved[entry.key] else { return false }
             return abs(savedAt.timeIntervalSince(entry.value.updatedAt)) < 1
         }
+    }
+}
+
+// MARK: - What the person reads about a restored property
+
+/// The words for a property that was restored from its backup. Plain strings, so any screen can use them.
+enum RecoveryWording {
+    static let title = "Restored from an earlier save"
+    /// On the property screen, under the title.
+    static let message = "This property\u{2019}s file was damaged, so the app went back to the save before it. Changes made just before the damage may be missing. Check the latest rooms and checks."
+    /// On the home screen's card.
+    static let card = "Restored from an earlier save. Recent changes may be missing."
+    static let dismiss = "Got it"
+}
+
+// MARK: - Telling the demo from a real job
+
+/// The demo apartment lives in the same store as real jobs and carries made-up "laser checks" (see
+/// `DemoProperty`). Anything that describes the person's real work, such as how accurate their phone has been,
+/// must leave it out, and the home list should say what it is.
+///
+/// A copy made with Duplicate gets new ids but keeps the reference and the notes, so those count too.
+enum DemoMarker {
+    /// Prefix of the demo's job reference (`DemoProperty.reference`). Real references start with `NF-`.
+    static let referencePrefix = "DEMO-"
+
+    private static let demoID = DemoProperty.make().id
+
+    static func isDemo(_ property: Property) -> Bool {
+        property.id == demoID
+            || property.reference.hasPrefix(referencePrefix)
+            || property.notes.hasPrefix(DemoProperty.syntheticNote)
     }
 }
 

@@ -1,0 +1,578 @@
+# Declarations of the SwiftUI shim that were left out
+#
+# The shim is generated from Apple's documentation pages. A declaration whose text names a type the shim does not
+# define (or that did not compile standalone against the shim) was dropped instead of being weakened. Each line is the
+# documentation page it came from and the compiler's reason. 'documented twice' means the docs print the same
+# declaration on two pages (an overload page and its hashed twin); the first is kept.
+#
+# What dropping can do: an app call that needs one of these fails to compile (a false ERROR, which is how the gaps were
+# found), or resolves to another documented overload. It cannot make a wrong call pass.
+#
+# Largest groups:
+#    133  missing type LocalizedStringResource
+#    106  documented twice (same declaration on two pages)
+#     43  missing type ImageResource
+#     30  missing type AppIntent
+#     24  other: unknown attribute '_'
+#     14  missing type OutlineGroup
+#      9  other: '_' is not a member type of struct '_'
+#      8  other: result builder attribute '_' can only be applied to a parame
+#      6  other: reference to member '_' cannot be resolved without a context
+#      6  missing type IndexedIdentifierCollection
+#      5  other: '_' is not a member type of type '_'
+#      4  missing type CGColor
+#
+# page<TAB>reason
+SwiftUI/Animation/base	cannot find type 'CustomAnimation' in scope
+SwiftUI/Animation/init(_:)	cannot find type 'CustomAnimation' in scope
+SwiftUI/AnimationContext/state	cannot find type 'AnimationState' in scope
+SwiftUI/AnimationContext/withState(_:)	cannot find type 'AnimationState' in scope
+SwiftUI/AnyTransition/init(_:)	cannot find type 'Transition' in scope
+SwiftUI/Binding/init(_:)-86mwe	invalid redeclaration of 'init(_:)'
+SwiftUI/Binding/init(get:set:)-7ufcp	invalid redeclaration of 'init(get:set:)'
+SwiftUI/Binding/subscript(_:)	cannot find type 'Component' in scope
+SwiftUI/Binding/subscript(_:)-4vwl6	cannot find type 'Component' in scope
+SwiftUI/Binding/subscript(_:)-9ctoz	cannot find type '_ImplicitlyAnimatableBuiltinComponent' in scope
+SwiftUI/Button/init(_:action:)	cannot find type 'LocalizedStringResource' in scope
+SwiftUI/Button/init(_:action:)-8sqk7	cannot find type 'LocalizedStringResource' in scope
+SwiftUI/Button/init(_:image:action:)	cannot find type 'ImageResource' in scope
+SwiftUI/Button/init(_:image:action:)-6dqq9	cannot find type 'ImageResource' in scope
+SwiftUI/Button/init(_:image:action:)-71wr7	cannot find type 'ImageResource' in scope
+SwiftUI/Button/init(_:image:action:)-7p5at	cannot find type 'ImageResource' in scope
+SwiftUI/Button/init(_:image:role:action:)	cannot find type 'ImageResource' in scope
+SwiftUI/Button/init(_:image:role:action:)-3i76f	cannot find type 'ImageResource' in scope
+SwiftUI/Button/init(_:image:role:action:)-4yye4	cannot find type 'ImageResource' in scope
+SwiftUI/Button/init(_:image:role:action:)-5h9p	cannot find type 'ImageResource' in scope
+SwiftUI/Button/init(_:image:role:intent:)	cannot find type 'AppIntent' in scope
+SwiftUI/Button/init(_:image:role:intent:)-2hhon	cannot find type 'AppIntent' in scope
+SwiftUI/Button/init(_:image:role:intent:)-4729z	cannot find type 'AppIntent' in scope
+SwiftUI/Button/init(_:image:role:intent:)-8draj	cannot find type 'AppIntent' in scope
+SwiftUI/Button/init(_:intent:)	cannot find type 'AppIntent' in scope
+SwiftUI/Button/init(_:intent:)-1aqo4	cannot find type 'AppIntent' in scope
+SwiftUI/Button/init(_:intent:)-7urde	cannot find type 'AppIntent' in scope
+SwiftUI/Button/init(_:intent:)-8y091	cannot find type 'AppIntent' in scope
+SwiftUI/Button/init(_:role:action:)	cannot find type 'LocalizedStringResource' in scope
+SwiftUI/Button/init(_:role:action:)-7ua0u	cannot find type 'LocalizedStringResource' in scope
+SwiftUI/Button/init(_:role:intent:)	cannot find type 'AppIntent' in scope
+SwiftUI/Button/init(_:role:intent:)-58k2d	cannot find type 'AppIntent' in scope
+SwiftUI/Button/init(_:role:intent:)-5bujb	cannot find type 'AppIntent' in scope
+SwiftUI/Button/init(_:role:intent:)-5ncqr	cannot find type 'AppIntent' in scope
+SwiftUI/Button/init(_:systemImage:action:)-489qf	cannot find type 'LocalizedStringResource' in scope
+SwiftUI/Button/init(_:systemImage:action:)-804cw	invalid redeclaration of 'init(_:systemImage:action:)'
+SwiftUI/Button/init(_:systemImage:role:action:)-7gz61	invalid redeclaration of 'init(_:systemImage:role:action:)'
+SwiftUI/Button/init(_:systemImage:role:action:)-pbyu	cannot find type 'LocalizedStringResource' in scope
+SwiftUI/Button/init(_:systemImage:role:intent:)	cannot find type 'AppIntent' in scope
+SwiftUI/Button/init(_:systemImage:role:intent:)-23x94	cannot find type 'AppIntent' in scope
+SwiftUI/Button/init(_:systemImage:role:intent:)-5vnz2	cannot find type 'AppIntent' in scope
+SwiftUI/Button/init(_:systemImage:role:intent:)-b1ib	cannot find type 'AppIntent' in scope
+SwiftUI/Button/init(intent:label:)	cannot find type 'AppIntent' in scope
+SwiftUI/Button/init(role:intent:label:)	cannot find type 'AppIntent' in scope
+SwiftUI/Color/Resolved/cgColor	cannot find type 'CGColor' in scope
+SwiftUI/Color/cgColor	cannot find type 'CGColor' in scope
+SwiftUI/Color/init(_:)-1cwqj	cannot find type 'CGColor' in scope
+SwiftUI/Color/init(_:)-1p49m	cannot find type 'ColorResource' in scope
+SwiftUI/Color/init(_:)-4y4hk	invalid redeclaration of 'init(_:)'
+SwiftUI/Color/init(cgColor:)	cannot find type 'CGColor' in scope
+SwiftUI/Color/transferRepresentation	cannot find type 'TransferRepresentation' in scope
+SwiftUI/ContentUnavailableView/init(_:image:description:)	cannot find type 'LocalizedStringResource' in scope
+SwiftUI/ContentUnavailableView/init(_:image:description:)-3ri26	cannot find type 'LocalizedStringResource' in scope
+SwiftUI/ContentUnavailableView/init(_:systemImage:description:)	cannot find type 'LocalizedStringResource' in scope
+SwiftUI/ContentUnavailableView/init(_:systemImage:description:)-32r2h	cannot find type 'LocalizedStringResource' in scope
+SwiftUI/DisclosureGroup/init(_:content:)	cannot find type 'LocalizedStringResource' in scope
+SwiftUI/DisclosureGroup/init(_:content:)-9c363	cannot find type 'LocalizedStringResource' in scope
+SwiftUI/DisclosureGroup/init(_:isExpanded:content:)	cannot find type 'LocalizedStringResource' in scope
+SwiftUI/DisclosureGroup/init(_:isExpanded:content:)-9xjo5	cannot find type 'LocalizedStringResource' in scope
+SwiftUI/DynamicTypeSize/init(_:)	cannot find type 'UIContentSizeCategory' in scope
+SwiftUI/Edge/Corner/Style/init(floatLiteral:)	'FloatLiteralType' is not a member type of struct 'SwiftUI.Edge.Corner.Style'
+SwiftUI/Edge/Corner/Style/init(integerLiteral:)	'IntegerLiteralType' is not a member type of struct 'SwiftUI.Edge.Corner.Style'
+SwiftUI/EdgeInsets/init(_:)-3sstc	cannot find type 'NSDirectionalEdgeInsets' in scope
+SwiftUI/EdgeInsets/inset(by:edges:)	cannot find type 'RectangleCornerInsets' in scope
+SwiftUI/Environment/init(_:)-8fge3	invalid redeclaration of 'init(_:)'
+SwiftUI/EnvironmentValues/activityFamily	cannot find type 'ActivityFamily' in scope
+SwiftUI/EnvironmentValues/askPermission	cannot find type 'AskPermissionAction' in scope
+SwiftUI/EnvironmentValues/authorizationController	cannot find type 'AuthorizationController' in scope
+SwiftUI/EnvironmentValues/backgroundProminence	cannot find type 'BackgroundProminence' in scope
+SwiftUI/EnvironmentValues/badgeProminence	cannot find type 'BadgeProminence' in scope
+SwiftUI/EnvironmentValues/buttonRepeatBehavior	cannot find type 'ButtonRepeatBehavior' in scope
+SwiftUI/EnvironmentValues/buttonSizing	cannot find type 'ButtonSizing' in scope
+SwiftUI/EnvironmentValues/contentTransition	cannot find type 'ContentTransition' in scope
+SwiftUI/EnvironmentValues/credentialDataManager	cannot find type 'CredentialDataManager' in scope
+SwiftUI/EnvironmentValues/credentialExportManager	cannot find type 'ASCredentialExportManager' in scope
+SwiftUI/EnvironmentValues/credentialImportManager	cannot find type 'ASCredentialImportManager' in scope
+SwiftUI/EnvironmentValues/deliveredVerificationCodesManager	cannot find type 'DeliveredVerificationCodesManager' in scope
+SwiftUI/EnvironmentValues/dismissSearch	cannot find type 'DismissSearchAction' in scope
+SwiftUI/EnvironmentValues/dismissWindow	cannot find type 'DismissWindowAction' in scope
+SwiftUI/EnvironmentValues/displayStoreKitMessage	cannot find type 'DisplayMessageAction' in scope
+SwiftUI/EnvironmentValues/documentConfiguration	cannot find type 'DocumentConfiguration' in scope
+SwiftUI/EnvironmentValues/editMode	cannot find type 'EditMode' in scope
+SwiftUI/EnvironmentValues/findContext	cannot find type 'FindContext' in scope
+SwiftUI/EnvironmentValues/headerProminence	cannot find type 'Prominence' in scope
+SwiftUI/EnvironmentValues/imagePlaygroundAllowedGenerationStyles	cannot find type 'ImagePlaygroundStyle' in scope
+SwiftUI/EnvironmentValues/imagePlaygroundOptions	cannot find type 'ImagePlaygroundOptions' in scope
+SwiftUI/EnvironmentValues/imagePlaygroundPersonalizationPolicy	cannot find type 'ImagePlaygroundPersonalizationPolicy' in scope
+SwiftUI/EnvironmentValues/imagePlaygroundSelectedGenerationStyle	cannot find type 'ImagePlaygroundStyle' in scope
+SwiftUI/EnvironmentValues/legibilityWeight	cannot find type 'LegibilityWeight' in scope
+SwiftUI/EnvironmentValues/levelOfDetail	cannot find type 'LevelOfDetail' in scope
+SwiftUI/EnvironmentValues/lineHeight	'LineHeight' is not a member type of struct 'FoundationEssentials.AttributedString'
+SwiftUI/EnvironmentValues/managedObjectContext	cannot find type 'NSManagedObjectContext' in scope
+SwiftUI/EnvironmentValues/materialActiveAppearance	cannot find type 'MaterialActiveAppearance' in scope
+SwiftUI/EnvironmentValues/menuOrder	cannot find type 'MenuOrder' in scope
+SwiftUI/EnvironmentValues/modelContext	cannot find type 'ModelContext' in scope
+SwiftUI/EnvironmentValues/openURL	cannot find type 'OpenURLAction' in scope
+SwiftUI/EnvironmentValues/openWindow	cannot find type 'OpenWindowAction' in scope
+SwiftUI/EnvironmentValues/preferredPencilDoubleTapAction	cannot find type 'PencilPreferredAction' in scope
+SwiftUI/EnvironmentValues/preferredPencilSqueezeAction	cannot find type 'PencilPreferredAction' in scope
+SwiftUI/EnvironmentValues/purchase	cannot find type 'PurchaseAction' in scope
+SwiftUI/EnvironmentValues/realityViewCameraControls	cannot find type 'CameraControls' in scope
+SwiftUI/EnvironmentValues/redactionReasons	cannot find type 'RedactionReasons' in scope
+SwiftUI/EnvironmentValues/rename	cannot find type 'RenameAction' in scope
+SwiftUI/EnvironmentValues/requestAgeRange	cannot find type 'DeclaredAgeRangeAction' in scope
+SwiftUI/EnvironmentValues/requestAppDeletion	cannot find type 'RequestAppDeletionAction' in scope
+SwiftUI/EnvironmentValues/requestReview	cannot find type 'RequestReviewAction' in scope
+SwiftUI/EnvironmentValues/searchSuggestionsPlacement	cannot find type 'SearchSuggestionsPlacement' in scope
+SwiftUI/EnvironmentValues/showSignificantUpdateAcknowledgment	cannot find type 'SignificantUpdateAction' in scope
+SwiftUI/EnvironmentValues/sidebarRowSize	cannot find type 'SidebarRowSize' in scope
+SwiftUI/EnvironmentValues/sizeCategory	cannot find type 'ContentSizeCategory' in scope
+SwiftUI/EnvironmentValues/springLoadingBehavior	cannot find type 'SpringLoadingBehavior' in scope
+SwiftUI/EnvironmentValues/subscript(_:)-7mwy1	invalid redeclaration of 'subscript(_:)'
+SwiftUI/EnvironmentValues/subscript(_:)-9zku	'Value' is not a member type of type 'K'
+SwiftUI/EnvironmentValues/supportedActivityFamilies	cannot find type 'ActivityFamily' in scope
+SwiftUI/EnvironmentValues/symbolColorRenderingMode	cannot find type 'SymbolColorRenderingMode' in scope
+SwiftUI/EnvironmentValues/symbolVariableValueMode	cannot find type 'SymbolVariableValueMode' in scope
+SwiftUI/EnvironmentValues/tabViewBottomAccessoryPlacement	cannot find type 'TabViewBottomAccessoryPlacement' in scope
+SwiftUI/EnvironmentValues/textSelectionAffinity	cannot find type 'TextSelectionAffinity' in scope
+SwiftUI/EnvironmentValues/toolbarLabelStyle	cannot find type 'ToolbarLabelStyle' in scope
+SwiftUI/EnvironmentValues/undoManager	cannot find type 'UndoManager' in scope
+SwiftUI/EnvironmentValues/webAuthenticationSession	cannot find type 'WebAuthenticationSession' in scope
+SwiftUI/EnvironmentValues/widgetFamily	cannot find type 'WidgetFamily' in scope
+SwiftUI/EnvironmentValues/widgetRenderingMode	cannot find type 'WidgetRenderingMode' in scope
+SwiftUI/EnvironmentValues/writingToolsBehavior	cannot find type 'WritingToolsBehavior' in scope
+SwiftUI/FocusState/init()-559if	invalid redeclaration of 'init()'
+SwiftUI/Font/Resolved/ctFont	cannot find type 'CTFont' in scope
+SwiftUI/Font/init(_:)	cannot find type 'CTFont' in scope
+SwiftUI/Font/system(size:weight:design:)	invalid redeclaration of 'system(size:weight:design:)'
+SwiftUI/ForEach/init(_:)	cannot find type 'TableRow' in scope
+SwiftUI/ForEach/init(_:content:)	unknown attribute 'MapContentBuilder'
+SwiftUI/ForEach/init(_:content:)-1gyov	unknown attribute 'MapContentBuilder'
+SwiftUI/ForEach/init(_:content:)-1wvq8	unknown attribute 'TableRowBuilder'
+SwiftUI/ForEach/init(_:content:)-2pniy	unknown attribute 'TabContentBuilder'
+SwiftUI/ForEach/init(_:content:)-3ofe8	unknown attribute 'TableRowBuilder'
+SwiftUI/ForEach/init(_:content:)-4m0hx	unknown attribute 'TabContentBuilder'
+SwiftUI/ForEach/init(_:content:)-5u3dq	unknown attribute 'TabContentBuilder'
+SwiftUI/ForEach/init(_:content:)-7lxu2	unknown attribute 'TabContentBuilder'
+SwiftUI/ForEach/init(_:content:)-cs9h	unknown attribute 'MapContentBuilder'
+SwiftUI/ForEach/init(_:content:)-rsac	invalid redeclaration of 'init(_:content:)'
+SwiftUI/ForEach/init(_:editActions:content:)	cannot find type 'EditableCollectionContent' in scope
+SwiftUI/ForEach/init(_:id:content:)	unknown attribute 'MapContentBuilder'
+SwiftUI/ForEach/init(_:id:content:)-1q9q0	invalid redeclaration of 'init(_:id:content:)'
+SwiftUI/ForEach/init(_:id:content:)-6epah	unknown attribute 'TabContentBuilder'
+SwiftUI/ForEach/init(_:id:content:)-7inug	unknown attribute 'TableRowBuilder'
+SwiftUI/ForEach/init(_:id:content:)-iiej	invalid redeclaration of 'init(_:id:content:)'
+SwiftUI/ForEach/init(_:id:content:)-iz9s	unknown attribute 'TabContentBuilder'
+SwiftUI/ForEach/init(_:id:editActions:content:)	cannot find type 'EditableCollectionContent' in scope
+SwiftUI/ForEach/init(sections:content:)	result builder attribute 'ViewBuilder' can only be applied to a parameter of function type
+SwiftUI/ForEach/init(subviews:content:)	result builder attribute 'ViewBuilder' can only be applied to a parameter of function type
+SwiftUI/GeometryProxy/bounds(of:)	cannot find type 'NamedCoordinateSpace' in scope
+SwiftUI/GeometryProxy/containerCornerInsets	cannot find type 'RectangleCornerInsets' in scope
+SwiftUI/GeometryProxy/frame(in:)	cannot find type 'CoordinateSpaceProtocol' in scope
+SwiftUI/GeometryProxy/frame(in:)-68tks	cannot find type 'CoordinateSpaceProtocol' in scope
+SwiftUI/GeometryProxy/subscript(_:)	cannot find type 'Anchor' in scope
+SwiftUI/Gesture/exclusively(before:)	cannot find type 'ExclusiveGesture' in scope
+SwiftUI/Gesture/map(_:)	cannot find type '_MapGesture' in scope
+SwiftUI/Gesture/sequenced(before:)	cannot find type 'SequenceGesture' in scope
+SwiftUI/Gesture/simultaneously(with:)	cannot find type 'SimultaneousGesture' in scope
+SwiftUI/Gesture/targetedToAnyEntity()	'some' types are only permitted in properties, subscripts, and functions
+SwiftUI/Gesture/targetedToEntity(_:)	cannot find type 'Entity' in scope
+SwiftUI/Gesture/targetedToEntity(where:)	cannot find type 'QueryPredicate' in scope
+SwiftUI/Gesture/updating(_:body:)	cannot find type 'GestureStateGesture' in scope
+SwiftUI/GraphicsContext/Filter/colorMatrix(_:)	cannot find type 'ColorMatrix' in scope
+SwiftUI/GraphicsContext/Filter/colorMatrix(_:isPremultiplied:)	cannot find type 'ColorMatrix' in scope
+SwiftUI/GraphicsContext/Filter/colorShader(_:)	cannot find type 'Shader' in scope
+SwiftUI/GraphicsContext/Filter/distortionShader(_:maxSampleOffset:)	cannot find type 'Shader' in scope
+SwiftUI/GraphicsContext/Filter/layerShader(_:maxSampleOffset:)	cannot find type 'Shader' in scope
+SwiftUI/GraphicsContext/Filter/projectionTransform(_:)	cannot find type 'ProjectionTransform' in scope
+SwiftUI/GraphicsContext/Shading/conicGradient(_:center:angle:options:)-366li	invalid redeclaration of 'conicGradient(_:center:angle:options:)'
+SwiftUI/GraphicsContext/Shading/linearGradient(_:startPoint:endPoint:options:)-2zij8	invalid redeclaration of 'linearGradient(_:startPoint:endPoint:options:)'
+SwiftUI/GraphicsContext/Shading/meshGradient(_:)	cannot find type 'MeshGradient' in scope
+SwiftUI/GraphicsContext/Shading/radialGradient(_:center:startRadius:endRadius:options:)-cmdl	invalid redeclaration of 'radialGradient(_:center:startRadius:endRadius:options:)'
+SwiftUI/GraphicsContext/Shading/radialGradient(_:startCenter:startRadius:endCenter:endRadius:options:)-9n83r	invalid redeclaration of 'radialGradient(_:startCenter:startRadius:endCenter:endRadius:options:)'
+SwiftUI/GraphicsContext/Shading/shader(_:bounds:)	cannot find type 'Shader' in scope
+SwiftUI/GraphicsContext/draw(_:at:anchor:)-1z5wt	invalid redeclaration of 'draw(_:at:anchor:)'
+SwiftUI/GraphicsContext/draw(_:in:)-7r5go	invalid redeclaration of 'draw(_:in:)'
+SwiftUI/GraphicsContext/draw(_:in:style:)-7rvee	invalid redeclaration of 'draw(_:in:style:)'
+SwiftUI/GraphicsContext/draw(_:options:)	'Layout' is not a member type of struct 'SwiftUI.Text'
+SwiftUI/GraphicsContext/draw(_:options:)-2cvtw	'Layout' is not a member type of struct 'SwiftUI.Text'
+SwiftUI/GraphicsContext/draw(_:options:)-2p2zq	'Layout' is not a member type of struct 'SwiftUI.Text'
+SwiftUI/GraphicsContext/draw(_:options:)-42lbe	'Layout' is not a member type of struct 'SwiftUI.Text'
+SwiftUI/GraphicsContext/resolve(_:)-898z6	invalid redeclaration of 'resolve'
+SwiftUI/GraphicsContext/withCGContext(content:)	cannot find type 'CGContext' in scope
+SwiftUI/Group/init(content:)-1amme	unknown attribute 'TabContentBuilder'
+SwiftUI/Group/init(content:)-2nilv	unknown attribute 'TableRowBuilder'
+SwiftUI/Group/init(content:)-4xfv8	invalid redeclaration of 'init(content:)'
+SwiftUI/Group/init(content:)-9cc4k	unknown attribute 'TableColumnBuilder'
+SwiftUI/Group/init(content:)-9jz8q	unknown attribute 'TabContentBuilder'
+SwiftUI/Group/init(content:)-p8cr	invalid redeclaration of 'init(content:)'
+SwiftUI/Group/init(sections:transform:)	result builder attribute 'ViewBuilder' can only be applied to a parameter of function type
+SwiftUI/Group/init(subviews:transform:)	result builder attribute 'ViewBuilder' can only be applied to a parameter of function type
+SwiftUI/HorizontalAlignment/init(_:)	cannot find type 'AlignmentID' in scope
+SwiftUI/Image/init(_:)	cannot find type 'ImageResource' in scope
+SwiftUI/Image/init(_:scale:orientation:label:)	cannot find type 'CGImage' in scope
+SwiftUI/Image/init(decorative:scale:orientation:)	cannot find type 'CGImage' in scope
+SwiftUI/Image/init(uiImage:)	cannot find type 'UIImage' in scope
+SwiftUI/Image/symbolColorRenderingMode(_:)	cannot find type 'SymbolColorRenderingMode' in scope
+SwiftUI/Image/symbolVariableValueMode(_:)	cannot find type 'SymbolVariableValueMode' in scope
+SwiftUI/Image/widgetAccentedRenderingMode(_:)	cannot find type 'WidgetAccentedRenderingMode' in scope
+SwiftUI/InsettableShape/strokeBorder(_:lineWidth:antialiased:)-5qhjc	invalid redeclaration of 'strokeBorder(_:lineWidth:antialiased:)'
+SwiftUI/InsettableShape/strokeBorder(_:style:antialiased:)-1mblf	invalid redeclaration of 'strokeBorder(_:style:antialiased:)'
+SwiftUI/KeyboardShortcut/init(_:modifiers:)	cannot find type 'EventModifiers' in scope
+SwiftUI/KeyboardShortcut/init(_:modifiers:localization:)	cannot find type 'EventModifiers' in scope
+SwiftUI/KeyboardShortcut/key	cannot find type 'KeyEquivalent' in scope
+SwiftUI/KeyboardShortcut/modifiers	cannot find type 'EventModifiers' in scope
+SwiftUI/Label/init(_:)	cannot find type 'ApplicationToken' in scope
+SwiftUI/Label/init(_:)-2ue2r	cannot find type 'LabelStyleConfiguration' in scope
+SwiftUI/Label/init(_:)-39rkz	cannot find type 'ApplicationToken' in scope
+SwiftUI/Label/init(_:)-6rpls	cannot find type 'WebDomainToken' in scope
+SwiftUI/Label/init(_:)-85p2n	cannot find type 'ActivityCategoryToken' in scope
+SwiftUI/Label/init(_:image:)	cannot find type 'LocalizedStringResource' in scope
+SwiftUI/Label/init(_:image:)-5un9j	cannot find type 'ImageResource' in scope
+SwiftUI/Label/init(_:image:)-7or2	cannot find type 'ImageResource' in scope
+SwiftUI/Label/init(_:image:)-9q2jy	cannot find type 'LocalizedStringResource' in scope
+SwiftUI/Label/init(_:image:)-mqa5	cannot find type 'ImageResource' in scope
+SwiftUI/Label/init(_:systemImage:)	cannot find type 'LocalizedStringResource' in scope
+SwiftUI/Label/init(_:systemImage:)-kkgq	cannot find type 'LocalizedStringResource' in scope
+SwiftUI/Layout/explicitAlignment(of:in:proposal:subviews:cache:)-3iqmu	invalid redeclaration of 'explicitAlignment(of:in:proposal:subviews:cache:)'
+SwiftUI/Layout/explicitAlignment(of:in:proposal:subviews:cache:)-8cl0p	invalid redeclaration of 'explicitAlignment(of:in:proposal:subviews:cache:)'
+SwiftUI/Layout/explicitAlignment(of:in:proposal:subviews:cache:)-8ofeu	invalid redeclaration of 'explicitAlignment(of:in:proposal:subviews:cache:)'
+SwiftUI/Layout/layoutProperties-6h7w0	invalid redeclaration of 'layoutProperties'
+SwiftUI/Layout/spacing(subviews:cache:)-1z0gt	invalid redeclaration of 'spacing(subviews:cache:)'
+SwiftUI/Layout/updateCache(_:subviews:)-75zac	invalid redeclaration of 'updateCache(_:subviews:)'
+SwiftUI/LayoutDirection/init(_:)	cannot find type 'UITraitEnvironmentLayoutDirection' in scope
+SwiftUI/LayoutSubview/containerValues	cannot find type 'ContainerValues' in scope
+SwiftUI/LayoutSubview/subscript(_:)	'Value' is not a member type of type 'K'
+SwiftUI/LayoutSubviews/subscript(_:)-73d8a	invalid redeclaration of 'subscript(_:)'
+SwiftUI/List/init(_:children:rowContent:)	cannot find type 'OutlineGroup' in scope
+SwiftUI/List/init(_:children:rowContent:)-2y3z8	cannot find type 'OutlineGroup' in scope
+SwiftUI/List/init(_:children:rowContent:)-7lxt3	cannot find type 'OutlineGroup' in scope
+SwiftUI/List/init(_:children:selection:rowContent:)-2pt7r	cannot find type 'OutlineGroup' in scope
+SwiftUI/List/init(_:children:selection:rowContent:)-5b9nv	cannot find type 'OutlineGroup' in scope
+SwiftUI/List/init(_:children:selection:rowContent:)-83svk	cannot find type 'OutlineGroup' in scope
+SwiftUI/List/init(_:children:selection:rowContent:)-qm74	cannot find type 'OutlineGroup' in scope
+SwiftUI/List/init(_:editActions:rowContent:)	cannot find type 'IndexedIdentifierCollection' in scope
+SwiftUI/List/init(_:editActions:selection:rowContent:)-48yjb	cannot find type 'IndexedIdentifierCollection' in scope
+SwiftUI/List/init(_:editActions:selection:rowContent:)-5burx	cannot find type 'IndexedIdentifierCollection' in scope
+SwiftUI/List/init(_:id:children:rowContent:)	cannot find type 'OutlineGroup' in scope
+SwiftUI/List/init(_:id:children:rowContent:)-93wbq	cannot find type 'OutlineGroup' in scope
+SwiftUI/List/init(_:id:children:rowContent:)-9vxq1	cannot find type 'OutlineGroup' in scope
+SwiftUI/List/init(_:id:children:selection:rowContent:)-234ke	cannot find type 'OutlineGroup' in scope
+SwiftUI/List/init(_:id:children:selection:rowContent:)-5ynav	cannot find type 'OutlineGroup' in scope
+SwiftUI/List/init(_:id:children:selection:rowContent:)-7aril	cannot find type 'OutlineGroup' in scope
+SwiftUI/List/init(_:id:children:selection:rowContent:)-8u9fu	cannot find type 'OutlineGroup' in scope
+SwiftUI/List/init(_:id:editActions:rowContent:)	cannot find type 'IndexedIdentifierCollection' in scope
+SwiftUI/List/init(_:id:editActions:selection:rowContent:)-4q86y	cannot find type 'IndexedIdentifierCollection' in scope
+SwiftUI/List/init(_:id:editActions:selection:rowContent:)-5vo52	cannot find type 'IndexedIdentifierCollection' in scope
+SwiftUI/List/init(_:id:rowContent:)-8x1ph	invalid redeclaration of 'init(_:id:rowContent:)'
+SwiftUI/List/init(_:id:selection:rowContent:)-6ggzn	invalid redeclaration of 'init(_:id:selection:rowContent:)'
+SwiftUI/List/init(_:rowContent:)-4c78v	invalid redeclaration of 'init(_:rowContent:)'
+SwiftUI/List/init(_:selection:rowContent:)-1q8lq	invalid redeclaration of 'init(_:selection:rowContent:)'
+SwiftUI/ListStyle/automatic	cannot find type 'DefaultListStyle' in scope
+SwiftUI/LocalizedStringKey/StringInterpolation/appendInterpolation(_:)-135jx	cannot find type 'LocalizedStringResource' in scope
+SwiftUI/LocalizedStringKey/StringInterpolation/appendInterpolation(_:)-1sn9p	invalid redeclaration of 'appendInterpolation'
+SwiftUI/LocalizedStringKey/StringInterpolation/appendInterpolation(_:)-378v9	cannot find type '_FormatSpecifiable' in scope
+SwiftUI/LocalizedStringKey/StringInterpolation/appendInterpolation(_:format:)-50mv1	invalid redeclaration of 'appendInterpolation(_:format:)'
+SwiftUI/LocalizedStringKey/StringInterpolation/appendInterpolation(_:format:)-8a4n4	cannot find type 'TimeDataSource' in scope
+SwiftUI/LocalizedStringKey/StringInterpolation/appendInterpolation(_:format:)-8jpbp	cannot find type 'TimeDataSource' in scope
+SwiftUI/LocalizedStringKey/StringInterpolation/appendInterpolation(_:formatter:)-5yzhl	invalid redeclaration of 'appendInterpolation(_:formatter:)'
+SwiftUI/LocalizedStringKey/StringInterpolation/appendInterpolation(_:specifier:)	cannot find type '_FormatSpecifiable' in scope
+SwiftUI/Material/materialActiveAppearance(_:)	cannot find type 'MaterialActiveAppearance' in scope
+SwiftUI/Menu/init(_:)	cannot find type 'MenuStyleConfiguration' in scope
+SwiftUI/Menu/init(_:content:)	cannot find type 'LocalizedStringResource' in scope
+SwiftUI/Menu/init(_:content:)-4os85	cannot find type 'LocalizedStringResource' in scope
+SwiftUI/Menu/init(_:content:primaryAction:)	cannot find type 'LocalizedStringResource' in scope
+SwiftUI/Menu/init(_:content:primaryAction:)-5qen4	cannot find type 'LocalizedStringResource' in scope
+SwiftUI/Menu/init(_:image:content:)	cannot find type 'ImageResource' in scope
+SwiftUI/Menu/init(_:image:content:)-5odut	cannot find type 'ImageResource' in scope
+SwiftUI/Menu/init(_:image:content:)-qtm2	cannot find type 'ImageResource' in scope
+SwiftUI/Menu/init(_:image:content:)-uupn	cannot find type 'ImageResource' in scope
+SwiftUI/Menu/init(_:image:content:primaryAction:)	cannot find type 'ImageResource' in scope
+SwiftUI/Menu/init(_:image:content:primaryAction:)-1dda6	cannot find type 'ImageResource' in scope
+SwiftUI/Menu/init(_:image:content:primaryAction:)-3qnkk	cannot find type 'ImageResource' in scope
+SwiftUI/Menu/init(_:systemImage:content:)-14tk5	cannot find type 'LocalizedStringResource' in scope
+SwiftUI/Menu/init(_:systemImage:content:)-9ljee	invalid redeclaration of 'init(_:systemImage:content:)'
+SwiftUI/Menu/init(_:systemImage:content:primaryAction:)-5tlic	cannot find type 'LocalizedStringResource' in scope
+SwiftUI/Menu/init(_:systemImage:content:primaryAction:)-nc58	invalid redeclaration of 'init(_:systemImage:content:primaryAction:)'
+SwiftUI/NavigationLink/init(_:destination:)-7d6im	invalid redeclaration of 'init(_:destination:)'
+SwiftUI/NavigationLink/init(_:destination:)-7i78l	cannot find type 'LocalizedStringResource' in scope
+SwiftUI/NavigationLink/init(_:destination:isActive:)-4whx5	invalid redeclaration of 'init(_:destination:isActive:)'
+SwiftUI/NavigationLink/init(_:destination:tag:selection:)-6unyq	invalid redeclaration of 'init(_:destination:tag:selection:)'
+SwiftUI/NavigationLink/init(_:isActive:destination:)-gn8q	invalid redeclaration of 'init(_:isActive:destination:)'
+SwiftUI/NavigationLink/init(_:tag:selection:destination:)-4oa09	invalid redeclaration of 'init(_:tag:selection:destination:)'
+SwiftUI/NavigationLink/init(_:value:)	cannot find type 'LocalizedStringResource' in scope
+SwiftUI/NavigationLink/init(_:value:)-6czpq	cannot find type 'LocalizedStringResource' in scope
+SwiftUI/NavigationLink/init(_:value:)-6lti0	cannot find type 'LocalizedStringResource' in scope
+SwiftUI/NavigationLink/init(destination:label:)-27n7s	invalid redeclaration of 'init(destination:label:)'
+SwiftUI/NavigationLink/init(value:label:)-3qb8y	invalid redeclaration of 'init(value:label:)'
+SwiftUI/NavigationPath/append(_:)-7519w	invalid redeclaration of 'append'
+SwiftUI/NavigationPath/init(_:)-2fv0t	invalid redeclaration of 'init(_:)'
+SwiftUI/NavigationStack/init(path:root:)-3bt4q	invalid redeclaration of 'init(path:root:)'
+SwiftUI/OffsetShape/animatableData	'AnimatableData' is not a member type of generic struct 'SwiftUI.OffsetShape<Content>'
+SwiftUI/Path/cgPath	cannot find type 'CGPath' in scope
+SwiftUI/Path/init(_:)-2rlvu	invalid redeclaration of 'init(_:)'
+SwiftUI/Path/init(_:)-3e5z	cannot find type 'CGMutablePath' in scope
+SwiftUI/Path/init(_:)-3n5fl	cannot find type 'CGPath' in scope
+SwiftUI/Picker/init(_:image:selection:content:)	cannot find type 'ImageResource' in scope
+SwiftUI/Picker/init(_:image:selection:content:)-4e9iw	cannot find type 'ImageResource' in scope
+SwiftUI/Picker/init(_:image:selection:content:)-7ht2b	cannot find type 'ImageResource' in scope
+SwiftUI/Picker/init(_:image:selection:content:)-7n0sc	cannot find type 'ImageResource' in scope
+SwiftUI/Picker/init(_:image:selection:content:currentValueLabel:)	cannot find type 'ImageResource' in scope
+SwiftUI/Picker/init(_:image:selection:content:currentValueLabel:)-1kpr2	cannot find type 'ImageResource' in scope
+SwiftUI/Picker/init(_:image:selection:content:currentValueLabel:)-4mu63	cannot find type 'ImageResource' in scope
+SwiftUI/Picker/init(_:image:selection:content:currentValueLabel:)-epxf	cannot find type 'ImageResource' in scope
+SwiftUI/Picker/init(_:image:sources:selection:content:)	cannot find type 'ImageResource' in scope
+SwiftUI/Picker/init(_:image:sources:selection:content:)-5sg1	cannot find type 'ImageResource' in scope
+SwiftUI/Picker/init(_:image:sources:selection:content:)-86ek3	cannot find type 'ImageResource' in scope
+SwiftUI/Picker/init(_:image:sources:selection:content:)-9fk6i	cannot find type 'ImageResource' in scope
+SwiftUI/Picker/init(_:image:sources:selection:content:currentValueLabel:)	cannot find type 'ImageResource' in scope
+SwiftUI/Picker/init(_:image:sources:selection:content:currentValueLabel:)-1m31e	cannot find type 'ImageResource' in scope
+SwiftUI/Picker/init(_:image:sources:selection:content:currentValueLabel:)-61u97	cannot find type 'ImageResource' in scope
+SwiftUI/Picker/init(_:image:sources:selection:content:currentValueLabel:)-8rw0y	cannot find type 'ImageResource' in scope
+SwiftUI/Picker/init(_:selection:content:)	cannot find type 'LocalizedStringResource' in scope
+SwiftUI/Picker/init(_:selection:content:)-6hete	cannot find type 'LocalizedStringResource' in scope
+SwiftUI/Picker/init(_:selection:content:currentValueLabel:)	cannot find type 'LocalizedStringResource' in scope
+SwiftUI/Picker/init(_:selection:content:currentValueLabel:)-8oiy9	cannot find type 'LocalizedStringResource' in scope
+SwiftUI/Picker/init(_:sources:selection:content:)	cannot find type 'LocalizedStringResource' in scope
+SwiftUI/Picker/init(_:sources:selection:content:)-q0hx	cannot find type 'LocalizedStringResource' in scope
+SwiftUI/Picker/init(_:sources:selection:content:currentValueLabel:)	cannot find type 'LocalizedStringResource' in scope
+SwiftUI/Picker/init(_:sources:selection:content:currentValueLabel:)-1re4r	cannot find type 'LocalizedStringResource' in scope
+SwiftUI/Picker/init(_:systemImage:selection:content:)-5ybho	invalid redeclaration of 'init(_:systemImage:selection:content:)'
+SwiftUI/Picker/init(_:systemImage:selection:content:)-9m05q	cannot find type 'LocalizedStringResource' in scope
+SwiftUI/Picker/init(_:systemImage:selection:content:currentValueLabel:)-1l8ca	invalid redeclaration of 'init(_:systemImage:selection:content:currentValueLabel:)'
+SwiftUI/Picker/init(_:systemImage:selection:content:currentValueLabel:)-facz	cannot find type 'LocalizedStringResource' in scope
+SwiftUI/Picker/init(_:systemImage:sources:selection:content:)-6mnjr	cannot find type 'LocalizedStringResource' in scope
+SwiftUI/Picker/init(_:systemImage:sources:selection:content:)-yxzu	invalid redeclaration of 'init(_:systemImage:sources:selection:content:)'
+SwiftUI/Picker/init(_:systemImage:sources:selection:content:currentValueLabel:)-22rmp	cannot find type 'LocalizedStringResource' in scope
+SwiftUI/Picker/init(_:systemImage:sources:selection:content:currentValueLabel:)-77ppl	invalid redeclaration of 'init(_:systemImage:sources:selection:content:currentValueLabel:)'
+SwiftUI/PickerStyle/tabs	cannot find type 'TabsPickerStyle' in scope
+SwiftUI/PresentationDetent/custom(_:)	cannot find type 'CustomPresentationDetent' in scope
+SwiftUI/ProgressView/init(_:)	cannot find type 'LocalizedStringResource' in scope
+SwiftUI/ProgressView/init(_:)-9alwf	cannot find type 'LocalizedStringResource' in scope
+SwiftUI/ProgressView/init(_:)-9dmp3	cannot find type 'ProgressViewStyleConfiguration' in scope
+SwiftUI/ProgressView/init(_:value:total:)	cannot find type 'LocalizedStringResource' in scope
+SwiftUI/ProgressView/init(_:value:total:)-2fr9d	cannot find type 'LocalizedStringResource' in scope
+SwiftUI/RotatedShape/animatableData	'AnimatableData' is not a member type of generic struct 'SwiftUI.RotatedShape<Content>'
+SwiftUI/RoundedRectangle/animatableData	'AnimatableData' is not a member type of struct 'Foundation.CGSize'
+SwiftUI/ScaledShape/animatableData	'AnimatableData' is not a member type of generic struct 'SwiftUI.ScaledShape<Content>'
+SwiftUI/Section/init(_:content:)-15a68	cannot find type 'LocalizedStringResource' in scope
+SwiftUI/Section/init(_:content:)-5ax3j	unknown attribute 'TableRowBuilder'
+SwiftUI/Section/init(_:content:)-5umpp	'TableRowValue' is not a member type of type 'Content'
+SwiftUI/Section/init(_:content:)-6g4it	invalid redeclaration of 'init(_:content:)'
+SwiftUI/Section/init(_:content:)-k9lk	unknown attribute 'TableRowBuilder'
+SwiftUI/Section/init(_:isExpanded:content:)-153np	unknown attribute 'TableRowBuilder'
+SwiftUI/Section/init(_:isExpanded:content:)-1745h	'TableRowValue' is not a member type of type 'Content'
+SwiftUI/Section/init(_:isExpanded:content:)-1t0mc	invalid redeclaration of 'init(_:isExpanded:content:)'
+SwiftUI/Section/init(_:isExpanded:content:)-3tkzd	cannot find type 'LocalizedStringResource' in scope
+SwiftUI/Section/init(_:isExpanded:content:)-5hjcw	unknown attribute 'TableRowBuilder'
+SwiftUI/Section/init(content:)-1c3ry	unknown attribute 'TableRowBuilder'
+SwiftUI/Section/init(content:)-6ba5w	invalid redeclaration of 'init(content:)'
+SwiftUI/Section/init(content:header:)-72lqz	unknown attribute 'TableRowBuilder'
+SwiftUI/Section/init(content:header:)-8u854	invalid redeclaration of 'init(content:header:)'
+SwiftUI/Section/init(isExpanded:content:header:)-1qkx9	invalid redeclaration of 'init(isExpanded:content:header:)'
+SwiftUI/Section/init(isExpanded:content:header:)-9bdul	unknown attribute 'TableRowBuilder'
+SwiftUI/Shape/buttonBorder	cannot find type 'ButtonBorderShape' in scope
+SwiftUI/Shape/containerRelative	cannot find type 'ContainerRelativeShape' in scope
+SwiftUI/Shape/fill(_:style:)-3y2ud	invalid redeclaration of 'fill(_:style:)'
+SwiftUI/Shape/layoutDirectionBehavior-5wfat	invalid redeclaration of 'layoutDirectionBehavior'
+SwiftUI/Shape/offset(_:)-9nmd5	invalid redeclaration of 'offset'
+SwiftUI/Shape/role-681up	invalid redeclaration of 'role'
+SwiftUI/Shape/sizeThatFits(_:)-2vtnh	invalid redeclaration of 'sizeThatFits'
+SwiftUI/Shape/textInputBorder	cannot find type 'TextInputBorderShape' in scope
+SwiftUI/ShapeStyle/angularGradient(_:center:startAngle:endAngle:)-7pe7x	invalid redeclaration of 'angularGradient(_:center:startAngle:endAngle:)'
+SwiftUI/ShapeStyle/conicGradient(_:center:angle:)-2f9fy	invalid redeclaration of 'conicGradient(_:center:angle:)'
+SwiftUI/ShapeStyle/ellipticalGradient(_:center:startRadiusFraction:endRadiusFraction:)-4nzly	invalid redeclaration of 'ellipticalGradient(_:center:startRadiusFraction:endRadiusFraction:)'
+SwiftUI/ShapeStyle/fill	cannot find type 'FillShapeStyle' in scope
+SwiftUI/ShapeStyle/image(_:sourceRect:scale:)	cannot find type 'ImagePaint' in scope
+SwiftUI/ShapeStyle/linearGradient(_:startPoint:endPoint:)-5xsg4	invalid redeclaration of 'linearGradient(_:startPoint:endPoint:)'
+SwiftUI/ShapeStyle/link	cannot find type 'LinkShapeStyle' in scope
+SwiftUI/ShapeStyle/materialActiveAppearance(_:)	cannot find type 'MaterialActiveAppearance' in scope
+SwiftUI/ShapeStyle/placeholder	cannot find type 'PlaceholderTextShapeStyle' in scope
+SwiftUI/ShapeStyle/radialGradient(_:center:startRadius:endRadius:)-2blwe	invalid redeclaration of 'radialGradient(_:center:startRadius:endRadius:)'
+SwiftUI/ShapeStyle/selection	cannot find type 'SelectionShapeStyle' in scope
+SwiftUI/ShapeStyle/separator	cannot find type 'SeparatorShapeStyle' in scope
+SwiftUI/ShapeStyle/windowBackground	cannot find type 'WindowBackgroundShapeStyle' in scope
+SwiftUI/SpatialTapGesture/init(count:coordinateSpace:)	reference to member 'local' cannot be resolved without a contextual type
+SwiftUI/SpatialTapGesture/init(count:coordinateSpace:)-75s7q	reference to member 'local' cannot be resolved without a contextual type
+SwiftUI/SpatialTapGesture/init(count:coordinateSpace:inputKinds:)	reference to member 'local' cannot be resolved without a contextual type
+SwiftUI/Stepper/init(_:onIncrement:onDecrement:onEditingChanged:)	cannot find type 'LocalizedStringResource' in scope
+SwiftUI/Stepper/init(_:onIncrement:onDecrement:onEditingChanged:)-459fy	cannot find type 'LocalizedStringResource' in scope
+SwiftUI/Stepper/init(_:value:in:step:format:onEditingChanged:)	cannot find type 'LocalizedStringResource' in scope
+SwiftUI/Stepper/init(_:value:in:step:format:onEditingChanged:)-4lup2	cannot find type 'LocalizedStringResource' in scope
+SwiftUI/Stepper/init(_:value:in:step:onEditingChanged:)	cannot find type 'LocalizedStringResource' in scope
+SwiftUI/Stepper/init(_:value:in:step:onEditingChanged:)-6kbcu	cannot find type 'LocalizedStringResource' in scope
+SwiftUI/Stepper/init(_:value:step:format:onEditingChanged:)	cannot find type 'LocalizedStringResource' in scope
+SwiftUI/Stepper/init(_:value:step:format:onEditingChanged:)-d0v3	cannot find type 'LocalizedStringResource' in scope
+SwiftUI/Stepper/init(_:value:step:onEditingChanged:)	cannot find type 'LocalizedStringResource' in scope
+SwiftUI/Stepper/init(_:value:step:onEditingChanged:)-21tnq	cannot find type 'LocalizedStringResource' in scope
+SwiftUI/Text/LineStyle/init(nsUnderlineStyle:)	cannot find type 'NSUnderlineStyle' in scope
+SwiftUI/Text/accessibilityLabel(_:)	cannot find type 'LocalizedStringResource' in scope
+SwiftUI/Text/accessibilityLabel(_:)-44l9j	cannot find type 'LocalizedStringResource' in scope
+SwiftUI/Text/customAttribute(_:)	cannot find type 'TextAttribute' in scope
+SwiftUI/Text/init(_:)-1a4oh	invalid redeclaration of 'init(_:)'
+SwiftUI/Text/init(_:)-1s6o1	cannot find type 'LocalizedStringResource' in scope
+SwiftUI/Text/init(_:format:)-3h46r	invalid redeclaration of 'init(_:format:)'
+SwiftUI/Text/init(_:format:)-3lqg1	cannot find type 'TimeDataSource' in scope
+SwiftUI/Text/init(_:format:)-8sfgg	cannot find type 'TimeDataSource' in scope
+SwiftUI/Text/init(_:formatter:)-1v7mr	invalid redeclaration of 'init(_:formatter:)'
+SwiftUI/Text/textVariant(_:)	cannot find type 'TextVariantPreference' in scope
+SwiftUI/Text/typesettingLanguage(_:isEnabled:)-85e9h	cannot find type 'TypesettingLanguage' in scope
+SwiftUI/Text/typesettingLanguage(_:isEnabled:)-8dobz	invalid redeclaration of 'typesettingLanguage(_:isEnabled:)'
+SwiftUI/TextEditor/init(text:selection:)	cannot find type 'AttributedTextSelection' in scope
+SwiftUI/TextEditor/init(text:selection:)-11r0a	cannot find type 'AttributedTextSelection' in scope
+SwiftUI/TextField/init(_:text:)-4lffk	invalid redeclaration of 'init(_:text:)'
+SwiftUI/TextField/init(_:text:)-64d2z	cannot find type 'LocalizedStringResource' in scope
+SwiftUI/TextField/init(_:text:axis:)	cannot find type 'LocalizedStringResource' in scope
+SwiftUI/TextField/init(_:text:axis:)-1gfla	cannot find type 'LocalizedStringResource' in scope
+SwiftUI/TextField/init(_:text:onCommit:)-44spu	invalid redeclaration of 'init(_:text:onCommit:)'
+SwiftUI/TextField/init(_:text:onEditingChanged:)-5z9w0	invalid redeclaration of 'init(_:text:onEditingChanged:)'
+SwiftUI/TextField/init(_:text:onEditingChanged:onCommit:)-6lnin	invalid redeclaration of 'init(_:text:onEditingChanged:onCommit:)'
+SwiftUI/TextField/init(_:text:prompt:)	cannot find type 'LocalizedStringResource' in scope
+SwiftUI/TextField/init(_:text:prompt:)-5t4bt	cannot find type 'LocalizedStringResource' in scope
+SwiftUI/TextField/init(_:text:prompt:axis:)	cannot find type 'LocalizedStringResource' in scope
+SwiftUI/TextField/init(_:text:prompt:axis:)-7oofj	cannot find type 'LocalizedStringResource' in scope
+SwiftUI/TextField/init(_:text:selection:prompt:axis:)	cannot find type 'LocalizedStringResource' in scope
+SwiftUI/TextField/init(_:text:selection:prompt:axis:)-8z25p	cannot find type 'LocalizedStringResource' in scope
+SwiftUI/TextField/init(_:value:format:prompt:)	cannot find type 'LocalizedStringResource' in scope
+SwiftUI/TextField/init(_:value:format:prompt:)-75nzx	cannot find type 'LocalizedStringResource' in scope
+SwiftUI/TextField/init(_:value:format:prompt:)-85zr9	cannot find type 'LocalizedStringResource' in scope
+SwiftUI/TextField/init(_:value:formatter:)-28a6e	cannot find type 'LocalizedStringResource' in scope
+SwiftUI/TextField/init(_:value:formatter:)-4013v	invalid redeclaration of 'init(_:value:formatter:)'
+SwiftUI/TextField/init(_:value:formatter:onCommit:)-71s0q	invalid redeclaration of 'init(_:value:formatter:onCommit:)'
+SwiftUI/TextField/init(_:value:formatter:onEditingChanged:)-8ndbc	invalid redeclaration of 'init(_:value:formatter:onEditingChanged:)'
+SwiftUI/TextField/init(_:value:formatter:onEditingChanged:onCommit:)-69262	invalid redeclaration of 'init(_:value:formatter:onEditingChanged:onCommit:)'
+SwiftUI/TextField/init(_:value:formatter:prompt:)	cannot find type 'LocalizedStringResource' in scope
+SwiftUI/TextField/init(_:value:formatter:prompt:)-2uh5	cannot find type 'LocalizedStringResource' in scope
+SwiftUI/TextField/init(value:format:prompt:label:)-99ntf	invalid redeclaration of 'init(value:format:prompt:label:)'
+SwiftUI/TextInputAutocapitalization/init(_:)	cannot find type 'UITextAutocapitalizationType' in scope
+SwiftUI/TextSelection/affinity	cannot find type 'TextSelectionAffinity' in scope
+SwiftUI/TimelineView/init(_:content:)	result builder attribute 'ViewBuilder' can only be applied to a parameter of function type
+SwiftUI/TimelineView/init(_:content:)-1mlmj	result builder attribute 'ViewBuilder' can only be applied to a parameter of function type
+SwiftUI/Toggle/init(_:image:isOn:)	cannot find type 'ImageResource' in scope
+SwiftUI/Toggle/init(_:image:isOn:)-1va8i	cannot find type 'ImageResource' in scope
+SwiftUI/Toggle/init(_:image:isOn:)-4o679	cannot find type 'ImageResource' in scope
+SwiftUI/Toggle/init(_:image:isOn:)-kp9t	cannot find type 'ImageResource' in scope
+SwiftUI/Toggle/init(_:image:sources:isOn:)	cannot find type 'ImageResource' in scope
+SwiftUI/Toggle/init(_:image:sources:isOn:)-3f69s	cannot find type 'ImageResource' in scope
+SwiftUI/Toggle/init(_:image:sources:isOn:)-3h9zc	cannot find type 'ImageResource' in scope
+SwiftUI/Toggle/init(_:image:sources:isOn:)-4725e	cannot find type 'ImageResource' in scope
+SwiftUI/Toggle/init(_:isOn:)	cannot find type 'LocalizedStringResource' in scope
+SwiftUI/Toggle/init(_:isOn:)-7bjzo	cannot find type 'LocalizedStringResource' in scope
+SwiftUI/Toggle/init(_:isOn:intent:)	cannot find type 'AppIntent' in scope
+SwiftUI/Toggle/init(_:isOn:intent:)-1rk6x	cannot find type 'AppIntent' in scope
+SwiftUI/Toggle/init(_:isOn:intent:)-4lsrf	cannot find type 'AppIntent' in scope
+SwiftUI/Toggle/init(_:isOn:intent:)-8mkde	cannot find type 'AppIntent' in scope
+SwiftUI/Toggle/init(_:sources:isOn:)	cannot find type 'LocalizedStringResource' in scope
+SwiftUI/Toggle/init(_:sources:isOn:)-9xnx4	cannot find type 'LocalizedStringResource' in scope
+SwiftUI/Toggle/init(_:systemImage:isOn:)-21pet	cannot find type 'LocalizedStringResource' in scope
+SwiftUI/Toggle/init(_:systemImage:isOn:)-4wc5w	invalid redeclaration of 'init(_:systemImage:isOn:)'
+SwiftUI/Toggle/init(_:systemImage:sources:isOn:)-6umtq	invalid redeclaration of 'init(_:systemImage:sources:isOn:)'
+SwiftUI/Toggle/init(_:systemImage:sources:isOn:)-78x3s	cannot find type 'LocalizedStringResource' in scope
+SwiftUI/Toggle/init(isOn:intent:label:)	cannot find type 'AppIntent' in scope
+SwiftUI/ToolbarItemGroup/init(placement:content:label:)	type 'Content' does not conform to protocol 'View'
+SwiftUI/Transaction/addAnimationCompletion(criteria:_:)	cannot find type 'AnimationCompletionCriteria' in scope
+SwiftUI/Transaction/dismissBehavior	cannot find type 'DismissBehavior' in scope
+SwiftUI/Transaction/scrollContentOffsetAdjustmentBehavior	cannot find type 'ScrollContentOffsetAdjustmentBehavior' in scope
+SwiftUI/Transaction/subscript(_:)	'Value' is not a member type of type 'K'
+SwiftUI/UnevenRoundedRectangle/animatableData	'AnimatableData' is not a member type of struct 'SwiftUI.RectangleCornerRadii'
+SwiftUI/UserInterfaceSizeClass/init(_:)	cannot find type 'UIUserInterfaceSizeClass' in scope
+SwiftUI/VerticalAlignment/init(_:)	cannot find type 'AlignmentID' in scope
+SwiftUI/View/accessibilityAction(_:intent:)	cannot find type 'AppIntent' in scope
+SwiftUI/View/accessibilityAction(intent:label:)	cannot find type 'AppIntent' in scope
+SwiftUI/View/accessibilityAction(named:_:)	cannot find type 'LocalizedStringResource' in scope
+SwiftUI/View/accessibilityAction(named:_:)-7rdjw	cannot find type 'LocalizedStringResource' in scope
+SwiftUI/View/accessibilityAction(named:intent:)	cannot find type 'AppIntent' in scope
+SwiftUI/View/accessibilityAction(named:intent:)-4kf5v	cannot find type 'AppIntent' in scope
+SwiftUI/View/accessibilityAction(named:intent:)-4rhil	cannot find type 'AppIntent' in scope
+SwiftUI/View/accessibilityAction(named:intent:)-5ieqf	cannot find type 'AppIntent' in scope
+SwiftUI/View/accessibilityAction(named:intent:)-8eg81	cannot find type 'AppIntent' in scope
+SwiftUI/View/accessibilityHint(_:)	cannot find type 'LocalizedStringResource' in scope
+SwiftUI/View/accessibilityHint(_:)-8g0jv	cannot find type 'LocalizedStringResource' in scope
+SwiftUI/View/accessibilityHint(_:isEnabled:)	cannot find type 'LocalizedStringResource' in scope
+SwiftUI/View/accessibilityHint(_:isEnabled:)-7hef	cannot find type 'LocalizedStringResource' in scope
+SwiftUI/View/accessibilityLabel(_:)	cannot find type 'LocalizedStringResource' in scope
+SwiftUI/View/accessibilityLabel(_:)-3j7w3	cannot find type 'LocalizedStringResource' in scope
+SwiftUI/View/accessibilityLabel(_:isEnabled:)	cannot find type 'LocalizedStringResource' in scope
+SwiftUI/View/accessibilityLabel(_:isEnabled:)-2x96	cannot find type 'LocalizedStringResource' in scope
+SwiftUI/View/accessibilityLabel(content:)	result builder attribute 'ViewBuilder' can only be applied to a parameter of function type
+SwiftUI/View/accessibilityValue(_:)	cannot find type 'LocalizedStringResource' in scope
+SwiftUI/View/accessibilityValue(_:)-3oj1w	cannot find type 'LocalizedStringResource' in scope
+SwiftUI/View/accessibilityValue(_:isEnabled:)	cannot find type 'LocalizedStringResource' in scope
+SwiftUI/View/accessibilityValue(_:isEnabled:)-x5sx	cannot find type 'LocalizedStringResource' in scope
+SwiftUI/View/alert(_:isPresented:actions:)	cannot find type 'LocalizedStringResource' in scope
+SwiftUI/View/alert(_:isPresented:actions:)-9y8pk	cannot find type 'LocalizedStringResource' in scope
+SwiftUI/View/alert(_:isPresented:actions:message:)	cannot find type 'LocalizedStringResource' in scope
+SwiftUI/View/alert(_:isPresented:actions:message:)-8t1k5	cannot find type 'LocalizedStringResource' in scope
+SwiftUI/View/alert(_:isPresented:presenting:actions:)	cannot find type 'LocalizedStringResource' in scope
+SwiftUI/View/alert(_:isPresented:presenting:actions:)-4p3tb	cannot find type 'LocalizedStringResource' in scope
+SwiftUI/View/alert(_:isPresented:presenting:actions:message:)	cannot find type 'LocalizedStringResource' in scope
+SwiftUI/View/alert(_:isPresented:presenting:actions:message:)-1zcyt	cannot find type 'LocalizedStringResource' in scope
+SwiftUI/View/alert(_:item:actions:)-4qsee	cannot find type 'LocalizedStringResource' in scope
+SwiftUI/View/alert(_:item:actions:)-8zxet	invalid redeclaration of 'alert(_:item:actions:)'
+SwiftUI/View/alert(_:item:actions:message:)-7qwsy	invalid redeclaration of 'alert(_:item:actions:message:)'
+SwiftUI/View/alert(_:item:actions:message:)-83dyy	cannot find type 'LocalizedStringResource' in scope
+SwiftUI/View/alert(error:actions:)-30vro	invalid redeclaration of 'alert(error:actions:)'
+SwiftUI/View/alert(error:actions:message:)-8po4h	invalid redeclaration of 'alert(error:actions:message:)'
+SwiftUI/View/animation(_:)-7mq1i	invalid redeclaration of 'animation'
+SwiftUI/View/animation(_:body:)	result builder attribute 'ViewBuilder' can only be applied to a parameter of function type
+SwiftUI/View/background(_:in:fillStyle:)-20tq5	invalid redeclaration of 'background(_:in:fillStyle:)'
+SwiftUI/View/background(in:fillStyle:)-61m9r	invalid redeclaration of 'background(in:fillStyle:)'
+SwiftUI/View/buttonStyle(_:)-66fbx	cannot find type 'PrimitiveButtonStyle' in scope
+SwiftUI/View/buttonStyle(_:)-7qx1	invalid redeclaration of 'buttonStyle'
+SwiftUI/View/confirmationDialog(_:isPresented:titleVisibility:actions:)	cannot find type 'LocalizedStringResource' in scope
+SwiftUI/View/confirmationDialog(_:isPresented:titleVisibility:actions:)-8xj6p	cannot find type 'LocalizedStringResource' in scope
+SwiftUI/View/confirmationDialog(_:isPresented:titleVisibility:actions:message:)	cannot find type 'LocalizedStringResource' in scope
+SwiftUI/View/confirmationDialog(_:isPresented:titleVisibility:actions:message:)-9lpvg	cannot find type 'LocalizedStringResource' in scope
+SwiftUI/View/confirmationDialog(_:isPresented:titleVisibility:presenting:actions:)	cannot find type 'LocalizedStringResource' in scope
+SwiftUI/View/confirmationDialog(_:isPresented:titleVisibility:presenting:actions:)-1t50g	cannot find type 'LocalizedStringResource' in scope
+SwiftUI/View/confirmationDialog(_:isPresented:titleVisibility:presenting:actions:message:)	cannot find type 'LocalizedStringResource' in scope
+SwiftUI/View/confirmationDialog(_:isPresented:titleVisibility:presenting:actions:message:)-37gv2	cannot find type 'LocalizedStringResource' in scope
+SwiftUI/View/confirmationDialog(_:item:titleVisibility:actions:)-27g7n	invalid redeclaration of 'confirmationDialog(_:item:titleVisibility:actions:)'
+SwiftUI/View/confirmationDialog(_:item:titleVisibility:actions:)-b3zs	cannot find type 'LocalizedStringResource' in scope
+SwiftUI/View/confirmationDialog(_:item:titleVisibility:actions:message:)-7lj91	invalid redeclaration of 'confirmationDialog(_:item:titleVisibility:actions:message:)'
+SwiftUI/View/confirmationDialog(_:item:titleVisibility:actions:message:)-8tfy5	cannot find type 'LocalizedStringResource' in scope
+SwiftUI/View/contextMenu(_:)	cannot find type 'ContextMenu' in scope
+SwiftUI/View/dynamicTypeSize(_:)-1m2tf	invalid redeclaration of 'dynamicTypeSize'
+SwiftUI/View/gesture(_:)-8zl0g	cannot find type 'UIGestureRecognizerRepresentable' in scope
+SwiftUI/View/lineLimit(_:)-4hzfa	invalid redeclaration of 'lineLimit'
+SwiftUI/View/navigationTitle(_:)	cannot find type 'LocalizedStringResource' in scope
+SwiftUI/View/navigationTitle(_:)-5qydp	cannot find type 'LocalizedStringResource' in scope
+SwiftUI/View/onChange(of:initial:_:)-8wgw9	invalid redeclaration of 'onChange(of:initial:_:)'
+SwiftUI/View/onTapGesture(count:coordinateSpace:inputKinds:perform:)	reference to member 'local' cannot be resolved without a contextual type
+SwiftUI/View/onTapGesture(count:coordinateSpace:perform:)	reference to member 'local' cannot be resolved without a contextual type
+SwiftUI/View/onTapGesture(count:coordinateSpace:perform:)-21n4i	reference to member 'local' cannot be resolved without a contextual type
+SwiftUI/View/padding(_:)-6pgqq	invalid redeclaration of 'padding'
+SwiftUI/View/safeAreaInset(edge:alignment:spacing:content:)-6gwby	invalid redeclaration of 'safeAreaInset(edge:alignment:spacing:content:)'
+SwiftUI/View/searchable(text:editableTokens:isPresented:placement:prompt:token:)	cannot find type 'LocalizedStringResource' in scope
+SwiftUI/View/searchable(text:editableTokens:isPresented:placement:prompt:token:)-57s0g	cannot find type 'LocalizedStringResource' in scope
+SwiftUI/View/searchable(text:editableTokens:placement:prompt:token:)	cannot find type 'LocalizedStringResource' in scope
+SwiftUI/View/searchable(text:editableTokens:placement:prompt:token:)-80j2h	cannot find type 'LocalizedStringResource' in scope
+SwiftUI/View/searchable(text:isPresented:placement:prompt:)	cannot find type 'LocalizedStringResource' in scope
+SwiftUI/View/searchable(text:isPresented:placement:prompt:)-2rw7q	cannot find type 'LocalizedStringResource' in scope
+SwiftUI/View/searchable(text:placement:prompt:)	cannot find type 'LocalizedStringResource' in scope
+SwiftUI/View/searchable(text:placement:prompt:)-62e62	cannot find type 'LocalizedStringResource' in scope
+SwiftUI/View/searchable(text:placement:prompt:suggestions:)-3w0tx	invalid redeclaration of 'searchable(text:placement:prompt:suggestions:)'
+SwiftUI/View/searchable(text:tokens:isPresented:placement:prompt:token:)	cannot find type 'LocalizedStringResource' in scope
+SwiftUI/View/searchable(text:tokens:isPresented:placement:prompt:token:)-5r2kk	cannot find type 'LocalizedStringResource' in scope
+SwiftUI/View/searchable(text:tokens:placement:prompt:token:)	cannot find type 'LocalizedStringResource' in scope
+SwiftUI/View/searchable(text:tokens:placement:prompt:token:)-211ql	cannot find type 'LocalizedStringResource' in scope
+SwiftUI/View/searchable(text:tokens:suggestedTokens:isPresented:placement:prompt:token:)	cannot find type 'LocalizedStringResource' in scope
+SwiftUI/View/searchable(text:tokens:suggestedTokens:isPresented:placement:prompt:token:)-21drg	cannot find type 'LocalizedStringResource' in scope
+SwiftUI/View/searchable(text:tokens:suggestedTokens:placement:prompt:token:)	cannot find type 'LocalizedStringResource' in scope
+SwiftUI/View/searchable(text:tokens:suggestedTokens:placement:prompt:token:)-6lesj	cannot find type 'LocalizedStringResource' in scope
+SwiftUI/View/sensoryFeedback(trigger:_:)-7neyl	invalid redeclaration of 'sensoryFeedback(trigger:_:)'
+SwiftUI/View/tint(_:)-23xyq	invalid redeclaration of 'tint'
+SwiftUI/View/toolbar(content:)-5w0tj	invalid redeclaration of 'toolbar(content:)'
+SwiftUI/View/toolbar(id:content:)	cannot find type 'CustomizableToolbarContent' in scope
+SwiftUI/View/toolbar(removing:)	cannot find type 'ToolbarDefaultItemKind' in scope
+SwiftUI/View/transition(_:)	cannot find type 'Transition' in scope
+SwiftUI/View/transition(_:)-2vjb8	cannot find type 'Transition' in scope
+SwiftUI/ViewDimensions/subscript(_:)-965l2	invalid redeclaration of 'subscript(_:)'
+SwiftUI/ViewDimensions/subscript(explicit:)-61812	invalid redeclaration of 'subscript(explicit:)'
+SwiftUI/withAnimation(_:completionCriteria:_:completion:)	cannot find type 'AnimationCompletionCriteria' in scope

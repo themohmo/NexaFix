@@ -1,11 +1,52 @@
-# XcodeGen project definition for NexaFix Scan.
-#   brew install xcodegen      (one time)
-#   cd ios && xcodegen generate && open NexaFixScan.xcodeproj
-# The .xcodeproj is generated and git-ignored; this file is the source of truth.
+# XcodeGen project definition for NexaFix Scan. This file is the source of truth; the .xcodeproj it
+# produces is generated and git-ignored, so never edit the .xcodeproj by hand and expect it to last.
+#
+# FIRST RUN (about 15 minutes; needs Xcode 26 or later, written for Xcode 27 and an iPhone Pro with LiDAR)
+#   1. brew install xcodegen                      (one time; this file needs XcodeGen 2.38 or newer)
+#   2. cd ios && xcodegen generate && open NexaFixScan.xcodeproj
+#   3. Xcode: click the blue project icon, choose the NexaFixScan target, open Signing & Capabilities and pick
+#      your Apple ID under Team (Xcode > Settings > Accounts > + adds it). Leave "Automatically manage
+#      signing" ticked. A free Apple ID ("Personal Team") is enough; the app needs no entitlements.
+#   4. Plug the iPhone in with a cable, tap Trust on the phone, and turn on Settings > Privacy & Security >
+#      Developer Mode (the phone restarts once). Pick the phone in the run-destination menu and press Run.
+#      The first time, Xcode spends a few minutes "preparing" the phone before the build can start.
+#   5. First launch on the phone: Settings > General > VPN & Device Management > your Apple ID > Trust.
+#      A free account's app stops opening after 7 days (press Run again to renew; saved scans are kept) and
+#      a free account can have at most 3 of its own apps installed at once.
+#
+# IF XCODE SAYS "Signing for NexaFixScan requires a development team"
+#   Pick a Team (step 3). Xcode forgets it every time `xcodegen generate` re-creates the project, so to make
+#   it stick run `ios/tools/remember-signing.sh` once after picking it (see "KEEPING YOUR SIGNING" below).
+#
+# IF XCODE SAYS "Failed to register bundle identifier" / "The app identifier ... is not available"
+#   An App ID (the bundle identifier) can belong to only one Apple developer team. com.nexafix.scan is
+#   free unless some other team has already registered it. It was not possible to check that from the
+#   machine this file was written on. Fix: use an identifier of your own, e.g. com.<yourname>.nexafixscan,
+#   in Signing & Capabilities > Bundle Identifier (or in Config/Local.xcconfig, below). Other messages with the
+#   same cause: "No profiles for 'com.nexafix.scan' were found" and "Communication with Apple failed".
+#   Wording differs a little between Xcode versions; the fix is the same. A free account can only register a
+#   handful of new App IDs per week (about 10), so do not keep changing the identifier.
+#   Note that whichever team registers an id first keeps it: if NexaFix later joins the paid program, use a
+#   different id for that team, or build the company's copy under the company team from the start.
+#
+# KEEPING YOUR SIGNING (so `xcodegen generate` and `git pull` do not undo it)
+#   The bundle identifier and team live in Config/Signing.xcconfig, which reads an optional, git-ignored
+#   Config/Local.xcconfig. After picking your Team in Xcode once, run:   ios/tools/remember-signing.sh
+#   (or copy Config/Local.xcconfig.example to Config/Local.xcconfig and edit it). Then re-generate freely.
+#
+# WHAT XCODEGEN DOES WITH THE FILES UNDER NexaFixScan/ (checked by ios/tools/preflight.py)
+#   *.swift                      -> Compile Sources
+#   Resources/Assets.xcassets    -> Copy Bundle Resources (compiled by actool into Assets.car)
+#   Resources/PrivacyInfo.xcprivacy -> Copy Bundle Resources (lands at the root of the .app, as Apple requires)
+#   anything else                -> would also be copied into the app, so `excludes` below keeps notes out.
+#   Config/Info.plist is written by XcodeGen from `info:` below; it lives outside the source folder, so it
+#   is not a resource. Do not add an Info.plist by hand.
 name: NexaFixScan
 
 options:
-  bundleIdPrefix: com.nexafix
+  minimumXcodeGenVersion: "2.38.0"
+  # Stamps the project as created by Xcode 27 (27.0 = 2700), so Xcode does not offer "Update to recommended settings".
+  xcodeVersion: "2700"
   deploymentTarget:
     iOS: "17.0"
   developmentLanguage: en
@@ -14,19 +55,30 @@ options:
 
 settings:
   base:
+    # Swift 5 language mode. Xcode 27 ships the Swift 6.4 compiler; the app is written for Swift 5 mode and has
+    # never been tried in Swift 6 mode (which makes data-race warnings errors), so do not set "6". The lines
+    # below pin the concurrency defaults that a new Xcode project template changes (new templates turn on
+    # MainActor-by-default and "Approachable Concurrency"; an XcodeGen project does not get those, and these
+    # lines keep it that way whatever a future Xcode decides the default is).
     SWIFT_VERSION: "5.0"
+    SWIFT_STRICT_CONCURRENCY: minimal
+    SWIFT_DEFAULT_ACTOR_ISOLATION: nonisolated
+    SWIFT_APPROACHABLE_CONCURRENCY: "NO"
+    SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY: "NO"
     IPHONEOS_DEPLOYMENT_TARGET: "17.0"
     MARKETING_VERSION: "1.0.0"
     CURRENT_PROJECT_VERSION: "1"
     CODE_SIGN_STYLE: Automatic
-    # Pick your Team once in Xcode (Signing & Capabilities), or set it here:
-    # DEVELOPMENT_TEAM: ABCDE12345
-    ENABLE_USER_SCRIPT_SANDBOXING: YES
-    SWIFT_STRICT_CONCURRENCY: minimal
+    # The team is deliberately not set here: see "KEEPING YOUR SIGNING" above.
+    ENABLE_USER_SCRIPT_SANDBOXING: "YES"
+    # Scanning needs the camera and LiDAR of a real iPhone/iPad. Hide the "Mac (Designed for iPad)" and
+    # Apple Vision destinations so the run-destination menu only offers things that can work.
+    SUPPORTS_MAC_DESIGNED_FOR_IPHONE_IPAD: "NO"
+    SUPPORTS_XR_DESIGNED_FOR_IPHONE_IPAD: "NO"
 
 packages:
   NexaFixCore:
-    path: NexaFixCore
+    path: NexaFixCore            # relative to this file; a local package, no download, no Package.resolved
 
 targets:
   NexaFixScan:
@@ -35,40 +87,74 @@ targets:
     deploymentTarget: "17.0"
     sources:
       - path: NexaFixScan
+        excludes:
+          - "**/.DS_Store"
+          - "**/*.md"
     dependencies:
       - package: NexaFixCore
+        product: NexaFixCore     # the library product in NexaFixCore/Package.swift; its test target is not linked
+    # Bundle identifier (and optionally the team) come from this file so they survive re-generation.
+    # PRODUCT_BUNDLE_IDENTIFIER must therefore NOT be set in `settings:` below, or it would win over the file.
+    configFiles:
+      Debug: Config/Signing.xcconfig
+      Release: Config/Signing.xcconfig
     info:
       path: Config/Info.plist
       properties:
+        CFBundleDevelopmentRegion: en
         CFBundleDisplayName: NexaFix Scan
+        CFBundleExecutable: "$(EXECUTABLE_NAME)"
+        CFBundleIdentifier: "$(PRODUCT_BUNDLE_IDENTIFIER)"
+        CFBundleInfoDictionaryVersion: "6.0"
+        CFBundleName: "$(PRODUCT_NAME)"
+        CFBundlePackageType: "$(PRODUCT_BUNDLE_PACKAGE_TYPE)"
         CFBundleShortVersionString: "$(MARKETING_VERSION)"
         CFBundleVersion: "$(CURRENT_PROJECT_VERSION)"
+        LSRequiresIPhoneOS: true
+        # arm64 only: ARKit/LiDAR are NOT required here, because the app must still open on a phone without
+        # LiDAR (saved scans, verification, plans, 3D viewer, exports). The scan button checks at run time.
+        UIRequiredDeviceCapabilities:
+          - arm64
+        # One window only: two windows would mean two scan sessions and two writers to the same files.
+        UIApplicationSceneManifest:
+          UIApplicationSupportsMultipleScenes: false
+        # Without UILaunchScreen the app would run letterboxed on current iPhones.
         UILaunchScreen:
           UIColorName: LaunchBackground
         UISupportedInterfaceOrientations:
           - UIInterfaceOrientationPortrait
           - UIInterfaceOrientationLandscapeLeft
           - UIInterfaceOrientationLandscapeRight
+        # iPad multitasking requires all four orientations.
         UISupportedInterfaceOrientations~ipad:
           - UIInterfaceOrientationPortrait
           - UIInterfaceOrientationPortraitUpsideDown
           - UIInterfaceOrientationLandscapeLeft
           - UIInterfaceOrientationLandscapeRight
+        # The only privacy string the app needs: ARKit, RoomPlan and AVCaptureDevice use the camera.
+        # Not needed (checked against Apple's documentation): NSMotionUsageDescription is only for the Core Motion
+        # activity APIs, which the app does not use; NSPhotoLibraryAddUsageDescription only for code that writes
+        # to the photo library (exports go through the share sheet as files); no microphone, location or Bluetooth.
         NSCameraUsageDescription: "NexaFix Scan uses the camera and LiDAR sensor to measure and map rooms. Nothing leaves your device unless you export it."
         # Make saved properties and exports visible in the Files app (On My iPhone > NexaFix Scan).
+        # The app keeps its data in Documents/Properties, which is where UIFileSharingEnabled looks.
         UIFileSharingEnabled: true
         LSSupportsOpeningDocumentsInPlace: true
+        # The app uses no encryption of its own (no networking, no CryptoKit).
         ITSAppUsesNonExemptEncryption: false
     settings:
       base:
-        PRODUCT_BUNDLE_IDENTIFIER: com.nexafix.scan
         PRODUCT_NAME: NexaFixScan
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
         ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME: AccentColor
+        # iPhone and iPad. The design is meant to work on both; the user's own phone is an iPhone.
         TARGETED_DEVICE_FAMILY: "1,2"
-        GENERATE_INFOPLIST_FILE: NO
+        GENERATE_INFOPLIST_FILE: "NO"
         INFOPLIST_FILE: Config/Info.plist
 
+# Two schemes with the same target. Use "NexaFixScan" while fixing build errors (Debug: full diagnostics).
+# Use "NexaFixScan Release" for real site scans: Debug builds are unoptimised and Swift number-crunching is
+# much slower in them, so if the plan, the AR overlay or room reconstruction feels sluggish, switch to Release.
 schemes:
   NexaFixScan:
     build:
@@ -76,5 +162,17 @@ schemes:
         NexaFixScan: all
     run:
       config: Debug
+    profile:
+      config: Release
+    archive:
+      config: Release
+  NexaFixScan Release:
+    build:
+      targets:
+        NexaFixScan: all
+    run:
+      config: Release
+    profile:
+      config: Release
     archive:
       config: Release

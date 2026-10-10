@@ -8,7 +8,7 @@ struct SettingsView: View {
     @Environment(AppModel.self) private var model
     @Environment(\.dismiss) private var dismiss
 
-    /// Counted from every property on the device; nil until the first count is done.
+    /// Counted from every real property on the device (not the demo); nil until the first count is done.
     @State private var accuracy: AccuracyOverview?
 
     private enum Route: Hashable {
@@ -212,7 +212,8 @@ struct SettingsView: View {
         // person cannot act on from here. One restored from its backup is readable and counts.
         let ids = model.summaries.filter { $0.health != .unreadable }.map(\.id)
         var properties = ids.compactMap { model.property($0) }
-        // A property that exists only in memory still counts.
+        // A property that exists only in memory still counts. `AccuracyOverview.make` leaves out the demo
+        // apartment, whose laser checks are made up, and checks that came from a drawing.
         let known = Set(properties.map(\.id))
         properties.append(contentsOf: model.unsavedProperties.filter { !known.contains($0.id) })
         let unit = model.settings.units.length

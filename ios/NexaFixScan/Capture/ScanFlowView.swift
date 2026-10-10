@@ -55,7 +55,11 @@ struct ScanFlowView: View {
         // stage is dark (see `ScanStage`).
         .onAppear { prepare() }
         .onChange(of: scenePhase) { _, phase in
-            guard phase == .active else { return }
+            guard phase == .active else {
+                // Away from the app: the merge timeouts stop counting until it is back.
+                controller?.sceneBecameInactive()
+                return
+            }
             if let controller {
                 // Back from another app: the time away does not count as tracking that failed to return.
                 controller.sceneBecameActive()
@@ -158,6 +162,7 @@ private struct ScanStage: View {
             RoomNameSheet(flow: controller.flow,
                           draft: draft,
                           units: controller.configuration.units,
+                          canScanNext: controller.canContinueScanning,
                           onScanNext: { name, kind in controller.nameRoom(name, kind: kind, then: .scanNextRoom) },
                           onFinishProperty: { name, kind in controller.nameRoom(name, kind: kind, then: .finishProperty) },
                           onRescan: { controller.rescanRoom() },
@@ -231,6 +236,7 @@ private struct ScanStage: View {
             } else {
                 ScanCoachPill(message: controller.coach)
                 ScanMetricsPill(summary: controller.statsSummary, spoken: controller.statsSpoken)
+                sizeCaution
             }
         case .betweenRooms:
             if controller.coach.level == .critical, !controller.isSimulated {
@@ -240,8 +246,17 @@ private struct ScanStage: View {
                 // mark: that look belongs to laser-verified values, never to a LiDAR scan.
                 Pill("\(last.name) scanned", systemImage: "cube.transparent")
             }
+            sizeCaution
         case .idle, .processingRoom, .awaitingName, .merging, .finished, .failed:
             EmptyView()
+        }
+    }
+
+    /// Shown once the floor is bigger than RoomPlan recommends joining into one 3D model.
+    @ViewBuilder
+    private var sizeCaution: some View {
+        if let text = controller.floorSizeCaution {
+            Pill(text, systemImage: "exclamationmark.triangle.fill", tint: Palette.caution)
         }
     }
 

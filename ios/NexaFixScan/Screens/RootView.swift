@@ -278,6 +278,51 @@ private struct UnsavedBanner: View {
     }
 }
 
+/// "Restored from an earlier save": shown at the top of a property until the person says they have read it. The
+/// store only reports a restore while it is happening; once the person edits the property it looks healthy,
+/// but the changes made just before the damage are still gone, so the notice has to outlast the next save.
+struct RecoveryBanner: View {
+    let dismiss: () -> Void
+    @Environment(\.colorSchemeContrast) private var contrast
+
+    var body: some View {
+        let shape = RoundedRectangle(cornerRadius: Radius.row, style: .continuous)
+        VStack(alignment: .leading, spacing: Spacing.s) {
+            HStack(alignment: .firstTextBaseline, spacing: Spacing.s) {
+                Image(systemName: "exclamationmark.triangle.fill")
+                    .foregroundStyle(Palette.caution)
+                    .accessibilityHidden(true)
+                VStack(alignment: .leading, spacing: Spacing.xxs) {
+                    Text(verbatim: RecoveryWording.title)
+                        .font(.footnote.weight(.semibold))
+                        .foregroundStyle(Palette.ink)
+                        .accessibilityAddTraits(.isHeader)
+                    Text(verbatim: RecoveryWording.message)
+                        .font(.footnote)
+                        .foregroundStyle(Palette.ink)
+                }
+                .fixedSize(horizontal: false, vertical: true)
+            }
+            Button(action: dismiss) {
+                Text(verbatim: RecoveryWording.dismiss)
+                    .font(.footnote.weight(.semibold))
+                    .foregroundStyle(Palette.ink)
+                    .padding(.horizontal, Spacing.m)
+                    .frame(minHeight: 44)
+                    .background { Capsule(style: .continuous).strokeBorder(Palette.caution, lineWidth: Hairline.emphasized) }
+                    .contentShape(Capsule(style: .continuous))
+            }
+            .buttonStyle(.pressable)
+        }
+        .padding(.horizontal, Spacing.m)
+        .padding(.vertical, Spacing.xs)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background { shape.fill(Palette.surface) }
+        .overlay { shape.strokeBorder(Palette.line, lineWidth: Hairline.adaptive(contrast)) }
+        .accessibilityElement(children: .contain)
+    }
+}
+
 /// "Added 5 rooms to Level 23." plus anything that went wrong. Clears itself after a few seconds when
 /// everything went well; warnings stay until dismissed.
 private struct ScanNoticeBanner: View {

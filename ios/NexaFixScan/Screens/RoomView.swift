@@ -164,6 +164,13 @@ struct RoomView: View {
                 }
             }
 
+            // The size, perimeter and volume above are worked out from the wall lengths; say how far those
+            // rest on the scan, the way the area does.
+            Text(verbatim: overview.areaBasis.derivedCaption(hasSize: overview.sizeText(units: units) != nil))
+                .font(.footnote)
+                .foregroundStyle(Palette.muted)
+                .fixedSize(horizontal: false, vertical: true)
+
             VerificationProgress(verified: overview.summary.verified, total: overview.summary.total)
         }
         .frame(maxWidth: .infinity, alignment: .leading)

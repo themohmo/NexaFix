@@ -94,7 +94,8 @@ struct ARReviewView: View {
                        primaryTitle: nil, primaryAction: nil, closeAction: { controller.close() })
         case .failed(let message):
             ARInfoCard(symbol: "exclamationmark.triangle.fill", title: "AR stopped", message: message,
-                       primaryTitle: nil, primaryAction: nil, closeAction: { controller.close() })
+                       primaryTitle: "Try again", primaryAction: { controller.retry() },
+                       closeAction: { controller.close() })
         }
     }
 
@@ -353,6 +354,14 @@ struct ARReviewView: View {
             .font(.headline)
             .foregroundStyle(Palette.ink)
             .accessibilityAddTraits(.isHeader)
+        // Say where it goes before it goes there: the room is worked out from the points, and a measurement
+        // filed on the wrong room would end up in that room's exports and costing.
+        if let room = controller.measurementRoom {
+            Text(verbatim: "Saving to \(ARReviewController.title(of: room)). It is kept as a scanned value until you check it with a laser.")
+                .font(.subheadline)
+                .foregroundStyle(Palette.ink)
+                .fixedSize(horizontal: false, vertical: true)
+        }
         TextField("For example, wardrobe wall", text: $measurementName)
             .focused($isNameFocused)
             .submitLabel(.done)

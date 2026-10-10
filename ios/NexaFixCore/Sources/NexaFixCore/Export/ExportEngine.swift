@@ -144,7 +144,8 @@ public struct ExportArtifact: Equatable, Sendable, Identifiable {
 /// The files and what was left out.
 public struct ExportResult: Equatable, Sendable {
     public var artifacts: [ExportArtifact]
-    /// Plain sentences about anything asked for but not produced ("Level 23 has no 3D model").
+    /// Plain sentences about anything asked for but not produced ("Level 23 has no 3D model"), and about what a
+    /// file that WAS produced could not show (names the PDF cannot print, dimensions it had to leave out).
     public var notes: [String]
 
     public init(artifacts: [ExportArtifact], notes: [String] = []) {
@@ -188,7 +189,7 @@ public enum ExportEngine {
     }
 
     /// The files for a request, in a fixed order (PDF, DXF per floor, USDZ per floor, JSON, CSV, costing
-    /// spec), and the notes for anything that was asked for but could not be made.
+    /// spec), and the notes for anything that was asked for but could not be made or shown.
     ///
     /// Throws when no format is chosen, the property has no rooms, an exporter fails, or nothing at all
     /// could be produced.
@@ -214,8 +215,12 @@ public enum ExportEngine {
         for format in ExportFormat.allCases where request.formats.contains(format) {
             switch format {
             case .planPDF:
-                let data = PlanPDFRenderer.render(property: request.property, options: pdfOptions, now: request.now)
-                add(data, format: format, kind: "floor-plan")
+                // The renderer's own report is passed on: text the PDF fonts cannot print (Arabic shows as "?"),
+                // rooms it could not draw and dimensions it had to leave out. Without it the plan looks complete.
+                let report = PlanPDFRenderer.renderWithReport(property: request.property, options: pdfOptions,
+                                                              now: request.now)
+                add(report.data, format: format, kind: "floor-plan")
+                notes.append(contentsOf: report.warnings)
 
             case .cadDXF:
                 let scales = planScales(for: request.property, options: pdfOptions)
