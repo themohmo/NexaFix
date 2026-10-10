@@ -1,0 +1,637 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {
+	};
+	objectVersion = 77;
+	objects = {
+
+/* Begin PBXBuildFile section */
+		004FD16B1522EFE4D5ECF5B9 /* AboutView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0A621525DF60609DC7ACBFBE /* AboutView.swift */; };
+		0E09F321F5FFA3BE1F47E506 /* PlanRenderer.swift in Sources */ = {isa = PBXBuildFile; fileRef = C01B02D4D9ADC730EC4F4DD1 /* PlanRenderer.swift */; };
+		11940E89EC821519A24C072A /* Theme.swift in Sources */ = {isa = PBXBuildFile; fileRef = 84530C893862F881B9624501 /* Theme.swift */; };
+		15284498913F4B71AC0383D0 /* DesignPreviews.swift in Sources */ = {isa = PBXBuildFile; fileRef = 31E7C70255E0595799A8A553 /* DesignPreviews.swift */; };
+		236AAB6C61D7D819346CA50C /* AppSettings.swift in Sources */ = {isa = PBXBuildFile; fileRef = 871C926A701856BC58B6A0E6 /* AppSettings.swift */; };
+		240665154C141E834ED852A9 /* OverlayStyle.swift in Sources */ = {isa = PBXBuildFile; fileRef = D942E12DF79EDAEC687062C0 /* OverlayStyle.swift */; };
+		255DE51273791390B02E9FC5 /* RoomNameSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = 627D82621623D86258D04364 /* RoomNameSheet.swift */; };
+		2977C9386CC5B37283599492 /* ModelBridge.swift in Sources */ = {isa = PBXBuildFile; fileRef = 20DEF569C54B987F755C4855 /* ModelBridge.swift */; };
+		29FFB0BAE17797AC149415CA /* ARProjection.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0243C4B793D0604254DB2960 /* ARProjection.swift */; };
+		2BFC6D48655B1BB9CCB56813 /* RootView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 90B871D3824D1E146C6DBE72 /* RootView.swift */; };
+		36D3A2B98D9FAD9F48F343EC /* ARReviewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = AD6C575E09365F56C8FBBE43 /* ARReviewController.swift */; };
+		3E7798D8A02677E4EC250311 /* VerifySheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = 53882C0259696A37DA3353AD /* VerifySheet.swift */; };
+		3EAE0FF043AD5AD5B22D16A1 /* Haptics.swift in Sources */ = {isa = PBXBuildFile; fileRef = 46B889C6FFC5AE9F05F3A176 /* Haptics.swift */; };
+		42DDC66F118833A99409D070 /* ScanHUD.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6028BDC819D988211662BE9A /* ScanHUD.swift */; };
+		4877EB64C9AFE6F01CD612AB /* ScanFlowView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A51E9463C68014940A5501EC /* ScanFlowView.swift */; };
+		48C6D6605F7D2623842BA5F0 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 1AA16E280A8DC4F6A3723904 /* Assets.xcassets */; };
+		5426F7EE7925CDE498A7849E /* PlanThumbnail.swift in Sources */ = {isa = PBXBuildFile; fileRef = 249CC0C64CC4274404F915F0 /* PlanThumbnail.swift */; };
+		59A1F2CD85836DC45338282A /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = A20369198A3F1319F99A9783 /* PrivacyInfo.xcprivacy */; };
+		5DED3C930385CDAFA48F6C15 /* RoomView.swift in Sources */ = {isa = PBXBuildFile; fileRef = EEC35E8CD21ED21FD99A78D3 /* RoomView.swift */; };
+		62330D98D8DD4C0346E66E89 /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 42AFD5ED727E80F5957B2786 /* SettingsView.swift */; };
+		655566DF0AB88E793E5EC77C /* MeasurementFormatting.swift in Sources */ = {isa = PBXBuildFile; fileRef = D473F183FF875BF976B552B3 /* MeasurementFormatting.swift */; };
+		6BF4384CEF5F71E3B0C6D401 /* PlanTouchHost.swift in Sources */ = {isa = PBXBuildFile; fileRef = B6D3EF4119BA38A3C259C421 /* PlanTouchHost.swift */; };
+		6CAD6A1758F4D2C58376CD2A /* ExportSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7437AD562A36719328B52502 /* ExportSheet.swift */; };
+		7185EA180595A61D6149C0BA /* Motion.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2F6F93D21824CDD7DF19EB81 /* Motion.swift */; };
+		7D76797C099B374B8132369F /* ShareSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = 74834EA072CE870C4A941606 /* ShareSheet.swift */; };
+		869EB3EFD655DEABDCCC0B5C /* ScanSessionController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 07E3C0513A277279B7E70D4E /* ScanSessionController.swift */; };
+		87C6C2A208F6156DB1B4BA1D /* Viewer3DView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 87095C509EB70E56D3A533EC /* Viewer3DView.swift */; };
+		87EC942EC373FC82EDF8A426 /* UserFacingError.swift in Sources */ = {isa = PBXBuildFile; fileRef = 76588018785E861DC62950A6 /* UserFacingError.swift */; };
+		93B256A6719C7F83273EBF4F /* PropertyActions.swift in Sources */ = {isa = PBXBuildFile; fileRef = 32A9092CC42621D585A7B1F5 /* PropertyActions.swift */; };
+		9507BE8F3E04942EB5C4DCA4 /* MeasurementViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = 40DEEE61ACBE8BCF457347A6 /* MeasurementViews.swift */; };
+		9F1BE028D0C1F70DBE204C68 /* ARViewContainer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 602C312F1880595A87585A7C /* ARViewContainer.swift */; };
+		A18095C6797330BE9EC62F6E /* CapturedRoomMapper.swift in Sources */ = {isa = PBXBuildFile; fileRef = 48D74B2CF33BC84CFF3F1987 /* CapturedRoomMapper.swift */; };
+		A252BAB3A17034359F007272 /* PropertiesListView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2EA8DDCB512375AE0ADD5CB5 /* PropertiesListView.swift */; };
+		A60B3E511B56A1417C0D6315 /* ScanRecoveryStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = EF7954FCBC5AE78B43DC5267 /* ScanRecoveryStore.swift */; };
+		A8409986199D02162CCC0AB5 /* PermissionPrimer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 51E0D3F0C13EE2622A8E888B /* PermissionPrimer.swift */; };
+		A91FB52E3517BFFB48F36B82 /* ARReviewView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0632555A145AD34C3C9DDC59 /* ARReviewView.swift */; };
+		B186BFAE67DE83F9093C82FA /* Viewer3DController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7C4F442DA8A0D9C011AE222A /* Viewer3DController.swift */; };
+		B2D9E328CF42A63AB8F7CA1E /* Buttons.swift in Sources */ = {isa = PBXBuildFile; fileRef = 168910CB93CB3CE359D64E3F /* Buttons.swift */; };
+		B66D38D8F4217FF6ADB56D99 /* NexaFixCore in Frameworks */ = {isa = PBXBuildFile; productRef = 085540C1DD5DDA5DD57CB44F /* NexaFixCore */; };
+		BDB90584C9FD0E59A7C32B10 /* PlanTouchInput.swift in Sources */ = {isa = PBXBuildFile; fileRef = FDD855E11223615DD0B8EB46 /* PlanTouchInput.swift */; };
+		C576A60C04BAA5A2AE0C3072 /* AROverlayCanvas.swift in Sources */ = {isa = PBXBuildFile; fileRef = 00E418846BE28060ECBCACE8 /* AROverlayCanvas.swift */; };
+		DFD1385E6577C4E79B2FCBC4 /* DeviceCapability.swift in Sources */ = {isa = PBXBuildFile; fileRef = F96B48C46E235EC44BAE1A11 /* DeviceCapability.swift */; };
+		E2C3FC537DE3A57C7BF417A1 /* PropertyView.swift in Sources */ = {isa = PBXBuildFile; fileRef = FBB5575DB175013DB455F97E /* PropertyView.swift */; };
+		E7A8F22682C05EDE2EC36C6C /* AppModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6AF6529C362B32F764FE9D92 /* AppModel.swift */; };
+		E8471B8EA401937922249F0A /* ARTrackingStatus.swift in Sources */ = {isa = PBXBuildFile; fileRef = 591227902885421DCA9C3193 /* ARTrackingStatus.swift */; };
+		E84CF2F6B5248A42DF3BACD6 /* NexaFixScanApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2372E95322CAF54B34C8A84D /* NexaFixScanApp.swift */; };
+		EA008A38517A69D55B45C0A3 /* ScanResult.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4F57B57712412736E93A2888 /* ScanResult.swift */; };
+		EA1ECA86F9DE5167D079301E /* Components.swift in Sources */ = {isa = PBXBuildFile; fileRef = B8A7EA2979E6263DCC6042B3 /* Components.swift */; };
+		EA5D76E8AC5696EE55AF5165 /* Materials.swift in Sources */ = {isa = PBXBuildFile; fileRef = F1B8FEE33D06B5D6ECA94B7A /* Materials.swift */; };
+		EF2644A3440747DDE4A32A29 /* NewPropertySheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = D1E1D0E11BBEEA71E4BE2AFC /* NewPropertySheet.swift */; };
+		FE5B7D8E747358D70A84EDF0 /* RoomCaptureViewContainer.swift in Sources */ = {isa = PBXBuildFile; fileRef = CBF931572956635436F5AED4 /* RoomCaptureViewContainer.swift */; };
+		FF7489BE399BBE5794BC7CFD /* PlanCanvasView.swift in Sources */ = {isa = PBXBuildFile; fileRef = CCC0151771CC500521621A5D /* PlanCanvasView.swift */; };
+/* End PBXBuildFile section */
+
+/* Begin PBXFileReference section */
+		00E418846BE28060ECBCACE8 /* AROverlayCanvas.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AROverlayCanvas.swift; sourceTree = "<group>"; };
+		0243C4B793D0604254DB2960 /* ARProjection.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ARProjection.swift; sourceTree = "<group>"; };
+		038071558255B9A37A2CAB57 /* NexaFixScan.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = NexaFixScan.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		0632555A145AD34C3C9DDC59 /* ARReviewView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ARReviewView.swift; sourceTree = "<group>"; };
+		07E3C0513A277279B7E70D4E /* ScanSessionController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScanSessionController.swift; sourceTree = "<group>"; };
+		0A621525DF60609DC7ACBFBE /* AboutView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AboutView.swift; sourceTree = "<group>"; };
+		168910CB93CB3CE359D64E3F /* Buttons.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Buttons.swift; sourceTree = "<group>"; };
+		1AA16E280A8DC4F6A3723904 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
+		20DEF569C54B987F755C4855 /* ModelBridge.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ModelBridge.swift; sourceTree = "<group>"; };
+		2372E95322CAF54B34C8A84D /* NexaFixScanApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NexaFixScanApp.swift; sourceTree = "<group>"; };
+		249CC0C64CC4274404F915F0 /* PlanThumbnail.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlanThumbnail.swift; sourceTree = "<group>"; };
+		2EA8DDCB512375AE0ADD5CB5 /* PropertiesListView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PropertiesListView.swift; sourceTree = "<group>"; };
+		2F6F93D21824CDD7DF19EB81 /* Motion.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Motion.swift; sourceTree = "<group>"; };
+		31E7C70255E0595799A8A553 /* DesignPreviews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DesignPreviews.swift; sourceTree = "<group>"; };
+		32A9092CC42621D585A7B1F5 /* PropertyActions.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PropertyActions.swift; sourceTree = "<group>"; };
+		40DEEE61ACBE8BCF457347A6 /* MeasurementViews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MeasurementViews.swift; sourceTree = "<group>"; };
+		42AFD5ED727E80F5957B2786 /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
+		46B889C6FFC5AE9F05F3A176 /* Haptics.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Haptics.swift; sourceTree = "<group>"; };
+		48D74B2CF33BC84CFF3F1987 /* CapturedRoomMapper.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CapturedRoomMapper.swift; sourceTree = "<group>"; };
+		4F57B57712412736E93A2888 /* ScanResult.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScanResult.swift; sourceTree = "<group>"; };
+		51E0D3F0C13EE2622A8E888B /* PermissionPrimer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PermissionPrimer.swift; sourceTree = "<group>"; };
+		53882C0259696A37DA3353AD /* VerifySheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VerifySheet.swift; sourceTree = "<group>"; };
+		591227902885421DCA9C3193 /* ARTrackingStatus.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ARTrackingStatus.swift; sourceTree = "<group>"; };
+		6028BDC819D988211662BE9A /* ScanHUD.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScanHUD.swift; sourceTree = "<group>"; };
+		602C312F1880595A87585A7C /* ARViewContainer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ARViewContainer.swift; sourceTree = "<group>"; };
+		627D82621623D86258D04364 /* RoomNameSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RoomNameSheet.swift; sourceTree = "<group>"; };
+		6AF6529C362B32F764FE9D92 /* AppModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppModel.swift; sourceTree = "<group>"; };
+		7437AD562A36719328B52502 /* ExportSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ExportSheet.swift; sourceTree = "<group>"; };
+		74834EA072CE870C4A941606 /* ShareSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ShareSheet.swift; sourceTree = "<group>"; };
+		76588018785E861DC62950A6 /* UserFacingError.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UserFacingError.swift; sourceTree = "<group>"; };
+		7C4F442DA8A0D9C011AE222A /* Viewer3DController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Viewer3DController.swift; sourceTree = "<group>"; };
+		84530C893862F881B9624501 /* Theme.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Theme.swift; sourceTree = "<group>"; };
+		87095C509EB70E56D3A533EC /* Viewer3DView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Viewer3DView.swift; sourceTree = "<group>"; };
+		871C926A701856BC58B6A0E6 /* AppSettings.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppSettings.swift; sourceTree = "<group>"; };
+		90B871D3824D1E146C6DBE72 /* RootView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RootView.swift; sourceTree = "<group>"; };
+		A20369198A3F1319F99A9783 /* PrivacyInfo.xcprivacy */ = {isa = PBXFileReference; path = PrivacyInfo.xcprivacy; sourceTree = "<group>"; };
+		A51E9463C68014940A5501EC /* ScanFlowView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScanFlowView.swift; sourceTree = "<group>"; };
+		AD6C575E09365F56C8FBBE43 /* ARReviewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ARReviewController.swift; sourceTree = "<group>"; };
+		ADF15480D99D2CD249DC71B0 /* NexaFixCore */ = {isa = PBXFileReference; lastKnownFileType = folder; name = NexaFixCore; path = NexaFixCore; sourceTree = SOURCE_ROOT; };
+		B6D3EF4119BA38A3C259C421 /* PlanTouchHost.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlanTouchHost.swift; sourceTree = "<group>"; };
+		B8A7EA2979E6263DCC6042B3 /* Components.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Components.swift; sourceTree = "<group>"; };
+		C01B02D4D9ADC730EC4F4DD1 /* PlanRenderer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlanRenderer.swift; sourceTree = "<group>"; };
+		CBF931572956635436F5AED4 /* RoomCaptureViewContainer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RoomCaptureViewContainer.swift; sourceTree = "<group>"; };
+		CCC0151771CC500521621A5D /* PlanCanvasView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlanCanvasView.swift; sourceTree = "<group>"; };
+		D1E1D0E11BBEEA71E4BE2AFC /* NewPropertySheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NewPropertySheet.swift; sourceTree = "<group>"; };
+		D473F183FF875BF976B552B3 /* MeasurementFormatting.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MeasurementFormatting.swift; sourceTree = "<group>"; };
+		D942E12DF79EDAEC687062C0 /* OverlayStyle.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OverlayStyle.swift; sourceTree = "<group>"; };
+		EEC35E8CD21ED21FD99A78D3 /* RoomView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RoomView.swift; sourceTree = "<group>"; };
+		EF7954FCBC5AE78B43DC5267 /* ScanRecoveryStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScanRecoveryStore.swift; sourceTree = "<group>"; };
+		F1B8FEE33D06B5D6ECA94B7A /* Materials.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Materials.swift; sourceTree = "<group>"; };
+		F96B48C46E235EC44BAE1A11 /* DeviceCapability.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DeviceCapability.swift; sourceTree = "<group>"; };
+		FAE27D7AB212166D6218D77B /* Signing.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = Signing.xcconfig; sourceTree = "<group>"; };
+		FBB5575DB175013DB455F97E /* PropertyView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PropertyView.swift; sourceTree = "<group>"; };
+		FDD855E11223615DD0B8EB46 /* PlanTouchInput.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlanTouchInput.swift; sourceTree = "<group>"; };
+/* End PBXFileReference section */
+
+/* Begin PBXFrameworksBuildPhase section */
+		00706F6D8525D445C67222A6 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				B66D38D8F4217FF6ADB56D99 /* NexaFixCore in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXFrameworksBuildPhase section */
+
+/* Begin PBXGroup section */
+		02CF030917B10D591BA12D25 /* Capture */ = {
+			isa = PBXGroup;
+			children = (
+				48D74B2CF33BC84CFF3F1987 /* CapturedRoomMapper.swift */,
+				F96B48C46E235EC44BAE1A11 /* DeviceCapability.swift */,
+				51E0D3F0C13EE2622A8E888B /* PermissionPrimer.swift */,
+				CBF931572956635436F5AED4 /* RoomCaptureViewContainer.swift */,
+				627D82621623D86258D04364 /* RoomNameSheet.swift */,
+				A51E9463C68014940A5501EC /* ScanFlowView.swift */,
+				6028BDC819D988211662BE9A /* ScanHUD.swift */,
+				EF7954FCBC5AE78B43DC5267 /* ScanRecoveryStore.swift */,
+				4F57B57712412736E93A2888 /* ScanResult.swift */,
+				07E3C0513A277279B7E70D4E /* ScanSessionController.swift */,
+			);
+			path = Capture;
+			sourceTree = "<group>";
+		};
+		4A691361ACFFAD246D559264 = {
+			isa = PBXGroup;
+			children = (
+				D0CFD1BA370AAF2F651345FE /* Config */,
+				FD117D3213F806E454452D27 /* NexaFixScan */,
+				C52AECBABE12E8613E3B2745 /* Packages */,
+				B6261A369F2D76BD9E4293AA /* Products */,
+			);
+			sourceTree = "<group>";
+		};
+		606B363A2D625B51A2D4ECCE /* DesignSystem */ = {
+			isa = PBXGroup;
+			children = (
+				168910CB93CB3CE359D64E3F /* Buttons.swift */,
+				B8A7EA2979E6263DCC6042B3 /* Components.swift */,
+				31E7C70255E0595799A8A553 /* DesignPreviews.swift */,
+				46B889C6FFC5AE9F05F3A176 /* Haptics.swift */,
+				F1B8FEE33D06B5D6ECA94B7A /* Materials.swift */,
+				40DEEE61ACBE8BCF457347A6 /* MeasurementViews.swift */,
+				2F6F93D21824CDD7DF19EB81 /* Motion.swift */,
+				84530C893862F881B9624501 /* Theme.swift */,
+			);
+			path = DesignSystem;
+			sourceTree = "<group>";
+		};
+		6FD2FB2059DFA6F8AD32C781 /* Screens */ = {
+			isa = PBXGroup;
+			children = (
+				0A621525DF60609DC7ACBFBE /* AboutView.swift */,
+				7437AD562A36719328B52502 /* ExportSheet.swift */,
+				D1E1D0E11BBEEA71E4BE2AFC /* NewPropertySheet.swift */,
+				2EA8DDCB512375AE0ADD5CB5 /* PropertiesListView.swift */,
+				32A9092CC42621D585A7B1F5 /* PropertyActions.swift */,
+				FBB5575DB175013DB455F97E /* PropertyView.swift */,
+				EEC35E8CD21ED21FD99A78D3 /* RoomView.swift */,
+				90B871D3824D1E146C6DBE72 /* RootView.swift */,
+				42AFD5ED727E80F5957B2786 /* SettingsView.swift */,
+				74834EA072CE870C4A941606 /* ShareSheet.swift */,
+				53882C0259696A37DA3353AD /* VerifySheet.swift */,
+			);
+			path = Screens;
+			sourceTree = "<group>";
+		};
+		77ADC1B0F08640EC6D66EBDA /* App */ = {
+			isa = PBXGroup;
+			children = (
+				6AF6529C362B32F764FE9D92 /* AppModel.swift */,
+				871C926A701856BC58B6A0E6 /* AppSettings.swift */,
+				D473F183FF875BF976B552B3 /* MeasurementFormatting.swift */,
+				2372E95322CAF54B34C8A84D /* NexaFixScanApp.swift */,
+				76588018785E861DC62950A6 /* UserFacingError.swift */,
+			);
+			path = App;
+			sourceTree = "<group>";
+		};
+		A5AB38D6304ACAC6CA2EE6FC /* Resources */ = {
+			isa = PBXGroup;
+			children = (
+				1AA16E280A8DC4F6A3723904 /* Assets.xcassets */,
+				A20369198A3F1319F99A9783 /* PrivacyInfo.xcprivacy */,
+			);
+			path = Resources;
+			sourceTree = "<group>";
+		};
+		AD4A92E43D84A2803446B1D6 /* Viewer */ = {
+			isa = PBXGroup;
+			children = (
+				20DEF569C54B987F755C4855 /* ModelBridge.swift */,
+				7C4F442DA8A0D9C011AE222A /* Viewer3DController.swift */,
+				87095C509EB70E56D3A533EC /* Viewer3DView.swift */,
+			);
+			path = Viewer;
+			sourceTree = "<group>";
+		};
+		B6261A369F2D76BD9E4293AA /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				038071558255B9A37A2CAB57 /* NexaFixScan.app */,
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
+		C52AECBABE12E8613E3B2745 /* Packages */ = {
+			isa = PBXGroup;
+			children = (
+				ADF15480D99D2CD249DC71B0 /* NexaFixCore */,
+			);
+			name = Packages;
+			sourceTree = "<group>";
+		};
+		CC6CDAA7C8F613E1F9375D93 /* AR */ = {
+			isa = PBXGroup;
+			children = (
+				00E418846BE28060ECBCACE8 /* AROverlayCanvas.swift */,
+				0243C4B793D0604254DB2960 /* ARProjection.swift */,
+				AD6C575E09365F56C8FBBE43 /* ARReviewController.swift */,
+				0632555A145AD34C3C9DDC59 /* ARReviewView.swift */,
+				591227902885421DCA9C3193 /* ARTrackingStatus.swift */,
+				602C312F1880595A87585A7C /* ARViewContainer.swift */,
+				D942E12DF79EDAEC687062C0 /* OverlayStyle.swift */,
+			);
+			path = AR;
+			sourceTree = "<group>";
+		};
+		D0CFD1BA370AAF2F651345FE /* Config */ = {
+			isa = PBXGroup;
+			children = (
+				FAE27D7AB212166D6218D77B /* Signing.xcconfig */,
+			);
+			path = Config;
+			sourceTree = "<group>";
+		};
+		E981D7A7B1E448E25A7EB52C /* Plan */ = {
+			isa = PBXGroup;
+			children = (
+				CCC0151771CC500521621A5D /* PlanCanvasView.swift */,
+				C01B02D4D9ADC730EC4F4DD1 /* PlanRenderer.swift */,
+				249CC0C64CC4274404F915F0 /* PlanThumbnail.swift */,
+				B6D3EF4119BA38A3C259C421 /* PlanTouchHost.swift */,
+				FDD855E11223615DD0B8EB46 /* PlanTouchInput.swift */,
+			);
+			path = Plan;
+			sourceTree = "<group>";
+		};
+		FD117D3213F806E454452D27 /* NexaFixScan */ = {
+			isa = PBXGroup;
+			children = (
+				77ADC1B0F08640EC6D66EBDA /* App */,
+				CC6CDAA7C8F613E1F9375D93 /* AR */,
+				02CF030917B10D591BA12D25 /* Capture */,
+				606B363A2D625B51A2D4ECCE /* DesignSystem */,
+				E981D7A7B1E448E25A7EB52C /* Plan */,
+				A5AB38D6304ACAC6CA2EE6FC /* Resources */,
+				6FD2FB2059DFA6F8AD32C781 /* Screens */,
+				AD4A92E43D84A2803446B1D6 /* Viewer */,
+			);
+			path = NexaFixScan;
+			sourceTree = "<group>";
+		};
+/* End PBXGroup section */
+
+/* Begin PBXNativeTarget section */
+		64368A2B672F74EDF25613FE /* NexaFixScan */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = E484AB8F8053DE5117455F2B /* Build configuration list for PBXNativeTarget "NexaFixScan" */;
+			buildPhases = (
+				BFD3CEFAC6D350B054471558 /* Sources */,
+				D7EC45D83E64464008B3FC98 /* Resources */,
+				00706F6D8525D445C67222A6 /* Frameworks */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = NexaFixScan;
+			packageProductDependencies = (
+				085540C1DD5DDA5DD57CB44F /* NexaFixCore */,
+			);
+			productName = NexaFixScan;
+			productReference = 038071558255B9A37A2CAB57 /* NexaFixScan.app */;
+			productType = "com.apple.product-type.application";
+		};
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		A025E0498E08BBA2A5F6019D /* Project object */ = {
+			isa = PBXProject;
+			attributes = {
+				BuildIndependentTargetsInParallel = YES;
+				LastUpgradeCheck = 2700;
+				TargetAttributes = {
+					64368A2B672F74EDF25613FE = {
+						ProvisioningStyle = Automatic;
+					};
+				};
+			};
+			buildConfigurationList = DEF37B823A5B0F964475F26C /* Build configuration list for PBXProject "NexaFixScan" */;
+			developmentRegion = en;
+			hasScannedForEncodings = 0;
+			knownRegions = (
+				Base,
+				en,
+			);
+			mainGroup = 4A691361ACFFAD246D559264;
+			minimizedProjectReferenceProxies = 1;
+			packageReferences = (
+				4BEE2ABE7AA7404F105BCF45 /* XCLocalSwiftPackageReference "NexaFixCore" */,
+			);
+			preferredProjectObjectVersion = 77;
+			productRefGroup = B6261A369F2D76BD9E4293AA /* Products */;
+			projectDirPath = "";
+			projectRoot = "";
+			targets = (
+				64368A2B672F74EDF25613FE /* NexaFixScan */,
+			);
+		};
+/* End PBXProject section */
+
+/* Begin PBXResourcesBuildPhase section */
+		D7EC45D83E64464008B3FC98 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				48C6D6605F7D2623842BA5F0 /* Assets.xcassets in Resources */,
+				59A1F2CD85836DC45338282A /* PrivacyInfo.xcprivacy in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXResourcesBuildPhase section */
+
+/* Begin PBXSourcesBuildPhase section */
+		BFD3CEFAC6D350B054471558 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				C576A60C04BAA5A2AE0C3072 /* AROverlayCanvas.swift in Sources */,
+				29FFB0BAE17797AC149415CA /* ARProjection.swift in Sources */,
+				36D3A2B98D9FAD9F48F343EC /* ARReviewController.swift in Sources */,
+				A91FB52E3517BFFB48F36B82 /* ARReviewView.swift in Sources */,
+				E8471B8EA401937922249F0A /* ARTrackingStatus.swift in Sources */,
+				9F1BE028D0C1F70DBE204C68 /* ARViewContainer.swift in Sources */,
+				004FD16B1522EFE4D5ECF5B9 /* AboutView.swift in Sources */,
+				E7A8F22682C05EDE2EC36C6C /* AppModel.swift in Sources */,
+				236AAB6C61D7D819346CA50C /* AppSettings.swift in Sources */,
+				B2D9E328CF42A63AB8F7CA1E /* Buttons.swift in Sources */,
+				A18095C6797330BE9EC62F6E /* CapturedRoomMapper.swift in Sources */,
+				EA1ECA86F9DE5167D079301E /* Components.swift in Sources */,
+				15284498913F4B71AC0383D0 /* DesignPreviews.swift in Sources */,
+				DFD1385E6577C4E79B2FCBC4 /* DeviceCapability.swift in Sources */,
+				6CAD6A1758F4D2C58376CD2A /* ExportSheet.swift in Sources */,
+				3EAE0FF043AD5AD5B22D16A1 /* Haptics.swift in Sources */,
+				EA5D76E8AC5696EE55AF5165 /* Materials.swift in Sources */,
+				655566DF0AB88E793E5EC77C /* MeasurementFormatting.swift in Sources */,
+				9507BE8F3E04942EB5C4DCA4 /* MeasurementViews.swift in Sources */,
+				2977C9386CC5B37283599492 /* ModelBridge.swift in Sources */,
+				7185EA180595A61D6149C0BA /* Motion.swift in Sources */,
+				EF2644A3440747DDE4A32A29 /* NewPropertySheet.swift in Sources */,
+				E84CF2F6B5248A42DF3BACD6 /* NexaFixScanApp.swift in Sources */,
+				240665154C141E834ED852A9 /* OverlayStyle.swift in Sources */,
+				A8409986199D02162CCC0AB5 /* PermissionPrimer.swift in Sources */,
+				FF7489BE399BBE5794BC7CFD /* PlanCanvasView.swift in Sources */,
+				0E09F321F5FFA3BE1F47E506 /* PlanRenderer.swift in Sources */,
+				5426F7EE7925CDE498A7849E /* PlanThumbnail.swift in Sources */,
+				6BF4384CEF5F71E3B0C6D401 /* PlanTouchHost.swift in Sources */,
+				BDB90584C9FD0E59A7C32B10 /* PlanTouchInput.swift in Sources */,
+				A252BAB3A17034359F007272 /* PropertiesListView.swift in Sources */,
+				93B256A6719C7F83273EBF4F /* PropertyActions.swift in Sources */,
+				E2C3FC537DE3A57C7BF417A1 /* PropertyView.swift in Sources */,
+				FE5B7D8E747358D70A84EDF0 /* RoomCaptureViewContainer.swift in Sources */,
+				255DE51273791390B02E9FC5 /* RoomNameSheet.swift in Sources */,
+				5DED3C930385CDAFA48F6C15 /* RoomView.swift in Sources */,
+				2BFC6D48655B1BB9CCB56813 /* RootView.swift in Sources */,
+				4877EB64C9AFE6F01CD612AB /* ScanFlowView.swift in Sources */,
+				42DDC66F118833A99409D070 /* ScanHUD.swift in Sources */,
+				A60B3E511B56A1417C0D6315 /* ScanRecoveryStore.swift in Sources */,
+				EA008A38517A69D55B45C0A3 /* ScanResult.swift in Sources */,
+				869EB3EFD655DEABDCCC0B5C /* ScanSessionController.swift in Sources */,
+				62330D98D8DD4C0346E66E89 /* SettingsView.swift in Sources */,
+				7D76797C099B374B8132369F /* ShareSheet.swift in Sources */,
+				11940E89EC821519A24C072A /* Theme.swift in Sources */,
+				87EC942EC373FC82EDF8A426 /* UserFacingError.swift in Sources */,
+				3E7798D8A02677E4EC250311 /* VerifySheet.swift in Sources */,
+				B186BFAE67DE83F9093C82FA /* Viewer3DController.swift in Sources */,
+				87C6C2A208F6156DB1B4BA1D /* Viewer3DView.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXSourcesBuildPhase section */
+
+/* Begin XCBuildConfiguration section */
+		21A37CE124D7B5770669D5E0 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++14";
+				CLANG_CXX_LIBRARY = "libc++";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				CODE_SIGN_STYLE = Automatic;
+				COPY_PHASE_STRIP = NO;
+				CURRENT_PROJECT_VERSION = 1;
+				DEBUG_INFORMATION_FORMAT = dwarf;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_TESTABILITY = YES;
+				ENABLE_USER_SCRIPT_SANDBOXING = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu11;
+				GCC_DYNAMIC_NO_PIC = NO;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_OPTIMIZATION_LEVEL = 0;
+				GCC_PREPROCESSOR_DEFINITIONS = (
+					"$(inherited)",
+					"DEBUG=1",
+				);
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				MARKETING_VERSION = 1.0.0;
+				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
+				MTL_FAST_MATH = YES;
+				ONLY_ACTIVE_ARCH = YES;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				SUPPORTS_MAC_DESIGNED_FOR_IPHONE_IPAD = NO;
+				SUPPORTS_XR_DESIGNED_FOR_IPHONE_IPAD = NO;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = DEBUG;
+				SWIFT_APPROACHABLE_CONCURRENCY = NO;
+				SWIFT_DEFAULT_ACTOR_ISOLATION = nonisolated;
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+				SWIFT_STRICT_CONCURRENCY = minimal;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = NO;
+				SWIFT_VERSION = 5.0;
+			};
+			name = Debug;
+		};
+		231B8B8FAE0C4E8C0BD1B72B /* Debug */ = {
+			isa = XCBuildConfiguration;
+			baseConfigurationReference = FAE27D7AB212166D6218D77B /* Signing.xcconfig */;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_IDENTITY = "iPhone Developer";
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = Config/Info.plist;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				PRODUCT_NAME = NexaFixScan;
+				SDKROOT = iphoneos;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Debug;
+		};
+		BE86B3F4EE8AE34EA44C2D48 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++14";
+				CLANG_CXX_LIBRARY = "libc++";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				CODE_SIGN_STYLE = Automatic;
+				COPY_PHASE_STRIP = NO;
+				CURRENT_PROJECT_VERSION = 1;
+				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				ENABLE_NS_ASSERTIONS = NO;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_USER_SCRIPT_SANDBOXING = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu11;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				MARKETING_VERSION = 1.0.0;
+				MTL_ENABLE_DEBUG_INFO = NO;
+				MTL_FAST_MATH = YES;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				SUPPORTS_MAC_DESIGNED_FOR_IPHONE_IPAD = NO;
+				SUPPORTS_XR_DESIGNED_FOR_IPHONE_IPAD = NO;
+				SWIFT_APPROACHABLE_CONCURRENCY = NO;
+				SWIFT_COMPILATION_MODE = wholemodule;
+				SWIFT_DEFAULT_ACTOR_ISOLATION = nonisolated;
+				SWIFT_OPTIMIZATION_LEVEL = "-O";
+				SWIFT_STRICT_CONCURRENCY = minimal;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = NO;
+				SWIFT_VERSION = 5.0;
+			};
+			name = Release;
+		};
+		FAE0EBC5DBE05031FE809413 /* Release */ = {
+			isa = XCBuildConfiguration;
+			baseConfigurationReference = FAE27D7AB212166D6218D77B /* Signing.xcconfig */;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_IDENTITY = "iPhone Developer";
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = Config/Info.plist;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				PRODUCT_NAME = NexaFixScan;
+				SDKROOT = iphoneos;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Release;
+		};
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		DEF37B823A5B0F964475F26C /* Build configuration list for PBXProject "NexaFixScan" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				21A37CE124D7B5770669D5E0 /* Debug */,
+				BE86B3F4EE8AE34EA44C2D48 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+		E484AB8F8053DE5117455F2B /* Build configuration list for PBXNativeTarget "NexaFixScan" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				231B8B8FAE0C4E8C0BD1B72B /* Debug */,
+				FAE0EBC5DBE05031FE809413 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+/* End XCConfigurationList section */
+
+/* Begin XCLocalSwiftPackageReference section */
+		4BEE2ABE7AA7404F105BCF45 /* XCLocalSwiftPackageReference "NexaFixCore" */ = {
+			isa = XCLocalSwiftPackageReference;
+			relativePath = NexaFixCore;
+		};
+/* End XCLocalSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		085540C1DD5DDA5DD57CB44F /* NexaFixCore */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = NexaFixCore;
+		};
+/* End XCSwiftPackageProductDependency section */
+	};
+	rootObject = A025E0498E08BBA2A5F6019D /* Project object */;
+}
