@@ -401,7 +401,11 @@ private struct ViewerAccentButton: View {
             Label(title, systemImage: systemImage)
                 .font(.subheadline.weight(.semibold))
                 .foregroundStyle(Palette.accentContrast)
-                .padding(.horizontal, Spacing.l)
+                // Never squeezed: the toggles beside it take only what is left (the title broke into one letter
+                // per line when this button was the flexible one).
+                .lineLimit(1)
+                .fixedSize(horizontal: true, vertical: false)
+                .padding(.horizontal, Spacing.m)
                 .frame(minHeight: 44)
                 .background { Capsule(style: .continuous).fill(Palette.accent) }
                 .contentShape(Capsule(style: .continuous))

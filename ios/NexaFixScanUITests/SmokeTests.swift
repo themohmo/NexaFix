@@ -142,28 +142,37 @@ final class SmokeTests: SmokeTestCase {
         snap("05-property-after-export")
     }
 
+    /// True while the system share sheet is really on screen. An element that merely "exists" is not enough: after the
+    /// sheet has gone, its accessibility element can linger for a moment with an empty frame (the run that found this
+    /// failed with "Swipe down on ActivityListView: visible frame is empty" on a sheet that had already closed).
     private func shareSheetIsVisible() -> Bool {
-        app.otherElements["ActivityListView"].exists
-            || app.navigationBars["UIActivityContentView"].exists
-            || app.buttons["Copy"].exists
-            || app.staticTexts["Save to Files"].exists
+        func onScreen(_ element: XCUIElement) -> Bool {
+            guard element.exists else { return false }
+            let frame = element.frame
+            return !frame.isEmpty && frame.width > 20 && frame.height > 20 && frame.intersects(app.frame)
+        }
+        return onScreen(app.otherElements["ActivityListView"])
+            || onScreen(app.navigationBars["UIActivityContentView"])
+            || onScreen(app.buttons["Copy"])
+            || onScreen(app.staticTexts["Save to Files"])
     }
 
     private func waitForShareSheet(timeout: TimeInterval) -> Bool {
         poll(timeout) { self.shareSheetIsVisible() }
     }
 
-    /// The close button first, then a tap on the dimmed area above the sheet, then a swipe down.
+    /// The close button first, then a tap on the dimmed area above the sheet, then a swipe down. Whether the sheet is
+    /// gone is only ever judged by `shareSheetIsVisible()`; a swipe is tried only on a list that is on screen.
     private func dismissShareSheet() {
         let close = app.buttons["Close"].firstMatch
-        if close.waitForExistence(timeout: 2) {
+        if close.waitForExistence(timeout: 2), close.isHittable {
             close.tap()
             if poll(4, { !self.shareSheetIsVisible() }) { return }
         }
         app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.04)).tap()
         if poll(4, { !self.shareSheetIsVisible() }) { return }
         let list = app.otherElements["ActivityListView"]
-        if list.exists { list.swipeDown() }
+        if list.exists, !list.frame.isEmpty { list.swipeDown() }
         _ = poll(4) { !self.shareSheetIsVisible() }
     }
 

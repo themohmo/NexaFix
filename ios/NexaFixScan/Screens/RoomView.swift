@@ -11,6 +11,7 @@ struct RoomView: View {
 
     @Environment(AppModel.self) private var model
     @Environment(AppRouter.self) private var router
+    @Environment(\.dynamicTypeSize) private var typeSize
 
     @State private var verifyRequest: VerifyRequest?
     @State private var notes = ""
@@ -126,7 +127,11 @@ struct RoomView: View {
                     .foregroundStyle(Palette.muted)
             }
 
-            LazyVGrid(columns: [GridItem(.adaptive(minimum: 150), spacing: Spacing.l, alignment: .topLeading)],
+            // One column at accessibility text sizes: two 150 pt columns cannot hold "6 214 × 4 502 mm" or the word
+            // "Perimeter" at those sizes (the numbers broke one character per line).
+            LazyVGrid(columns: [typeSize.isAccessibilitySize
+                                    ? GridItem(.flexible(), spacing: Spacing.l, alignment: .topLeading)
+                                    : GridItem(.adaptive(minimum: 150), spacing: Spacing.l, alignment: .topLeading)],
                       alignment: .leading, spacing: Spacing.m) {
                 if let size = overview.sizeText(units: units) {
                     Stat(label: "Length \u{00D7} width", spoken: overview.sizeSpoken(units: units) ?? size) {

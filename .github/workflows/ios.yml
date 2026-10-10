@@ -263,11 +263,15 @@ jobs:
           # -test-timeouts-enabled YES switches the limit on, the default is what every test gets (rounded up to whole
           # minutes by XCTest) and the maximum caps whatever a test asks for. 420 s / 600 s is far above what the
           # slowest test (the simulated scan) should need, so only a real hang times out.
+          # -collect-test-diagnostics never: with a failing test the default (on-failure) waited 600 s for the
+          # Simulator to answer a diagnostics request, ten minutes lost per run. Screenshots and the result bundle are
+          # still collected.
           xcodebuild test \
             -project NexaFixScan.xcodeproj -scheme NexaFixScan \
             -destination "platform=iOS Simulator,id=$SIM_UDID" \
             -resultBundlePath "$GITHUB_WORKSPACE/TestResults.xcresult" \
             -parallel-testing-enabled NO \
+            -collect-test-diagnostics never \
             -test-timeouts-enabled YES -default-test-execution-time-allowance 420 -maximum-test-execution-time-allowance 600 \
             CODE_SIGNING_ALLOWED=NO 2>&1 \
             | tee "$GITHUB_WORKSPACE/ui-tests.log" \

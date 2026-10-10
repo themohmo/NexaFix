@@ -504,7 +504,10 @@ private struct ARAccentActionButton: View {
             Label(title, systemImage: systemImage)
                 .font(.subheadline.weight(.semibold))
                 .foregroundStyle(Palette.accentContrast)
-                .padding(.horizontal, Spacing.l)
+                // Never squeezed by the toggles beside it (same fix as the 3D viewer's bar).
+                .lineLimit(1)
+                .fixedSize(horizontal: true, vertical: false)
+                .padding(.horizontal, Spacing.m)
                 .frame(minHeight: 44)
                 .background { Capsule(style: .continuous).fill(Palette.accent) }
                 .contentShape(Capsule(style: .continuous))

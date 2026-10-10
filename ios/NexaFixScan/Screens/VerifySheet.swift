@@ -57,18 +57,10 @@ struct VerifySheet: View {
                     Button("Cancel") { dismiss() }
                         .accessibilityIdentifier("verify.cancel")
                 }
-                ToolbarItemGroup(placement: .keyboard) {
-                    Button {
-                        model.cycleUnit()
-                    } label: {
-                        Text(verbatim: "Unit: \(VerifySheet.shortName(model.inputUnit))")
-                            .font(.body.weight(.semibold))
-                    }
-                    .accessibilityLabel("Change unit")
-                    .accessibilityValue(model.inputUnit.displayName)
-                    Spacer()
-                    Button("Done") { fieldFocused = false }
-                }
+                // No keyboard toolbar: since iOS 26 it floats above the keys as glass buttons, on top of the Save
+                // button, which sits just above the keyboard (found in the Simulator: Save was half covered and a
+                // tap on it did nothing). The unit button next to the field does the same job, and dragging the
+                // sheet's content down puts the keyboard away.
             }
         }
         .presentationDetents([.medium, .large])
