@@ -83,6 +83,7 @@ struct PlanCanvasView: View {
             .clipped()
             .accessibilityElement(children: .contain)
             .accessibilityLabel("Floor plan")
+            .accessibilityIdentifier("plan.canvas")
             .onAppear { layoutChanged(content) }
             // The view turning, or the card rising over the bottom of it.
             .onChange(of: size) { _, _ in layoutChanged(content) }

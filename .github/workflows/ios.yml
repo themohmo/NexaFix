@@ -8,6 +8,9 @@
 #      back to the branch, so 'Clone Git Repository' in Xcode (or a ZIP download) opens a ready-to-run project
 #      with no XcodeGen or Homebrew on your Mac.
 #
+# A second job, 'ui-tests', runs the Simulator smoke tests (ios/NexaFixScanUITests, see ios/tools/ui-tests/README.md)
+# on Xcode 27 and uploads the screenshots, the log and the result bundle as artifacts. It commits nothing.
+#
 # The repository is public, so GitHub-hosted macOS runners are free. No secrets are used; the only token is the
 # built-in GITHUB_TOKEN, limited to this repository.
 name: iOS build
@@ -147,3 +150,382 @@ jobs:
             if git push origin "HEAD:refs/heads/$GITHUB_REF_NAME"; then break; fi
             sleep 5
           done
+
+  # ---------------------------------------------------------------------------------------------------------------
+  # Runtime smoke tests in the iOS Simulator. Nothing in this job has been run on a Mac yet when it was written:
+  # read the "Summary of failures" step first, then the 'ui-tests-log' artifact, then the screenshots.
+  # The job fails when a test fails (after the artifacts have been uploaded). It never commits anything.
+  # ---------------------------------------------------------------------------------------------------------------
+  ui-tests:
+    name: UI smoke tests (Simulator, Xcode 27.0)
+    runs-on: xcode-27
+    timeout-minutes: 60
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Select Xcode 27.0 and show versions
+        run: |
+          ls -d /Applications/Xcode*.app || true
+          XC="/Applications/Xcode_27.0.app"
+          if [ ! -d "$XC" ]; then
+            XC="$(ls -d /Applications/Xcode_27*.app 2>/dev/null | sort -V | head -n 1)"
+          fi
+          if [ -z "$XC" ]; then
+            XC="$(ls -d /Applications/Xcode_*.app 2>/dev/null | sort -V | tail -n 1)"
+          fi
+          echo "Using $XC"
+          sudo xcode-select -s "$XC/Contents/Developer"
+          xcodebuild -version
+          swift --version
+          echo "iphonesimulator SDK: $(xcrun --sdk iphonesimulator --show-sdk-version)"
+          xcrun simctl list runtimes
+
+      - name: Install XcodeGen
+        run: brew install xcodegen
+
+      - name: Generate the Xcode project
+        working-directory: ios
+        run: |
+          xcodegen generate
+          xcodebuild -list -project NexaFixScan.xcodeproj
+
+      - name: Choose, boot and prepare a Simulator
+        # A Simulator that never finishes booting must not use up the whole job: the 'always' steps below still run.
+        timeout-minutes: 15
+        run: |
+          set -eo pipefail
+          xcrun simctl list devices available
+
+          # "version|name|udid" for every iPhone on an iOS runtime, from the plain-text list.
+          LIST="$(xcrun simctl list devices available | awk '
+            /^-- iOS / { v = $3; next }
+            /^-- /     { v = ""; next }
+            v != "" && /^[[:space:]]+iPhone / {
+              line = $0
+              sub(/^[[:space:]]+/, "", line)
+              if (match(line, /\([0-9A-Fa-f]+(-[0-9A-Fa-f]+)+\)/)) {
+                print v "|" substr(line, 1, RSTART - 2) "|" substr(line, RSTART + 1, RLENGTH - 2)
+              }
+            }')"
+          echo "iPhones found:"; echo "$LIST"
+
+          UDID=""
+          # Newest iOS runtime first; in each: iPhone 17 Pro Max (the phone the app is made for), iPhone 17 Pro,
+          # the newest other "iPhone ... Pro", then any iPhone.
+          for RUNTIME in $(printf '%s\n' "$LIST" | cut -d'|' -f1 | sort -V -u | sort -r -V); do
+            IN_RUNTIME="$(printf '%s\n' "$LIST" | grep "^$RUNTIME|" || true)"
+            for PATTERN in '\|iPhone 17 Pro Max\|' '\|iPhone 17 Pro\|' '\|iPhone [0-9]+e? Pro( Max)?\|' '\|iPhone'; do
+              HIT="$(printf '%s\n' "$IN_RUNTIME" | grep -E "$PATTERN" | sort -t'|' -k2 -V | tail -n 1 || true)"
+              if [ -n "$HIT" ]; then UDID="${HIT##*|}"; NAME="$(printf '%s' "$HIT" | cut -d'|' -f2)"; break 2; fi
+            done
+          done
+
+          if [ -z "$UDID" ]; then
+            echo "No iPhone simulator exists on this image; creating one."
+            RUNTIME_ID="$(xcrun simctl list runtimes available | sed -nE 's/^iOS [0-9.]+ .* - (com\.apple\.CoreSimulator\.SimRuntime\.iOS[-0-9]+).*$/\1/p' | sort -V | tail -n 1)"
+            TYPE_ID="$(xcrun simctl list devicetypes | sed -nE 's/^iPhone [0-9]+ Pro \((com\.apple\.CoreSimulator\.SimDeviceType\.iPhone-[0-9]+-Pro)\)$/\1/p' | sort -V | tail -n 1)"
+            echo "runtime=$RUNTIME_ID deviceType=$TYPE_ID"
+            UDID="$(xcrun simctl create "UI tests iPhone" "$TYPE_ID" "$RUNTIME_ID")"
+            NAME="UI tests iPhone"
+          fi
+          echo "Using $NAME ($UDID)"
+          echo "SIM_UDID=$UDID" >> "$GITHUB_ENV"
+          echo "SIM_NAME=$NAME" >> "$GITHUB_ENV"
+
+          xcrun simctl boot "$UDID" || true
+          xcrun simctl bootstatus "$UDID" -b
+
+          # Best effort, none of this is verified: fewer things that can get in the way of typing in the tests
+          # (autocorrect, the "swipe to type" tip), software keyboard instead of the hardware keyboard, light mode.
+          defaults write com.apple.iphonesimulator ConnectHardwareKeyboard -bool false || true
+          xcrun simctl spawn "$UDID" defaults write com.apple.Preferences KeyboardAutocorrection -bool false || true
+          xcrun simctl spawn "$UDID" defaults write com.apple.Preferences KeyboardPrediction -bool false || true
+          xcrun simctl spawn "$UDID" defaults write com.apple.Preferences KeyboardShowPredictionBar -bool false || true
+          xcrun simctl spawn "$UDID" defaults write com.apple.keyboard.preferences DidShowContinuousPathIntroduction -bool true || true
+          xcrun simctl ui "$UDID" appearance light || true
+          { echo "Simulator: $NAME ($UDID)"; } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Build the app and run the UI tests
+        id: tests
+        continue-on-error: true
+        # Build plus all tests. A wedged test runner must not use up the whole job; when this step times out the
+        # 'always' steps (screenshots, logs, the summary) still run, and the summary fails the job.
+        timeout-minutes: 40
+        working-directory: ios
+        env:
+          NSUnbufferedIO: 'YES'
+        run: |
+          set -o pipefail
+          rm -rf "$GITHUB_WORKSPACE/TestResults.xcresult"
+          # The per-test time limit is defined ONLY here (the tests set no executionTimeAllowance themselves):
+          # -test-timeouts-enabled YES switches the limit on, the default is what every test gets (rounded up to whole
+          # minutes by XCTest) and the maximum caps whatever a test asks for. 420 s / 600 s is far above what the
+          # slowest test (the simulated scan) should need, so only a real hang times out.
+          xcodebuild test \
+            -project NexaFixScan.xcodeproj -scheme NexaFixScan \
+            -destination "platform=iOS Simulator,id=$SIM_UDID" \
+            -resultBundlePath "$GITHUB_WORKSPACE/TestResults.xcresult" \
+            -parallel-testing-enabled NO \
+            -test-timeouts-enabled YES -default-test-execution-time-allowance 420 -maximum-test-execution-time-allowance 600 \
+            CODE_SIGNING_ALLOWED=NO 2>&1 \
+            | tee "$GITHUB_WORKSPACE/ui-tests.log" \
+            | awk '/[Tt]est [Cc]ase .*(started|passed|failed)|error:|\*\* TEST|Executed [0-9]+ test/ { print; fflush() }'
+
+      - name: Export the screenshots and print the result summary
+        if: always()
+        run: |
+          set +e
+          cd "$GITHUB_WORKSPACE"
+          mkdir -p attachments
+          if [ ! -d TestResults.xcresult ]; then
+            echo "There is no TestResults.xcresult: the build failed before any test ran. See ui-tests.log."
+            exit 0
+          fi
+
+          echo "=================== xcresulttool: test results summary ==================="
+          # Xcode 16 and later: `xcresulttool get test-results summary|tests --path X` (JSON on stdout).
+          xcrun xcresulttool get test-results summary --path TestResults.xcresult > xcresult-summary.json 2> xcresult-summary.err
+          if [ ! -s xcresult-summary.json ]; then
+            echo "get test-results summary printed nothing:"; head -n 20 xcresult-summary.err
+            echo "trying the older syntax: xcresulttool get --format json"
+            xcrun xcresulttool get --legacy --path TestResults.xcresult --format json > xcresult-summary.json 2> /dev/null \
+              || xcrun xcresulttool get --path TestResults.xcresult --format json > xcresult-summary.json 2> /dev/null
+          fi
+          head -n 150 xcresult-summary.json
+          echo "=================== xcresulttool: tests ==================="
+          xcrun xcresulttool get test-results tests --path TestResults.xcresult > xcresult-tests.json 2> xcresult-tests.err
+          head -n 250 xcresult-tests.json
+
+          echo "=================== exporting attachments ==================="
+          # Xcode 16 and later: `xcresulttool export attachments --path X --output-path DIR` writes every attachment
+          # and a manifest.json that maps the file names to tests.
+          if ! xcrun xcresulttool export attachments --path TestResults.xcresult --output-path attachments; then
+            echo "export attachments failed; trying the older syntax (xcresulttool get/export --legacy)"
+            python3 - <<'PY'
+          import json, os, subprocess, sys
+          RES = "TestResults.xcresult"
+          OUT = "attachments"
+
+          def xr(*args):
+              for legacy in (["--legacy"], []):
+                  r = subprocess.run(["xcrun", "xcresulttool", *args, *legacy], capture_output=True, text=True)
+                  if r.returncode == 0:
+                      return r.stdout
+              return None
+
+          def get(ref=None):
+              args = ["get", "--path", RES, "--format", "json"]
+              if ref:
+                  args += ["--id", ref]
+              out = xr(*args)
+              return json.loads(out) if out else {}
+
+          def val(node, key):
+              v = node.get(key)
+              return v.get("_value") if isinstance(v, dict) else None
+
+          seen, count = set(), 0
+
+          def walk(node, trail):
+              global count
+              if isinstance(node, list):
+                  for item in node:
+                      walk(item, trail)
+              elif isinstance(node, dict):
+                  ref = (node.get("summaryRef") or {}).get("id", {}).get("_value")
+                  if ref and ref not in seen:
+                      seen.add(ref)
+                      walk(get(ref), trail + [val(node, "name") or ""])
+                  for att in (node.get("attachments") or {}).get("_values", []):
+                      pid = ((att.get("payloadRef") or {}).get("id") or {}).get("_value")
+                      if pid and pid not in seen:
+                          seen.add(pid)
+                          name = (val(att, "name") or val(att, "filename") or pid).replace("/", "_")
+                          prefix = "_".join(t for t in trail if t)[-80:].replace("/", "_").replace(" ", "_")
+                          dest = os.path.join(OUT, f"{prefix}__{name}.png")
+                          subprocess.run(["xcrun", "xcresulttool", "export", "--legacy", "--type", "file", "--path", RES,
+                                          "--id", pid, "--output-path", dest], capture_output=True)
+                          count += 1
+                  for key, child in node.items():
+                      if key not in ("attachments", "summaryRef"):
+                          walk(child, trail + ([val(node, "name")] if val(node, "name") else []))
+
+          walk(get(), [])
+          print(f"legacy export: {count} attachments")
+          PY
+          fi
+          # Last resort: the raw data files in the bundle that are images.
+          if [ -z "$(ls -A attachments 2>/dev/null)" ]; then
+            echo "No attachments exported; copying image blobs from the bundle's Data folder."
+            for f in TestResults.xcresult/Data/*; do
+              case "$(file -b "$f")" in
+                PNG*)  cp "$f" "attachments/$(basename "$f").png" ;;
+                JPEG*) cp "$f" "attachments/$(basename "$f").jpg" ;;
+                *HEIF*|*HEIC*) cp "$f" "attachments/$(basename "$f").heic" ;;
+              esac
+            done
+          fi
+          # Screenshots may be stored as HEIC; make PNG copies that every viewer opens.
+          for f in attachments/*.heic attachments/*.HEIC; do
+            [ -f "$f" ] && sips -s format png "$f" --out "${f%.*}.png" > /dev/null 2>&1
+          done
+          # A readable index: test -> exported file -> name given in the test.
+          python3 - <<'PY'
+          import json, os
+          try:
+              manifest = json.load(open("attachments/manifest.json"))
+              lines = []
+              for entry in manifest:
+                  for a in entry.get("attachments", []):
+                      lines.append("%-70s %-50s %s%s" % (entry.get("testIdentifier", "?"), a.get("exportedFileName", "?"),
+                                   a.get("suggestedHumanReadableName", ""),
+                                   "   [FAILURE]" if a.get("isAssociatedWithFailure") else ""))
+              open("attachments/INDEX.txt", "w").write("\n".join(lines) + "\n")
+              print("\n".join(lines[:150]))
+          except Exception as e:
+              print("no readable manifest.json:", e)
+          PY
+          echo "--- attachments directory ---"
+          ls -la attachments | head -n 120
+          echo "image files: $(ls attachments | grep -Eic '\.(png|jpe?g|heic)$')"
+
+          # The bundle as one file, for the artifact (a bundle is a folder with thousands of files).
+          ditto -c -k --sequesterRsrc --keepParent TestResults.xcresult TestResults.xcresult.zip
+          ls -la TestResults.xcresult.zip
+
+      - name: Upload the screenshots
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ui-screenshots
+          path: attachments
+          if-no-files-found: warn
+
+      - name: Upload the test log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ui-tests-log
+          path: |
+            ui-tests.log
+            xcresult-summary.json
+            xcresult-tests.json
+          if-no-files-found: warn
+
+      - name: Upload the result bundle
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ui-xcresult
+          path: TestResults.xcresult.zip
+          compression-level: 0
+          if-no-files-found: warn
+
+      - name: Summary of failures (read this first)
+        if: always()
+        run: |
+          set +e
+          cd "$GITHUB_WORKSPACE"
+          echo "RESULT ui-tests testStep=${{ steps.tests.outcome }} simulator=\"$SIM_NAME\" ($SIM_UDID)"
+          if [ -f ui-tests.log ]; then
+            echo
+            echo "=================== failed test cases ==================="
+            grep -Ei "test case .* failed" ui-tests.log | sort -u | head -n 50
+            echo "=================== errors (unique) ==================="
+            grep -E "error:" ui-tests.log | sed -E 's#/Users/runner/work/[^/]+/[^/]+/##' | sort -u | head -n 80
+            echo "=================== crash lines ==================="
+            # The "Test Case '...' started/passed" lines are left out: a test whose name contains "crash" would
+            # otherwise always be listed here.
+            grep -Ei "crash|terminated unexpectedly|Fatal error|Terminating app|SIGABRT|SIGTRAP|EXC_BAD|Assertion failed|Thread [0-9]+ Crashed" ui-tests.log \
+              | grep -Eiv "test case '" | sort -u | head -n 40
+            echo "=================== result lines ==================="
+            grep -E "\*\* TEST (FAILED|SUCCEEDED)|\*\* BUILD (FAILED|SUCCEEDED)|Executed [0-9]+ tests" ui-tests.log | sort -u | tail -n 10
+            echo "=================== last 30 lines of ui-tests.log ==================="
+            tail -n 30 ui-tests.log
+          else
+            echo "ui-tests.log does not exist: the test step did not start."
+          fi
+          if [ -f xcresult-summary.json ] && command -v python3 > /dev/null; then
+            echo
+            echo "=================== failures in the result bundle ==================="
+            python3 - <<'PY'
+          import json
+          try:
+              s = json.load(open("xcresult-summary.json"))
+              keys = ("result", "totalTestCount", "passedTests", "failedTests", "skippedTests", "expectedFailures")
+              print({k: s.get(k) for k in keys})
+              for f in s.get("testFailures", []):
+                  print("-", f.get("testName"), "|", f.get("targetName"), "|", f.get("failureText"))
+          except Exception as e:
+              print("could not read xcresult-summary.json:", e)
+          PY
+          fi
+
+          # Did every test actually run and pass? "Executed 0 tests" ends with exit code 0, so the step outcome alone
+          # proves nothing: if the test target were empty or its methods were not discovered, the step would be green.
+          # The expected tests are the test methods defined in SmokeTests.swift, so adding a test needs no change here.
+          echo
+          echo "=================== did every test run? ==================="
+          python3 - <<'PY'
+          import json, os, re, sys
+
+          source = open("ios/NexaFixScanUITests/SmokeTests.swift", encoding="utf-8").read()
+          expected = sorted(set(re.findall(r"^[ \t]*func (test\w+)[ \t]*\(\)", source, re.M)))
+          if not expected:
+              print("No test methods found in ios/NexaFixScanUITests/SmokeTests.swift: the check cannot work.")
+              sys.exit(1)
+
+          # "Test Case '-[Target.Class testName]' passed (1.2 seconds)." and, in other modes,
+          # "Test case 'Class.testName()' passed on 'iPhone ...' (1.2 seconds)."
+          passed, failed = set(), set()
+          if os.path.exists("ui-tests.log"):
+              for line in open("ui-tests.log", encoding="utf-8", errors="replace"):
+                  m = re.search(r"[Tt]est [Cc]ase '([^']*)' (passed|failed)", line)
+                  name = re.search(r"(?<![A-Za-z0-9_])(test\w+)", m.group(1)) if m else None
+                  if m and name:
+                      (passed if m.group(2) == "passed" else failed).add(name.group(1))
+
+          summary = {}
+          try:
+              summary = json.load(open("xcresult-summary.json"))
+          except Exception:
+              pass
+
+          def count(key):
+              value = summary.get(key)
+              return value if isinstance(value, int) else None
+
+          json_passed, json_failed, json_total = count("passedTests"), count("failedTests"), count("totalTestCount")
+          missing = [n for n in expected if n not in passed]
+          print("test methods defined in SmokeTests.swift: %d" % len(expected))
+          print("passed test cases in ui-tests.log: %d of %d" % (len(expected) - len(missing), len(expected)))
+          print("xcresult summary: passed=%s failed=%s total=%s" % (json_passed, json_failed, json_total))
+
+          ok_by_log = not missing
+          ok_by_summary = json_passed is not None and json_passed >= len(expected) and not json_failed
+          if ok_by_log or ok_by_summary:
+              if not ok_by_log:
+                  print("(the log lines could not be matched, but the result bundle reports every test as passed)")
+              print("All %d test cases passed." % len(expected))
+              sys.exit(0)
+          print("FEWER TEST CASES PASSED THAN THE %d THAT ARE DEFINED. Not seen as passed:" % len(expected))
+          for name in missing:
+              print("  - %s  (%s)" % (name, "failed" if name in failed else "did not run, or did not finish"))
+          sys.exit(1)
+          PY
+          GATE=$?
+
+          echo
+          if [ "${{ steps.tests.outcome }}" != "success" ]; then
+            echo "UI TESTS FAILED (step outcome: ${{ steps.tests.outcome }}). Failed cases and errors are listed above."
+            echo "Screenshots: artifact 'ui-screenshots'. Full log: artifact 'ui-tests-log'. Result bundle: artifact 'ui-xcresult'."
+            exit 1
+          fi
+          if [ "$GATE" -ne 0 ]; then
+            echo "UI TESTS DID NOT ALL RUN: the test step succeeded, but fewer test cases passed than SmokeTests.swift defines."
+            echo "See 'did every test run?' above. If 'Executed 0 tests' appears in ui-tests.log the test target was not picked up by the scheme."
+            exit 1
+          fi
+          echo "UI tests passed."

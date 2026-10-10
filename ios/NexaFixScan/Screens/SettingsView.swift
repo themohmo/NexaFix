@@ -37,6 +37,7 @@ struct SettingsView: View {
             .toolbar {
                 ToolbarItem(placement: .confirmationAction) {
                     Button("Done") { dismiss() }
+                        .accessibilityIdentifier("settings.done")
                 }
             }
         }
@@ -56,6 +57,7 @@ struct SettingsView: View {
                     }
                     .labelsHidden()
                     .pickerStyle(.menu)
+                    .accessibilityIdentifier("settings.lengthUnit")
                 }
                 RowDivider()
                 SettingRow("Area") {
@@ -64,6 +66,7 @@ struct SettingsView: View {
                     }
                     .labelsHidden()
                     .pickerStyle(.menu)
+                    .accessibilityIdentifier("settings.areaUnit")
                 }
             }
             // A live example, so the choice can be judged without leaving the screen.
@@ -75,6 +78,7 @@ struct SettingsView: View {
                 .accessibilityLabel("Example: "
                     + SpokenMeasurement.length(3.245, unit: units.length) + " and "
                     + SpokenMeasurement.area(18.42, unit: units.area))
+                .accessibilityIdentifier("settings.example")
         }
     }
 

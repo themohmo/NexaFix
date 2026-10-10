@@ -221,6 +221,7 @@ struct PropertyView: View {
             ForEach(PropertyTab.allCases) { Text(verbatim: $0.title).tag($0) }
         }
         .pickerStyle(.segmented)
+        .accessibilityIdentifier("property.segment")
         .padding(.horizontal, Spacing.l)
         .padding(.bottom, Spacing.s)
     }
@@ -406,10 +407,10 @@ struct PropertyView: View {
                 .accessibilityLabel("Scan, review in AR or export")
             } else {
                 HStack(spacing: Spacing.xs) {
-                    BarButton(title: "Add scan", systemImage: "viewfinder") { sheet = .addScan }
-                    BarButton(title: "AR", systemImage: "arkit") { openAR(floor: floor) }
+                    BarButton(title: "Add scan", systemImage: "viewfinder", identifier: "property.addScan") { sheet = .addScan }
+                    BarButton(title: "AR", systemImage: "arkit", identifier: "property.ar") { openAR(floor: floor) }
                         .disabled(!hasRooms)
-                    BarButton(title: "Export", systemImage: "square.and.arrow.up") { sheet = .export }
+                    BarButton(title: "Export", systemImage: "square.and.arrow.up", identifier: "property.export") { sheet = .export }
                 }
             }
         }
@@ -683,6 +684,8 @@ private struct FloorChipButton: View {
 private struct BarButton: View {
     let title: String
     let systemImage: String
+    /// Accessibility identifier, for UI tests.
+    let identifier: String
     let action: () -> Void
 
     var body: some View {
@@ -700,6 +703,7 @@ private struct BarButton: View {
         }
         .buttonStyle(.pressable)
         .accessibilityLabel(title)
+        .accessibilityIdentifier(identifier)
     }
 }
 
@@ -745,6 +749,7 @@ private struct RoomListRow: View {
         .accessibilityLabel(info.spoken(units: units))
         .accessibilityHint("Opens the room.")
         .accessibilityAddTraits(.isButton)
+        .accessibilityIdentifier("rooms.row")
     }
 }
 
@@ -803,6 +808,7 @@ private struct SelectionCard: View {
             }
             .buttonStyle(.pressable)
             .accessibilityLabel("Close")
+            .accessibilityIdentifier("plan.selection.close")
         }
     }
 

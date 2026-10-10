@@ -59,6 +59,7 @@ struct NewPropertySheet: View {
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("Cancel") { dismiss() }
+                        .accessibilityIdentifier("newProperty.cancel")
                 }
                 if !isCreating {
                     ToolbarItem(placement: .confirmationAction) {
@@ -120,9 +121,11 @@ struct NewPropertySheet: View {
                 .buttonStyle(.primaryFullWidth)
                 .disabled(!draft.canCreate || didStartCreating)
                 .accessibilityHint(draft.canCreate ? "" : "Add a name first.")
+                .accessibilityIdentifier("newProperty.startScanning")
             Button { create(thenScan: false) } label: { Text(verbatim: "Save without scanning") }
                 .buttonStyle(.secondaryFullWidth)
                 .disabled(!draft.canCreate || didStartCreating)
+                .accessibilityIdentifier("newProperty.save")
         }
     }
 
@@ -284,6 +287,7 @@ private struct FormField: View {
                 .onSubmit(advance)
                 .frame(minHeight: 44)
                 .accessibilityLabel(title)
+                .accessibilityIdentifier("newProperty.field.\(String(describing: field))")
         }
         .padding(.vertical, Spacing.xs)
     }

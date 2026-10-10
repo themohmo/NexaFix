@@ -121,6 +121,7 @@ struct RoomNameSheet: View {
                     if newValue != flow.suggestedName(for: kind) { nameWasEdited = true }
                 }
                 .accessibilityLabel("Room name")
+                .accessibilityIdentifier("roomName.field")
 
             if let problem {
                 Label {
@@ -217,13 +218,16 @@ struct RoomNameSheet: View {
                 Button("Scan next room") { onScanNext(name, kind) }
                     .buttonStyle(.primaryFullWidth)
                     .disabled(!isValid)
+                    .accessibilityIdentifier("roomName.nextRoom")
                 Button("Finish property") { onFinishProperty(name, kind) }
                     .buttonStyle(.secondaryFullWidth)
                     .disabled(!isValid)
+                    .accessibilityIdentifier("roomName.finishProperty")
             } else {
                 Button("Finish property") { onFinishProperty(name, kind) }
                     .buttonStyle(.primaryFullWidth)
                     .disabled(!isValid)
+                    .accessibilityIdentifier("roomName.finishProperty")
             }
             ViewThatFits(in: .horizontal) {
                 HStack(spacing: Spacing.xl) { quietButtons }

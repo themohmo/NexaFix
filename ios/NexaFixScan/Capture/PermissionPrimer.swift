@@ -141,7 +141,8 @@ struct PermissionPrimer: View {
         #if targetEnvironment(simulator)
         EmptyStateView(title: capability.title, message: capability.message,
                        primaryTitle: "Simulate a scan", primaryAction: { onSimulate?() },
-                       secondaryTitle: "Close", secondaryAction: onClose)
+                       secondaryTitle: "Close", secondaryAction: onClose,
+                       primaryIdentifier: "scan.primer.simulate")
         #else
         EmptyStateView(title: capability.title, message: capability.message,
                        primaryTitle: "Close", primaryAction: onClose)

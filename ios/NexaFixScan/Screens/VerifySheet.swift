@@ -55,6 +55,7 @@ struct VerifySheet: View {
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("Cancel") { dismiss() }
+                        .accessibilityIdentifier("verify.cancel")
                 }
                 ToolbarItemGroup(placement: .keyboard) {
                     Button {
@@ -140,6 +141,7 @@ struct VerifySheet: View {
                     .focused($fieldFocused)
                     .accessibilityLabel("Measured value")
                     .accessibilityHint("Type what the meter shows. The unit is \(model.inputUnit.displayName).")
+                    .accessibilityIdentifier("verify.field")
                 unitButton
             }
             .padding(.horizontal, Spacing.l)
@@ -240,6 +242,7 @@ struct VerifySheet: View {
                 Text(verbatim: model.needsConfirmation ? "Save anyway" : "Save")
             }
             .buttonStyle(.primaryFullWidth)
+            .accessibilityIdentifier("verify.save")
             // Only an empty field has nothing to save; anything else answers when tapped.
             .disabled(model.check == .empty || !model.targetExists)
             .accessibilityHint(model.check == .empty ? "Type the measured value first." : "")
@@ -250,6 +253,7 @@ struct VerifySheet: View {
                 }
                 .buttonStyle(.secondaryFullWidth)
                 .accessibilityHint("Goes back to the scanned value.")
+                .accessibilityIdentifier("verify.clear")
             }
         }
         .padding(.horizontal, Spacing.l)

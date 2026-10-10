@@ -264,15 +264,23 @@ struct EmptyStateView: View {
     private let primaryAction: () -> Void
     private let secondaryTitle: String?
     private let secondaryAction: (() -> Void)?
+    private let primaryIdentifier: String
+    private let secondaryIdentifier: String
 
+    /// - Parameters:
+    ///   - primaryIdentifier: Accessibility identifier of the main button, for UI tests. Empty for none.
+    ///   - secondaryIdentifier: The same for the quiet button.
     init(title: String, message: String, primaryTitle: String, primaryAction: @escaping () -> Void,
-         secondaryTitle: String? = nil, secondaryAction: (() -> Void)? = nil) {
+         secondaryTitle: String? = nil, secondaryAction: (() -> Void)? = nil,
+         primaryIdentifier: String = "", secondaryIdentifier: String = "") {
         self.title = title
         self.message = message
         self.primaryTitle = primaryTitle
         self.primaryAction = primaryAction
         self.secondaryTitle = secondaryTitle
         self.secondaryAction = secondaryAction
+        self.primaryIdentifier = primaryIdentifier
+        self.secondaryIdentifier = secondaryIdentifier
     }
 
     var body: some View {
@@ -306,6 +314,7 @@ struct EmptyStateView: View {
             VStack(spacing: Spacing.s) {
                 Button(primaryTitle, action: primaryAction)
                     .buttonStyle(PrimaryButtonStyle(fullWidth: true))
+                    .accessibilityIdentifier(primaryIdentifier)
                 if let secondaryTitle, let secondaryAction {
                     Button(action: secondaryAction) {
                         Text(verbatim: secondaryTitle)
@@ -316,6 +325,7 @@ struct EmptyStateView: View {
                             .contentShape(Rectangle())
                     }
                     .buttonStyle(PressableButtonStyle())
+                    .accessibilityIdentifier(secondaryIdentifier)
                 }
             }
         }

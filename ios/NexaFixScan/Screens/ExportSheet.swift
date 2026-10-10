@@ -256,6 +256,7 @@ struct ExportSheet: View {
             .toolbar {
                 ToolbarItem(placement: .confirmationAction) {
                     Button("Done") { dismiss() }
+                        .accessibilityIdentifier("export.done")
                 }
             }
         }
@@ -307,6 +308,7 @@ struct ExportSheet: View {
                     }
                 }
                 .disabled(unavailable)
+                .accessibilityIdentifier("export.format.\(format.rawValue)")
                 .frame(minHeight: 44)
                 .padding(.vertical, Spacing.xs)
             }
@@ -428,6 +430,7 @@ struct ExportSheet: View {
             }
             .buttonStyle(.primaryFullWidth)
             .disabled(blocked || controller.isWorking)
+            .accessibilityIdentifier("export.share")
             // The system share sheet is presented from the button, so on iPad it points at it.
             .background { ShareSheet(items: $shareItems).allowsHitTesting(false) }
         }

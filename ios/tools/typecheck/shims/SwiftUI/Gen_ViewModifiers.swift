@@ -23,6 +23,8 @@ extension View {
     public nonisolated func accessibilityHidden(_ hidden: Bool) -> ModifiedContent<Self, AccessibilityAttachmentModifier> { fatalError() }
     // doc: SwiftUI/View/accessibilityHidden(_:isEnabled:)  [iOS 18.0]
     public nonisolated func accessibilityHidden(_ hidden: Bool, isEnabled: Bool) -> ModifiedContent<Self, AccessibilityAttachmentModifier> { fatalError() }
+    // doc: SwiftUI/View/accessibilityIdentifier(_:)
+    public nonisolated func accessibilityIdentifier(_ identifier: String) -> ModifiedContent<Self, AccessibilityAttachmentModifier> { fatalError() }
     // doc: SwiftUI/View/accessibilityAddTraits(_:)
     public nonisolated func accessibilityAddTraits(_ traits: AccessibilityTraits) -> ModifiedContent<Self, AccessibilityAttachmentModifier> { fatalError() }
     // doc: SwiftUI/View/foregroundStyle(_:)

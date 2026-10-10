@@ -37203,6 +37203,20 @@
   "relationships": {},
   "role": "Instance Method"
  },
+ "SwiftUI/View/accessibilityIdentifier(_:)": {
+  "decls": [
+   "nonisolated func accessibilityIdentifier(_ identifier: String) -> ModifiedContent<Self, AccessibilityAttachmentModifier>"
+  ],
+  "iOS": {
+   "beta": false,
+   "deprecated": false,
+   "introduced": "14.0",
+   "unavailable": false
+  },
+  "page": "SwiftUI/View/accessibilityIdentifier(_:)",
+  "relationships": {},
+  "role": "Instance Method"
+ },
  "SwiftUI/View/accessibilityLabel(_:)-1d7jv": {
   "decls": [
    "nonisolated func accessibilityLabel<S>(_ label: S) -> ModifiedContent<Self, AccessibilityAttachmentModifier> where S : StringProtocol"

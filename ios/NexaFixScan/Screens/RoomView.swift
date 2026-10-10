@@ -404,6 +404,8 @@ private struct DimensionRow: View {
             provenance: ProvenanceDescription(item.measured, units: units, compact: false).spoken)
         .accessibilityHint("Opens the check for this dimension.")
         .accessibilityAddTraits(.isButton)
+        // For UI tests: which rows are checked is otherwise only in the spoken text.
+        .accessibilityIdentifier(item.measured.isVerified ? "room.dimension.verified" : "room.dimension.scanned")
     }
 }
 

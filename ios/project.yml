@@ -152,6 +152,35 @@ targets:
         GENERATE_INFOPLIST_FILE: "NO"
         INFOPLIST_FILE: Config/Info.plist
 
+  # Runtime smoke tests: they launch the app in the Simulator, drive its screens and attach screenshots.
+  # See tools/ui-tests/README.md. The bundle is built only for the scheme's Test action (Product > Test, or
+  # `xcodebuild test`): the "NexaFixScan" scheme lists it under `test:` below and not under `build:`, so XcodeGen adds
+  # it to the build action for testing only, and `xcodebuild -scheme NexaFixScan -destination generic/platform=iOS build`
+  # does not build or sign it. The Simulator needs no signing team.
+  NexaFixScanUITests:
+    type: bundle.ui-testing
+    platform: iOS
+    deploymentTarget: "17.0"
+    sources:
+      - path: NexaFixScanUITests
+        excludes:
+          - "**/.DS_Store"
+          - "**/*.md"
+    dependencies:
+      - target: NexaFixScan
+        link: false              # the tests start the app as a separate process; nothing is linked into the bundle
+    settings:
+      base:
+        PRODUCT_NAME: NexaFixScanUITests
+        # Derived from the app's identifier (com.nexafix.scan, see Config/Signing.xcconfig). A UI test bundle does not
+        # have to match the app's identifier, so a Local.xcconfig override of the app's does not affect it.
+        PRODUCT_BUNDLE_IDENTIFIER: com.nexafix.scan.uitests
+        GENERATE_INFOPLIST_FILE: "YES"
+        TEST_TARGET_NAME: NexaFixScan    # the app the tests launch (XCUIApplication())
+        SWIFT_VERSION: "5.0"
+        IPHONEOS_DEPLOYMENT_TARGET: "17.0"
+        TARGETED_DEVICE_FAMILY: "1,2"
+
 # Two schemes with the same target. Use "NexaFixScan" while fixing build errors (Debug: full diagnostics).
 # Use "NexaFixScan Release" for real site scans: Debug builds are unoptimised and Swift number-crunching is
 # much slower in them, so if the plan, the AR overlay or room reconstruction feels sluggish, switch to Release.
@@ -162,6 +191,12 @@ schemes:
         NexaFixScan: all
     run:
       config: Debug
+    # Product > Test (or `xcodebuild test -scheme NexaFixScan -destination 'platform=iOS Simulator,...'`) runs the
+    # Simulator smoke tests. Debug, because the launch hook that resets the app's data exists only in Debug builds.
+    test:
+      config: Debug
+      targets:
+        - NexaFixScanUITests
     profile:
       config: Release
     archive:

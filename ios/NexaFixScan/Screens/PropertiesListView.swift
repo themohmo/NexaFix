@@ -40,7 +40,9 @@ struct PropertiesListView: View {
                     primaryTitle: "Scan a property",
                     primaryAction: { router.showNewProperty() },
                     secondaryTitle: "Try the demo apartment",
-                    secondaryAction: openDemo)
+                    secondaryAction: openDemo,
+                    primaryIdentifier: "home.scanProperty",
+                    secondaryIdentifier: "home.demoButton")
             } else {
                 list
             }
@@ -55,6 +57,7 @@ struct PropertiesListView: View {
                     Image(systemName: "gearshape")
                 }
                 .accessibilityLabel("Settings")
+                .accessibilityIdentifier("home.settings")
             }
         }
         .searchable(text: $query, prompt: "Search properties")
@@ -106,6 +109,7 @@ struct PropertiesListView: View {
             }
         }
         .buttonStyle(.primary)
+        .accessibilityIdentifier("home.newScan")
         .padding(.bottom, Spacing.s)
         .frame(maxWidth: .infinity)
         .padding(.top, Spacing.s)
@@ -260,6 +264,7 @@ private struct PropertyCard: View {
                 .accessibilityLabel(spokenLabel)
                 .accessibilityHint("Opens the property.")
                 .accessibilityAddTraits(.isButton)
+                .accessibilityIdentifier("home.propertyCard")
         } else {
             // Not a button: a disabled button draws its whole label at 40 % opacity, and what this card has to
             // say (why the property cannot be opened) must stay readable. Delete is still in the swipe actions

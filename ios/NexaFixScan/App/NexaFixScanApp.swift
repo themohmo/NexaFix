@@ -9,6 +9,11 @@ struct NexaFixScanApp: App {
     @State private var model: AppModel
 
     init() {
+        #if DEBUG
+        // UI tests only: `-UITestResetData` empties the saved data first, so a test starts as on a first launch.
+        // Before the model exists, because the model reads the store and the settings when it is created.
+        UITestSupport.resetIfRequested()
+        #endif
         // The haptics switch lives in a UIKit file; the model reaches it through this closure so the
         // model itself stays free of UIKit.
         _model = State(initialValue: AppModel(hapticsSink: { Haptics.isEnabled = $0 }))

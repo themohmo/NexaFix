@@ -78,10 +78,12 @@ struct ScanBottomBar: View {
                     .accessibilityHint(controller.flow.rooms.isEmpty
                                        ? "Closes the scanner."
                                        : "Stops this room. Your finished rooms are kept.")
+                    .accessibilityIdentifier("scan.cancel")
                 Button(controller.isSimulated ? "Simulate a scan" : "Finish room") { controller.finishRoom() }
                     .buttonStyle(.primary)
                     .disabled(!controller.canFinishRoom)
                     .accessibilityHint(controller.canFinishRoom ? "" : "Scan at least three walls first.")
+                    .accessibilityIdentifier(controller.isSimulated ? "scan.simulate" : "scan.finishRoom")
             }
 
         case .processingRoom:
