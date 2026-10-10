@@ -1361,4 +1361,19 @@ final class PropertyStoreTests: XCTestCase {
         }
         XCTAssertTrue(PropertyStoreError.unsafePath("../x").errorDescription?.contains("../x") ?? false)
     }
+
+    func testSummaryForOnePropertyMatchesTheListEntry() throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent("summary-\(UUID().uuidString)")
+        defer { try? FileManager.default.removeItem(at: root) }
+        let store = PropertyStore(rootURL: root)
+        let room = Room.rectangle(name: "Living", kind: .livingRoom, width: 5, depth: 4)
+        let property = Property(name: "Unit 1", client: "Mr. Ahmed", floors: [Floor(name: "Level 1", rooms: [room])])
+        try store.save(property)
+        let one = try store.summary(id: property.id)
+        let fromList = try XCTUnwrap(try store.list().first { $0.id == property.id })
+        XCTAssertEqual(one, fromList)
+        XCTAssertEqual(one.roomCount, 1)
+        XCTAssertEqual(one.floorAreaM2, 20, accuracy: 1e-6)
+        XCTAssertThrowsError(try store.summary(id: UUID()))
+    }
 }

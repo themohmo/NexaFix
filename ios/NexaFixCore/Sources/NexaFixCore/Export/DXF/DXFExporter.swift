@@ -707,7 +707,7 @@ private struct DXFEntityWriter {
     /// the `nearestACI` and `trueColor` modes for everything, and in every mode for the plan's two status colours
     /// (laser-verified green, out-of-square red), so that cue survives a BYLAYER export. Group 420 is written only
     /// in `trueColor` mode, which declares a release that defines it.
-    private mutating func begin(_ type: String, layer: PlanLayer, stroke: StrokeStyle?, color: DrawColor?,
+    private mutating func begin(_ type: String, layer: PlanLayer, stroke: DrawStroke?, color: DrawColor?,
                                 explicitColor: Bool = false) {
         writer.tag(0, type)
         writer.tag(5, allocator.allocate())
@@ -730,7 +730,7 @@ private struct DXFEntityWriter {
 
     // MARK: LINE
 
-    private mutating func addLine(_ a: Point2, _ b: Point2, _ stroke: StrokeStyle, _ layer: PlanLayer) {
+    private mutating func addLine(_ a: Point2, _ b: Point2, _ stroke: DrawStroke, _ layer: PlanLayer) {
         guard let p = convert(a), let q = convert(b), a.distance(to: b) >= minimumLength else { return }
         begin("LINE", layer: layer, stroke: stroke, color: stroke.color)
         writer.tag(100, "AcDbLine")
@@ -762,7 +762,7 @@ private struct DXFEntityWriter {
         return result
     }
 
-    private mutating func addPolyline(_ points: [Point2], closed: Bool, stroke: StrokeStyle?, fill: DrawColor?,
+    private mutating func addPolyline(_ points: [Point2], closed: Bool, stroke: DrawStroke?, fill: DrawColor?,
                                       layer: PlanLayer) {
         guard let verts = vertices(points, closed: closed) else { return }
 
@@ -824,7 +824,7 @@ private struct DXFEntityWriter {
     // MARK: ARC and CIRCLE
 
     private mutating func addArc(_ center: Point2, _ radius: Double, _ startAngle: Double, _ endAngle: Double,
-                                 _ stroke: StrokeStyle, _ layer: PlanLayer) {
+                                 _ stroke: DrawStroke, _ layer: PlanLayer) {
         guard let c = convert(center), let r = convertLength(radius),
               startAngle.isFinite, endAngle.isFinite else { return }
         let sweep = endAngle - startAngle
@@ -846,7 +846,7 @@ private struct DXFEntityWriter {
         extents.include(c.x + r, c.y + r)
     }
 
-    private mutating func addCircle(_ center: Point2, _ radius: Double, _ stroke: StrokeStyle, _ layer: PlanLayer) {
+    private mutating func addCircle(_ center: Point2, _ radius: Double, _ stroke: DrawStroke, _ layer: PlanLayer) {
         guard let c = convert(center), let r = convertLength(radius) else { return }
         begin("CIRCLE", layer: layer, stroke: stroke, color: stroke.color)
         writer.tag(100, "AcDbCircle")

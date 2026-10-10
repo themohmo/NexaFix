@@ -129,7 +129,7 @@ public enum CaptureFixtures {
         public var extendEnd: Double
         /// RoomPlan never saw a wall here (open-plan side): emit no surface.
         public var omit: Bool
-        /// Emit the wall as a curved surface (stored by RoomBuilder as its chord).
+        /// Emit the wall as a curved surface (stored by RoomReconstructor as its chord).
         public var curved: Bool
         /// Emit the wall as two collinear surfaces, split at this fraction (0...1) of its length.
         public var splitAt: Double?
@@ -187,7 +187,7 @@ public enum CaptureFixtures {
         /// True room outline, counter-clockwise, in the shared floor frame. For an open-plan fixture
         /// this includes the side with no wall.
         public var corners: [Point2]
-        /// Area of `corners`, computed independently of `RoomBuilder`.
+        /// Area of `corners`, computed independently of `RoomReconstructor`.
         public var expectedArea: Double
         public var expectedPerimeter: Double
         /// Number of walls the builder should return (merged splits count once, bridged sides count once).
@@ -334,7 +334,7 @@ public enum CaptureFixtures {
 
     /// Rectangle whose wall `wall` is a curved surface (chord reported, `isCurved` set). The floor
     /// polygon follows the arc, bulging `sagitta` metres outwards. `expectedArea` is the CHORD
-    /// polygon (that is what RoomBuilder stores); `floorArea` includes the bulge.
+    /// polygon (that is what RoomReconstructor stores); `floorArea` includes the bulge.
     public static func curvedWall(width: Double = 5.0, depth: Double = 4.0, wall: Int = 1, sagitta: Double = 0.3,
                                   height: Double = 2.8, doors: [OpeningSpec] = [], windows: [OpeningSpec] = [],
                                   noise: Noise = .none, seed: UInt64 = 1, extras: Extras = Extras()) -> Fixture {
@@ -391,7 +391,7 @@ public enum CaptureFixtures {
 
         var rng = SeededGenerator(seed: seed)
         func id(_ kind: String, _ i: Int, _ piece: Int = 0) -> UUID {
-            RoomBuilder.stableUUID("fixture|\(label)|\(kind)|\(i)|\(piece)")
+            RoomReconstructor.stableUUID("fixture|\(label)|\(kind)|\(i)|\(piece)")
         }
 
         var walls: [RawSurface] = []
@@ -516,7 +516,7 @@ public enum CaptureFixtures {
                                      dimensions: Point3(o.width, o.height, o.depth)))
         }
 
-        let canonical = RawCapture(id: RoomBuilder.stableUUID("fixture|\(label)|capture"), walls: walls,
+        let canonical = RawCapture(id: RoomReconstructor.stableUUID("fixture|\(label)|capture"), walls: walls,
                                    doors: doorSurfaces, windows: windowSurfaces, openings: passageSurfaces,
                                    floors: floors, objects: objects)
         let omitted = extras.tweaks.filter { $0.omit }.count

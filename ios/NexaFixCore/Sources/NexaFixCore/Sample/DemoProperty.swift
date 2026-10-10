@@ -8,7 +8,7 @@ import Foundation
 /// Bathroom 2.6 x 2.2, Bathroom 2 2.2 x 1.8) plus a 4.5 x 1.5 balcony, ceiling 2.8 m.
 ///
 /// Every room goes through the real path: `CaptureFixtures` emits what RoomPlan would report
-/// (shuffled, randomly flipped, a little scan noise) and `RoomBuilder.build` turns it into a `Room`.
+/// (shuffled, randomly flipped, a little scan noise) and `RoomReconstructor.build` turns it into a `Room`.
 /// The rooms share one floor frame (plan space, metres) and are separated by 0.15 m of wall
 /// thickness, so they tile into a plausible apartment without overlapping:
 ///
@@ -74,7 +74,7 @@ public enum DemoProperty {
 
     // MARK: Identifiers
 
-    static func id(_ key: String) -> UUID { RoomBuilder.stableUUID("NexaFix.Demo.MarinaGate2.Unit2304." + key) }
+    static func id(_ key: String) -> UUID { RoomReconstructor.stableUUID("NexaFix.Demo.MarinaGate2.Unit2304." + key) }
 
     // MARK: Room specs
 
@@ -275,7 +275,7 @@ public enum DemoProperty {
         }
         // Rooms are scanned one after another, a few minutes apart, ending at `now`.
         let scannedAt = now.addingTimeInterval(-Double(count - 1 - index) * 420)
-        var room = RoomBuilder.build(from: fixture.capture, name: spec.name, kind: spec.kind, now: scannedAt).room
+        var room = RoomReconstructor.build(from: fixture.capture, name: spec.name, kind: spec.kind, now: scannedAt).room
         room.id = id("room." + spec.name)
         for v in spec.verifications { apply(v, to: &room, date: now) }
         addCustomMeasurements(for: spec, to: &room, now: now)

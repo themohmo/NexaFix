@@ -32,7 +32,7 @@ public struct OpeningSpec: Sendable {
 
 public extension Room {
     /// Build a room from corner points (plan space, metres). Points are re-wound counter-clockwise.
-    /// Used by tests and demo data; real rooms come from `RoomBuilder`.
+    /// Used by tests and demo data; real rooms come from `RoomReconstructor`.
     static func polygon(name: String, kind: RoomKind = .other, corners: [Point2], ceilingHeight: Double = 2.8,
                         openings: [OpeningSpec] = [], floorElevation: Double = 0, id: UUID = UUID()) -> Room {
         let pts = Polygon.counterClockwise(corners)

@@ -196,7 +196,7 @@ extension PlanDrawingBuilder {
             let arc = DrawingPrimitive.arc(center: p, radius: radius,
                                            startAngle: normalizedDegrees(start),
                                            endAngle: normalizedDegrees(start + angle),
-                                           StrokeStyle(weight: Weight.angleArc, color: color))
+                                           DrawStroke(weight: Weight.angleArc, color: color))
 
             // Number on the bisector, pushed out until its box clears both walls' dimension lines.
             let text = UnitFormatter.angle(angle)

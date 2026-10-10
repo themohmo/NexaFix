@@ -14,21 +14,21 @@ private extension PlanDrawing {
         primitives.filter { $0.layer == layer }.map(\.primitive)
     }
 
-    func lines(_ layer: PlanLayer) -> [(a: Point2, b: Point2, style: StrokeStyle)] {
+    func lines(_ layer: PlanLayer) -> [(a: Point2, b: Point2, style: DrawStroke)] {
         items(layer).compactMap {
             if case let .line(a, b, s) = $0 { return (a, b, s) }
             return nil
         }
     }
 
-    func polylines(_ layer: PlanLayer) -> [(points: [Point2], closed: Bool, stroke: StrokeStyle?, fill: DrawColor?)] {
+    func polylines(_ layer: PlanLayer) -> [(points: [Point2], closed: Bool, stroke: DrawStroke?, fill: DrawColor?)] {
         items(layer).compactMap {
             if case let .polyline(p, c, s, f) = $0 { return (p, c, s, f) }
             return nil
         }
     }
 
-    func arcs(_ layer: PlanLayer) -> [(center: Point2, radius: Double, start: Double, end: Double, style: StrokeStyle)] {
+    func arcs(_ layer: PlanLayer) -> [(center: Point2, radius: Double, start: Double, end: Double, style: DrawStroke)] {
         items(layer).compactMap {
             if case let .arc(c, r, a, b, s) = $0 { return (c, r, a, b, s) }
             return nil

@@ -178,7 +178,7 @@ public enum PlanDrawingBuilder {
 
         mutating func line(_ layer: PlanLayer, _ a: Point2, _ b: Point2, weight: Double, color: DrawColor,
                            dashed: Bool = false) {
-            add(layer, .line(a, b, StrokeStyle(weight: weight, color: color, dashed: dashed)))
+            add(layer, .line(a, b, DrawStroke(weight: weight, color: color, dashed: dashed)))
         }
 
         /// `paperHeight` is the cap height on paper in millimetres. `at` is the baseline anchor.
@@ -442,7 +442,7 @@ public enum PlanDrawingBuilder {
                 let outerA = startsAtCorner ? w.outerStart : innerA - w.inward * t
                 let outerB = endsAtCorner ? w.outerEnd : innerB - w.inward * t
                 context.add(.walls, .polyline([innerA, innerB, outerB, outerA], closed: true,
-                                              stroke: StrokeStyle(weight: Weight.wall, color: ink),
+                                              stroke: DrawStroke(weight: Weight.wall, color: ink),
                                               fill: ink))
             }
         }
@@ -458,7 +458,7 @@ public enum PlanDrawingBuilder {
                   object.width.isFinite, object.depth.isFinite, object.width > 0.01, object.depth > 0.01 else { continue }
             let footprint = object.footprint
             context.add(.furniture, .polyline(footprint, closed: true,
-                                              stroke: StrokeStyle(weight: Weight.furniture, color: Palette.muted),
+                                              stroke: DrawStroke(weight: Weight.furniture, color: Palette.muted),
                                               fill: Palette.furnitureFill))
             if let box = Bounds2(points: footprint) { context.obstacles.insert(box) }
 

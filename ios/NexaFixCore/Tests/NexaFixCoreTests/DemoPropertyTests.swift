@@ -3,7 +3,7 @@ import XCTest
 
 /// Sanity tests for `DemoProperty`: a plausible, non-overlapping, deterministic two-bedroom apartment
 /// whose rooms match the costing example and whose numbers come out of the real
-/// `CaptureFixtures` -> `RoomBuilder` path.
+/// `CaptureFixtures` -> `RoomReconstructor` path.
 final class DemoPropertyTests: XCTestCase {
     private let now = Date(timeIntervalSince1970: 1_790_000_000)
     private lazy var property: Property = DemoProperty.make(now: now)
@@ -105,7 +105,7 @@ final class DemoPropertyTests: XCTestCase {
         // Fixed UUIDs derived from fixed strings: these literals must never change.
         XCTAssertEqual(property.id.uuidString, "D9F3DADE-9A00-5DE4-9E88-763C7C5856D7")
         XCTAssertEqual(room("Living Room").id.uuidString, "8C99D2CC-BA4C-5481-8AEC-765B6518D0D0")
-        XCTAssertEqual(property.floors[0].id, RoomBuilder.stableUUID("NexaFix.Demo.MarinaGate2.Unit2304.floor.level23"))
+        XCTAssertEqual(property.floors[0].id, RoomReconstructor.stableUUID("NexaFix.Demo.MarinaGate2.Unit2304.floor.level23"))
 
         var seen = Set<UUID>()
         func take(_ id: UUID, _ what: String) { XCTAssertTrue(seen.insert(id).inserted, "duplicate id: \(what)") }
@@ -574,7 +574,7 @@ final class DemoPropertyTests: XCTestCase {
         // Rooms come from the real builder: ids of walls are RoomPlan surface ids from the fixtures, heights
         // are medians of scanned values, and nothing in the model claims verification it does not have.
         for r in rooms {
-            XCTAssertEqual(r.ceilingHeight.scanned, RoomBuilder.median(r.walls.map { $0.height.scanned })!, accuracy: 1e-12)
+            XCTAssertEqual(r.ceilingHeight.scanned, RoomReconstructor.median(r.walls.map { $0.height.scanned })!, accuracy: 1e-12)
             XCTAssertFalse(r.ceilingHeight.isVerified)
             XCTAssertTrue(Polygon.isCounterClockwise(r.outline))
             XCTAssertTrue(r.metrics.corners.allSatisfy { !$0.isReflex })
@@ -592,7 +592,7 @@ final class DemoPropertyTests: XCTestCase {
                          .init(category: "sink", center: Point2(1.95, 1.1), yaw: Double.pi / 2, width: 0.55, depth: 0.45, height: 0.85)]
             return e
         }())
-        let rebuilt = RoomBuilder.build(from: fixture.capture, name: "Bathroom 2", kind: .bathroom, now: now).room
+        let rebuilt = RoomReconstructor.build(from: fixture.capture, name: "Bathroom 2", kind: .bathroom, now: now).room
         // (The demo origin is computed as 6.2 + 0.15, which differs from the literal 6.35 by one ulp.)
         for (a, b) in zip(rebuilt.walls, room("Bathroom 2").walls) {
             XCTAssertEqual(a.id, b.id)

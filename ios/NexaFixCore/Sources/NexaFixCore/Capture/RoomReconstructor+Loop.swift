@@ -1,6 +1,6 @@
 import Foundation
 
-// Boundary-loop reconstruction for `RoomBuilder`: merge collinear pieces, build a graph of wall
+// Boundary-loop reconstruction for `RoomReconstructor`: merge collinear pieces, build a graph of wall
 // ends, search for the closed loop that explains the most wall with the least repair, and fall
 // back to the floor polygon / convex hull when no acceptable loop exists.
 //
@@ -26,7 +26,7 @@ import Foundation
 // merely sits near an open side from the boundary; the floor polygon and the "wall outside the
 // loop" terms can.
 
-extension RoomBuilder {
+extension RoomReconstructor {
 
     // MARK: Types
 
@@ -632,7 +632,7 @@ extension RoomBuilder {
                 if lu > 1e-9, lv > 1e-9, abs(u.cross(v)) / (lu * lv) < 1e-9, u.dot(v) < 0 { return false }
             }
             if poly.count >= 2 {
-                for i in 0..<(poly.count - 1) where RoomBuilder.segmentsTouch(poly[i].0, poly[i].1, a, b) { return false }
+                for i in 0..<(poly.count - 1) where RoomReconstructor.segmentsTouch(poly[i].0, poly[i].1, a, b) { return false }
             }
             poly.append((a, b))
             return true
@@ -646,7 +646,7 @@ extension RoomBuilder {
                 budget -= 1
                 if budget <= 0 { exhausted = true; return }
                 if let b = best, cost + e.cost > b.total + 1e-12 { break }
-                if e.isBridge && bridges >= RoomBuilder.maxBridgesPerLoop { continue }
+                if e.isBridge && bridges >= RoomReconstructor.maxBridgesPerLoop { continue }
                 let v = e.to
                 if v == startNode {
                     close(with: e, cost: cost + e.cost)
@@ -685,15 +685,15 @@ extension RoomBuilder {
 
         /// Score the finished cycle (`cost` = the edges only) and keep it if it is acceptable and the best so far.
         private func close(with e: LoopEdge, cost: Double) {
-            if e.isBridge && pathEdges.filter({ $0.isBridge }).count >= RoomBuilder.maxBridgesPerLoop { return }
+            if e.isBridge && pathEdges.filter({ $0.isBridge }).count >= RoomReconstructor.maxBridgesPerLoop { return }
             budget -= path.count * path.count / 4 + 1   // assembling and testing a loop is O(n^2)
             let edges = pathEdges + [e]
-            guard let walls = RoomBuilder.assembleCycle(path: path, edges: edges, nodes: nodes,
+            guard let walls = RoomReconstructor.assembleCycle(path: path, edges: edges, nodes: nodes,
                                                         minEdgeLength: minEdgeLength) else { return }
             let verts = walls.map(\.start)
             guard verts.count >= 3 else { return }
             let area = Polygon.area(verts)
-            guard area > 0.01, RoomBuilder.isSimplePolygon(verts) else { return }
+            guard area > 0.01, RoomReconstructor.isSimplePolygon(verts) else { return }
 
             // Structure: bridges, and floating walls (both ends bridged).
             let m = path.count
@@ -702,45 +702,45 @@ extension RoomBuilder {
                 if edges[j].isBridge { bridgeCount += 1 }
                 if edges[(j + m - 1) % m].isBridge && edges[j].isBridge { floating += 1 }
             }
-            var total = cost + RoomBuilder.floatingWallPenalty * Double(floating)
+            var total = cost + RoomReconstructor.floatingWallPenalty * Double(floating)
             if !wins(total, area) { return }
 
             // Scanned wall left out, and where it lies.
             budget -= segLength.count * 5 * verts.count / 64
-            let left = RoomBuilder.evaluateLeftOut(polygon: verts, walls: walls, a: segA, b: segB, used: used,
+            let left = RoomReconstructor.evaluateLeftOut(polygon: verts, walls: walls, a: segA, b: segB, used: used,
                                                    tolerance: tolerance)
             let outside = left.outsideLength + left.outsideTailLength
             if totalLength > 0, outside / totalLength > maxOutsideFraction { return }
-            total += RoomBuilder.dropCostPerMetre * (left.insideLength + left.outsideLength)
+            total += RoomReconstructor.dropCostPerMetre * (left.insideLength + left.outsideLength)
                 + left.outsideExtraCost
-                + RoomBuilder.outsideTailExtraCostPerMetre * left.outsideTailLength
+                + RoomReconstructor.outsideTailExtraCostPerMetre * left.outsideTailLength
             if !wins(total, area) { return }
 
             // Agreement with the exact floor polygon.
             if !floors.isEmpty, floorArea > 1e-9 {
                 budget -= (verts.count + floorVertices) * (verts.count + floorVertices) / 8
                 var inter = 0.0
-                for f in floors { inter += RoomBuilder.overlapArea(verts, f) }
+                for f in floors { inter += RoomReconstructor.overlapArea(verts, f) }
                 let union = area + floorArea - inter
                 let iou = union > 1e-9 ? min(1, max(0, inter / union)) : 0
                 // A loop that needed no repair is trusted even if the floor disagrees (the floor warning
                 // reports it); one that bridged or left real wall outside must match the floor.
                 let repaired = bridgeCount > 0 || outside > 0.5
                 if repaired, iou < minFloorOverlap { return }
-                total += RoomBuilder.floorMismatchPenalty * (1 - iou)
+                total += RoomReconstructor.floorMismatchPenalty * (1 - iou)
                 if !wins(total, area) { return }
                 // Boundary agreement, both ways: loop edges the floor does not have, floor edges the loop lacks.
                 let samples = min(Polygon.perimeter(verts) / 0.2, 200 * Double(verts.count)) * Double(floorVertices)
                     + min(floorPerimeter / 0.2, 200 * Double(floorVertices)) * Double(verts.count)
                 budget -= Int(min(samples / 64, 1e9))
                 // (With several floor pieces their shared edges are not room boundary, so only the loop is checked.)
-                var unmatched = RoomBuilder.unmatchedBoundaryLength(verts, against: floors,
-                                                                    tolerance: RoomBuilder.floorBoundaryTolerance)
+                var unmatched = RoomReconstructor.unmatchedBoundaryLength(verts, against: floors,
+                                                                    tolerance: RoomReconstructor.floorBoundaryTolerance)
                 if floors.count == 1 {
-                    unmatched += RoomBuilder.unmatchedBoundaryLength(floors[0], against: [verts],
-                                                                     tolerance: RoomBuilder.floorBoundaryTolerance)
+                    unmatched += RoomReconstructor.unmatchedBoundaryLength(floors[0], against: [verts],
+                                                                     tolerance: RoomReconstructor.floorBoundaryTolerance)
                 }
-                total += RoomBuilder.floorBoundaryPenaltyPerMetre * unmatched
+                total += RoomReconstructor.floorBoundaryPenaltyPerMetre * unmatched
                 if !wins(total, area) { return }
             }
             best = Best(path: path, edges: edges, total: total, area: area)
@@ -750,7 +750,7 @@ extension RoomBuilder {
         private func wins(_ total: Double, _ area: Double) -> Bool {
             guard let b = best else { return true }
             let diff = total - b.total
-            return diff < -RoomBuilder.costTieBand || (abs(diff) <= RoomBuilder.costTieBand && area > b.area + 1e-9)
+            return diff < -RoomReconstructor.costTieBand || (abs(diff) <= RoomReconstructor.costTieBand && area > b.area + 1e-9)
         }
     }
 

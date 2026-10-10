@@ -6,9 +6,9 @@ import RoomPlan
 import UIKit
 import NexaFixCore
 
-// RoomPlan and NexaFixCore both define a type called `RoomBuilder`. Apple's builds a `CapturedRoom` from
-// raw scan data; Core's builds a parametric `Room` from a `RawCapture`. Never write the bare name in this
-// file: it is ambiguous. Always `RoomPlan.RoomBuilder` or `NexaFixCore.RoomBuilder`.
+// Two builders are involved. Apple's `RoomPlan.RoomBuilder` turns raw scan data into a `CapturedRoom`;
+// Core's `RoomReconstructor` turns a `RawCapture` (a copy of that `CapturedRoom`) into a parametric `Room`.
+// Core's type was named `RoomReconstructor` so it can never be confused with Apple's `RoomBuilder`.
 
 /// An alert for the scan screen: what happened and what to do, in plain words.
 struct ScanAlert: Identifiable, Equatable {
@@ -555,7 +555,7 @@ final class ScanSessionController {
             return
         }
         let built = await Task.detached(priority: .userInitiated) {
-            NexaFixCore.RoomBuilder.build(from: raw, name: "Room", kind: .other)
+            RoomReconstructor.build(from: raw, name: "Room", kind: .other)
         }.value
         guard flow.isProcessingRoom, !Task.isCancelled else { return }
 
@@ -654,7 +654,7 @@ final class ScanSessionController {
             liveBuildTask = Task.detached(priority: .userInitiated) { [weak self] in
                 var scene = OverlayScene.empty
                 if raw.walls.count >= 2 {
-                    let built = NexaFixCore.RoomBuilder.build(from: raw, name: "Live", kind: .other)
+                    let built = RoomReconstructor.build(from: raw, name: "Live", kind: .other)
                     scene = OverlayBuilder.scene(for: [built.room], options: .live, units: units)
                 }
                 await self?.liveBuildFinished(scene, generation: generation)
@@ -809,7 +809,7 @@ final class ScanSessionController {
             records[entry.id].map { (entry.name, entry.kind, $0.raw) }
         }
         let rooms: [Room] = await Task.detached(priority: .userInitiated) {
-            inputs.map { NexaFixCore.RoomBuilder.build(from: $0.raw, name: $0.name, kind: $0.kind).room }
+            inputs.map { RoomReconstructor.build(from: $0.raw, name: $0.name, kind: $0.kind).room }
         }.value
         guard !Task.isCancelled, flow.state == .merging else { return }
         guard !rooms.isEmpty, inputs.count == entries.count else {

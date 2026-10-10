@@ -1,7 +1,7 @@
 import Foundation
 
 // Platform-neutral mirror of what RoomPlan's `CapturedRoom` provides. The iOS app converts
-// `CapturedRoom` into `RawCapture` (a trivial field-by-field copy) and `RoomBuilder` turns it
+// `CapturedRoom` into `RawCapture` (a trivial field-by-field copy) and `RoomReconstructor` turns it
 // into a `Room`. Keeping this layer free of simd/RoomPlan is what lets the hard geometry be
 // unit-tested off-device.
 //
@@ -12,6 +12,11 @@ import Foundation
 //    vertical, local Z is the surface normal; `dimensions` = (width, height, ~0 thickness) and the
 //    transform's translation is the CENTRE of the surface.
 //  - Objects: `dimensions` = (x, y, z) extents of a box centred on the transform's translation.
+//  - A curved wall (`isCurved`) is described by its straight CHORD: `transform` and `dimensions.x` give the
+//    chord, not the arc length. `RoomReconstructor` stores the chord and flags the wall as curved.
+//  - Floor `polygonCorners` are in the surface's LOCAL frame; they map to the world through the
+//    unmodified surface `transform` (`transform.transform(corner)`), and no assumption is made about
+//    which local axes are horizontal.
 
 /// 4x4 transform, 16 values in column-major order (matches `simd_float4x4`: columns 0...3,
 /// column 3 is the translation).
@@ -21,6 +26,21 @@ public struct Matrix4: Codable, Hashable, Sendable {
     public init(columnMajor: [Double]) {
         precondition(columnMajor.count == 16, "Matrix4 needs 16 values")
         self.columnMajor = columnMajor
+    }
+
+    private enum CodingKeys: String, CodingKey { case columnMajor }
+
+    /// Decoding validates the 16 values: a damaged saved capture throws instead of producing a matrix
+    /// that would trap on first use.
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        let values = try container.decode([Double].self, forKey: .columnMajor)
+        guard values.count == 16 else {
+            throw DecodingError.dataCorruptedError(
+                forKey: .columnMajor, in: container,
+                debugDescription: "Matrix4 needs 16 values, found \(values.count)")
+        }
+        self.columnMajor = values
     }
 
     public static let identity = Matrix4(columnMajor: [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1])

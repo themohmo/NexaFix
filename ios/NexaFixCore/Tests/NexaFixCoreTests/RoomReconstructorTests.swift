@@ -1,22 +1,22 @@
 import XCTest
 @testable import NexaFixCore
 
-/// Tests for `RoomBuilder`, `CaptureFixtures` and the RoomPlan conventions they rely on.
+/// Tests for `RoomReconstructor`, `CaptureFixtures` and the RoomPlan conventions they rely on.
 ///
 /// Expected numbers are derived by hand or recomputed from the raw geometry (never copied from the
 /// builder's own output). Helpers are `private` so they cannot clash with other test files.
-final class RoomBuilderTests: XCTestCase {
+final class RoomReconstructorTests: XCTestCase {
     typealias Fixtures = CaptureFixtures
     private let now = Date(timeIntervalSince1970: 1_800_000_000)
 
     // MARK: Helpers
 
-    private func build(_ f: Fixtures.Fixture, options: RoomBuilder.Options = .standard) -> RoomBuilder.Result {
-        RoomBuilder.build(from: f.capture, name: "Test", kind: .livingRoom, options: options, now: now)
+    private func build(_ f: Fixtures.Fixture, options: RoomReconstructor.Options = .standard) -> RoomReconstructor.Result {
+        RoomReconstructor.build(from: f.capture, name: "Test", kind: .livingRoom, options: options, now: now)
     }
 
-    private func build(_ c: RawCapture, options: RoomBuilder.Options = .standard) -> RoomBuilder.Result {
-        RoomBuilder.build(from: c, name: "Test", kind: .livingRoom, options: options, now: now)
+    private func build(_ c: RawCapture, options: RoomReconstructor.Options = .standard) -> RoomReconstructor.Result {
+        RoomReconstructor.build(from: c, name: "Test", kind: .livingRoom, options: options, now: now)
     }
 
     private func extras(_ configure: (inout Fixtures.Extras) -> Void) -> Fixtures.Extras {
@@ -47,7 +47,7 @@ final class RoomBuilderTests: XCTestCase {
         }
     }
 
-    private func assertAllFinite(_ r: RoomBuilder.Result, file: StaticString = #filePath, line: UInt = #line) {
+    private func assertAllFinite(_ r: RoomReconstructor.Result, file: StaticString = #filePath, line: UInt = #line) {
         func ok(_ v: Double, _ what: String) {
             XCTAssertTrue(v.isFinite, "\(what) is not finite: \(v)", file: file, line: line)
         }
@@ -92,7 +92,7 @@ final class RoomBuilderTests: XCTestCase {
 
     private func virtualCount(_ room: Room) -> Int { room.walls.filter { $0.kind == .virtual }.count }
 
-    private func has(_ r: RoomBuilder.Result, _ predicate: (RoomBuilder.BuildWarning) -> Bool) -> Bool {
+    private func has(_ r: RoomReconstructor.Result, _ predicate: (RoomReconstructor.BuildWarning) -> Bool) -> Bool {
         r.warnings.contains(where: predicate)
     }
 
@@ -289,7 +289,7 @@ final class RoomBuilderTests: XCTestCase {
         }
     }
 
-    private func assertSameResult(_ a: RoomBuilder.Result, _ b: RoomBuilder.Result, tol: Double,
+    private func assertSameResult(_ a: RoomReconstructor.Result, _ b: RoomReconstructor.Result, tol: Double,
                                   file: StaticString = #filePath, line: UInt = #line) {
         XCTAssertEqual(a.room.walls.count, b.room.walls.count, file: file, line: line)
         guard a.room.walls.count == b.room.walls.count else { return }
@@ -429,7 +429,7 @@ final class RoomBuilderTests: XCTestCase {
         // Every wall falls 0.1 short of both corners.
         let f = Fixtures.rectangle(width: 4, depth: 3, seed: 2, extras: extras { $0.overshoot = -0.1 })
         XCTAssertEqual(build(f).room.walls.count, 4)
-        var strict = RoomBuilder.Options.standard
+        var strict = RoomReconstructor.Options.standard
         strict.snapTolerance = 0.05
         let r = build(f, options: strict)
         // Gaps are now too big to heal: every corner is bridged by a short virtual wall.
@@ -496,7 +496,7 @@ final class RoomBuilderTests: XCTestCase {
         XCTAssertTrue(Polygon.isCounterClockwise(r.room.outline))
         assertAllFinite(r)
         // Raising the limit bridges it instead, with no critical warning.
-        var wide = RoomBuilder.Options.standard
+        var wide = RoomReconstructor.Options.standard
         wide.maxBridgeableGap = 8
         let ok = build(f, options: wide)
         XCTAssertFalse(has(ok) { if case .noClosedLoop = $0 { return true } else { return false } })
@@ -867,14 +867,14 @@ final class RoomBuilderTests: XCTestCase {
                      "oven", "dishwasher", "table", "sofa", "chair", "fireplace", "television", "stairs"]
         XCTAssertEqual(names.count, 16)
         for n in names {
-            XCTAssertEqual(RoomBuilder.objectKind(forCategory: n).rawValue, n, n)
+            XCTAssertEqual(RoomReconstructor.objectKind(forCategory: n).rawValue, n, n)
         }
         for n in ["", "unknown", "Storage", "SOFA", "washer_dryer", "lamp", " storage"] {
-            XCTAssertEqual(RoomBuilder.objectKind(forCategory: n), .other, "'\(n)'")
+            XCTAssertEqual(RoomReconstructor.objectKind(forCategory: n), .other, "'\(n)'")
         }
         // All 16 are distinct cases and cover every non-.other kind.
-        XCTAssertEqual(Set(names.map { RoomBuilder.objectKind(forCategory: $0) }).count, 16)
-        XCTAssertEqual(Set(names.map { RoomBuilder.objectKind(forCategory: $0) }), Set(ObjectKind.allCases).subtracting([.other]))
+        XCTAssertEqual(Set(names.map { RoomReconstructor.objectKind(forCategory: $0) }).count, 16)
+        XCTAssertEqual(Set(names.map { RoomReconstructor.objectKind(forCategory: $0) }), Set(ObjectKind.allCases).subtracting([.other]))
     }
 
     func testObjectGeometryFromTheTransform() {
@@ -1131,15 +1131,21 @@ final class RoomBuilderTests: XCTestCase {
         assertAllFinite(r2)
     }
 
-    func testMatrixOfTheWrongSizeDoesNotTrap() throws {
-        // A hand-edited / corrupt JSON capture: Codable bypasses Matrix4's precondition.
+    func testCorruptMatrixJSONIsRejectedAtDecode() {
+        // A hand-edited / damaged saved capture: Matrix4 validates its 16 values when decoding.
         let id = UUID().uuidString
         let json = """
         {"id":"\(id)","kind":"wall","transform":{"columnMajor":[1,0,0]},"dimensions":{"x":3,"y":2.8,"z":0},
          "isCurved":false,"story":0,"confidence":"high"}
         """
-        let surface = try JSONDecoder().decode(RawSurface.self, from: Data(json.utf8))
-        XCTAssertEqual(surface.transform.columnMajor.count, 3)
+        XCTAssertThrowsError(try JSONDecoder().decode(RawSurface.self, from: Data(json.utf8)))
+    }
+
+    func testMatrixOfTheWrongSizeDoesNotTrap() {
+        // columnMajor is a public var, so a caller can still make a short matrix after init;
+        // the reconstructor must skip such surfaces rather than trap.
+        var surface = Fixtures.rectangle(seed: 1).canonical.walls[0]
+        surface.transform.columnMajor = [1, 0, 0]
         var c = Fixtures.rectangle(seed: 1).canonical
         c.walls.append(surface)
         c.doors.append(surface)
@@ -1243,7 +1249,7 @@ final class RoomBuilderTests: XCTestCase {
         XCTAssertEqual(r.room.walls.count, 4)
         XCTAssertTrue(has(r) { if case .shortWallsIgnored(let n, let m) = $0 { return n == 3 && m == 0.10 } else { return false } })
         // A longer minimum drops the 0.9 m ... nothing here; but shrinking it to zero keeps them as (ignored interior) walls.
-        var tiny = RoomBuilder.Options.standard
+        var tiny = RoomReconstructor.Options.standard
         tiny.minWallLength = 0.01
         let r2 = build(c, options: tiny)
         XCTAssertEqual(r2.room.walls.count, 4)
@@ -1260,7 +1266,7 @@ final class RoomBuilderTests: XCTestCase {
         var c = RawCapture()
         c.walls = [rawWall(a, kink), rawWall(kink, b), rawWall(b, top), rawWall(top, Point2(0, 3)), rawWall(Point2(0, 3), a)]
         XCTAssertEqual(build(c).room.walls.count, 4)
-        var tight = RoomBuilder.Options.standard
+        var tight = RoomReconstructor.Options.standard
         tight.collinearToleranceDegrees = 0.4
         let r = build(c, options: tight)
         XCTAssertEqual(r.room.walls.count, 5)
@@ -1304,10 +1310,10 @@ final class RoomBuilderTests: XCTestCase {
             captures.append(c)
         }
         for c in captures {
-            let ex = RoomBuilder.extractSegments(from: c.walls, options: .standard)
-            let merged = RoomBuilder.mergeCollinear(ex.segments, options: .standard).segments
-            let nodes = RoomBuilder.buildNodes(merged)
-            let adj = RoomBuilder.buildEdges(nodes, options: .standard)
+            let ex = RoomReconstructor.extractSegments(from: c.walls, options: .standard)
+            let merged = RoomReconstructor.mergeCollinear(ex.segments, options: .standard).segments
+            let nodes = RoomReconstructor.buildNodes(merged)
+            let adj = RoomReconstructor.buildEdges(nodes, options: .standard)
             var edgeCount = 0
             for (u, list) in adj.enumerated() {
                 for e in list {
@@ -1328,7 +1334,7 @@ final class RoomBuilderTests: XCTestCase {
     func testSearchBudgetExhaustionIsReportedAndSurvivable() {
         let f = Fixtures.rectangle(width: 4, depth: 3, seed: 1)
         for budget in [0, 1, 2, Int.min, -7] {
-            var o = RoomBuilder.Options.standard
+            var o = RoomReconstructor.Options.standard
             o.searchBudget = budget
             let r = build(f, options: o)
             XCTAssertTrue(has(r) { $0 == .searchBudgetExhausted }, "budget \(budget)")
@@ -1341,14 +1347,14 @@ final class RoomBuilderTests: XCTestCase {
         }
         // A generous budget never trips on a normal room.
         XCTAssertFalse(has(build(f)) { $0 == .searchBudgetExhausted })
-        XCTAssertEqual(RoomBuilder.Options(), RoomBuilder.Options.standard)
+        XCTAssertEqual(RoomReconstructor.Options(), RoomReconstructor.Options.standard)
     }
 
     // MARK: Warnings API
 
     func testWarningMessagesAndSeverities() {
         let id = UUID()
-        let all: [RoomBuilder.BuildWarning] = [
+        let all: [RoomReconstructor.BuildWarning] = [
             .noWallSurfaces, .tooFewWalls(count: 1), .tooFewWalls(count: 2), .invalidSurfacesIgnored(count: 1), .invalidSurfacesIgnored(count: 3),
             .shortWallsIgnored(count: 2, minLength: 0.1), .steepWallsIgnored(count: 1),
             .collinearWallsMerged(pieces: 2, walls: 1), .interiorWallsDropped(count: 2, totalLength: 3.5),
@@ -1367,13 +1373,13 @@ final class RoomBuilderTests: XCTestCase {
             XCTAssertFalse(w.message.contains("Optional"), w.message)
             XCTAssertFalse(w.message.contains("NexaFixCore") || w.message.contains("Point2"), "no debug formatting: \(w.message)")
         }
-        XCTAssertEqual(RoomBuilder.BuildWarning.noClosedLoop(fallback: .floorPolygon).severity, .critical)
-        XCTAssertEqual(RoomBuilder.BuildWarning.openBoundaryBridged(length: 1, at: .zero).severity, .caution)
-        XCTAssertEqual(RoomBuilder.BuildWarning.missingFloorSurface.severity, .info)
-        XCTAssertTrue(RoomBuilder.BuildWarning.Severity.info < .caution && RoomBuilder.BuildWarning.Severity.caution < .critical)
-        XCTAssertTrue(RoomBuilder.BuildWarning.interiorWallsDropped(count: 1, totalLength: 1).message.contains("1 interior wall "))
-        XCTAssertTrue(RoomBuilder.BuildWarning.openBoundaryBridged(length: 3.2, at: Point2(1, 2)).message.contains("3.20 m"))
-        XCTAssertTrue(RoomBuilder.BuildWarning.floorAreaMismatch(floorArea: 24.2, outlineArea: 20).message.contains("24.20"))
+        XCTAssertEqual(RoomReconstructor.BuildWarning.noClosedLoop(fallback: .floorPolygon).severity, .critical)
+        XCTAssertEqual(RoomReconstructor.BuildWarning.openBoundaryBridged(length: 1, at: .zero).severity, .caution)
+        XCTAssertEqual(RoomReconstructor.BuildWarning.missingFloorSurface.severity, .info)
+        XCTAssertTrue(RoomReconstructor.BuildWarning.Severity.info < .caution && RoomReconstructor.BuildWarning.Severity.caution < .critical)
+        XCTAssertTrue(RoomReconstructor.BuildWarning.interiorWallsDropped(count: 1, totalLength: 1).message.contains("1 interior wall "))
+        XCTAssertTrue(RoomReconstructor.BuildWarning.openBoundaryBridged(length: 3.2, at: Point2(1, 2)).message.contains("3.20 m"))
+        XCTAssertTrue(RoomReconstructor.BuildWarning.floorAreaMismatch(floorArea: 24.2, outlineArea: 20).message.contains("24.20"))
     }
 
     // MARK: Integration
@@ -1497,7 +1503,7 @@ final class RoomBuilderTests: XCTestCase {
     private func wall(_ a: Point2, _ b: Point2) -> Fixtures.InteriorWall { .init(from: a, to: b) }
 
     /// The room is recovered exactly: area, wall count and number of virtual walls.
-    private func assertRecovered(_ r: RoomBuilder.Result, area: Double, walls: Int, virtual: Int, tolerance: Double = 1e-6,
+    private func assertRecovered(_ r: RoomReconstructor.Result, area: Double, walls: Int, virtual: Int, tolerance: Double = 1e-6,
                                  _ tag: String, file: StaticString = #filePath, line: UInt = #line) {
         XCTAssertEqual(Polygon.area(r.room.outline), area, accuracy: tolerance, "\(tag): area", file: file, line: line)
         XCTAssertEqual(r.room.walls.count, walls, "\(tag): wall count", file: file, line: line)
@@ -1506,7 +1512,7 @@ final class RoomBuilderTests: XCTestCase {
     }
 
     /// Wrong is allowed, silent is not: an outline more than 10 % off the truth must be critical.
-    private func assertNeverSilentlyWrong(_ r: RoomBuilder.Result, truth: Double, _ tag: String,
+    private func assertNeverSilentlyWrong(_ r: RoomReconstructor.Result, truth: Double, _ tag: String,
                                           file: StaticString = #filePath, line: UInt = #line) {
         let area = Polygon.area(r.room.outline)
         if abs(area - truth) / truth > 0.10 {
@@ -1523,7 +1529,7 @@ final class RoomBuilderTests: XCTestCase {
         func rect(_ x0: Double, _ y0: Double, _ x1: Double, _ y1: Double) -> [Point2] {
             [Point2(x0, y0), Point2(x1, y0), Point2(x1, y1), Point2(x0, y1)]
         }
-        func overlap(_ a: [Point2], _ b: [Point2]) -> Double { RoomBuilder.overlapArea(a, b) }
+        func overlap(_ a: [Point2], _ b: [Point2]) -> Double { RoomReconstructor.overlapArea(a, b) }
         // Offset unit squares overlap in a 0.5 x 0.5 square.
         XCTAssertEqual(overlap(rect(0, 0, 1, 1), rect(0.5, 0.5, 1.5, 1.5)), 0.25, accuracy: 1e-12)
         // Identical, contained, disjoint, touching.
@@ -1602,7 +1608,7 @@ final class RoomBuilderTests: XCTestCase {
     }
 
     func testTwoNonAdjacentMissingWallsAreBridgedByTheFloorPolygon() {
-        func lWithout(_ omitted: [Int], floor: Bool = true) -> RoomBuilder.Result {
+        func lWithout(_ omitted: [Int], floor: Bool = true) -> RoomReconstructor.Result {
             var e = Fixtures.Extras()
             e.tweaks = omitted.map { Fixtures.WallTweak(wall: $0, omit: true) }
             e.includeFloor = floor
@@ -1885,7 +1891,7 @@ final class RoomBuilderTests: XCTestCase {
         XCTAssertEqual(narrowed.first ?? 0, 1.0, accuracy: 1e-9)
         XCTAssertEqual(r.worstSeverity, .caution)
         XCTAssertTrue(r.warnings.contains { $0.message.contains("narrowed") && $0.message.contains("1.00 m") })
-        XCTAssertEqual(RoomBuilder.BuildWarning.openingAdjusted(id: UUID(), kind: .window).severity, .info, "defaults: no shift")
+        XCTAssertEqual(RoomReconstructor.BuildWarning.openingAdjusted(id: UUID(), kind: .window).severity, .info, "defaults: no shift")
     }
 
     // MARK: Reliability signals
@@ -1960,13 +1966,13 @@ final class RoomBuilderTests: XCTestCase {
         // The absurd shapes are refused up front: never an exact polygon, and no coordinate beyond sanity (a floor whose
         // corners are absurd but whose size field is sane degrades to its bounding rectangle, which is never exact).
         for (i, c) in cases.enumerated() where i != 1 {      // case 1 has sane corners: its size field is simply not used
-            for info in RoomBuilder.extractFloors(c.floors) {
+            for info in RoomReconstructor.extractFloors(c.floors) {
                 XCTAssertFalse(info.isExact, "case \(i)")
                 XCTAssertTrue((info.polygon ?? []).allSatisfy { abs($0.x) < 1e7 && abs($0.y) < 1e7 }, "case \(i)")
             }
         }
-        XCTAssertNil(RoomBuilder.extractFloors(cases[2].floors).first?.polygon, "huge size field and no corners: no shape at all")
-        XCTAssertEqual(RoomBuilder.extractFloors(cases[1].floors).first?.polygon.map(Polygon.area) ?? 0, 16, accuracy: 1e-9)
+        XCTAssertNil(RoomReconstructor.extractFloors(cases[2].floors).first?.polygon, "huge size field and no corners: no shape at all")
+        XCTAssertEqual(RoomReconstructor.extractFloors(cases[1].floors).first?.polygon.map(Polygon.area) ?? 0, 16, accuracy: 1e-9)
         // A merely large (but sane) floor still works as a fallback outline.
         let big = build(RawCapture(floors: [floor([Point3(0, 0, 0), Point3(200, 0, 0), Point3(200, 100, 0), Point3(0, 100, 0)])]))
         XCTAssertEqual(Polygon.area(big.room.outline), 20_000, accuracy: 1e-6)
@@ -1976,24 +1982,24 @@ final class RoomBuilderTests: XCTestCase {
 
     func testMessagesAreAccurate() {
         // The percentage comes from the data, not a hard-coded 15 %.
-        let m1 = RoomBuilder.BuildWarning.floorAreaMismatch(floorArea: 24.2, outlineArea: 20).message
+        let m1 = RoomReconstructor.BuildWarning.floorAreaMismatch(floorArea: 24.2, outlineArea: 20).message
         XCTAssertTrue(m1.contains("21 %"), m1)
         XCTAssertFalse(m1.contains("15 %"), m1)
-        let m2 = RoomBuilder.BuildWarning.floorAreaMismatch(floorArea: 12.8, outlineArea: 20).message
+        let m2 = RoomReconstructor.BuildWarning.floorAreaMismatch(floorArea: 12.8, outlineArea: 20).message
         XCTAssertTrue(m2.contains("36 %"), m2)
         // Severity: caution up to 40 %, critical beyond.
-        XCTAssertEqual(RoomBuilder.BuildWarning.floorAreaMismatch(floorArea: 24.2, outlineArea: 20).severity, .caution)
-        XCTAssertEqual(RoomBuilder.BuildWarning.floorAreaMismatch(floorArea: 12.8, outlineArea: 20).severity, .caution)
-        XCTAssertEqual(RoomBuilder.BuildWarning.floorAreaMismatch(floorArea: 28, outlineArea: 20).severity, .caution, "exactly 40 %")
-        XCTAssertEqual(RoomBuilder.BuildWarning.floorAreaMismatch(floorArea: 28.1, outlineArea: 20).severity, .critical)
-        XCTAssertEqual(RoomBuilder.BuildWarning.floorAreaMismatch(floorArea: 12, outlineArea: 20).severity, .caution, "exactly 40 %")
-        XCTAssertEqual(RoomBuilder.BuildWarning.floorAreaMismatch(floorArea: 11.9, outlineArea: 20).severity, .critical)
-        XCTAssertEqual(RoomBuilder.BuildWarning.floorAreaMismatch(floorArea: 5, outlineArea: 0).severity, .critical, "no division by zero")
+        XCTAssertEqual(RoomReconstructor.BuildWarning.floorAreaMismatch(floorArea: 24.2, outlineArea: 20).severity, .caution)
+        XCTAssertEqual(RoomReconstructor.BuildWarning.floorAreaMismatch(floorArea: 12.8, outlineArea: 20).severity, .caution)
+        XCTAssertEqual(RoomReconstructor.BuildWarning.floorAreaMismatch(floorArea: 28, outlineArea: 20).severity, .caution, "exactly 40 %")
+        XCTAssertEqual(RoomReconstructor.BuildWarning.floorAreaMismatch(floorArea: 28.1, outlineArea: 20).severity, .critical)
+        XCTAssertEqual(RoomReconstructor.BuildWarning.floorAreaMismatch(floorArea: 12, outlineArea: 20).severity, .caution, "exactly 40 %")
+        XCTAssertEqual(RoomReconstructor.BuildWarning.floorAreaMismatch(floorArea: 11.9, outlineArea: 20).severity, .critical)
+        XCTAssertEqual(RoomReconstructor.BuildWarning.floorAreaMismatch(floorArea: 5, outlineArea: 0).severity, .critical, "no division by zero")
         // Negative zero never prints.
-        let m3 = RoomBuilder.BuildWarning.openBoundaryBridged(length: 1, at: Point2(-0.002, -0.0004)).message
+        let m3 = RoomReconstructor.BuildWarning.openBoundaryBridged(length: 1, at: Point2(-0.002, -0.0004)).message
         XCTAssertTrue(m3.contains("(0.00, 0.00)"), m3)
         XCTAssertFalse(m3.contains("-0.00"), m3)
-        XCTAssertTrue(RoomBuilder.BuildWarning.openBoundaryBridged(length: 1, at: Point2(-1.5, 2)).message.contains("(-1.50, 2.00)"))
+        XCTAssertTrue(RoomReconstructor.BuildWarning.openBoundaryBridged(length: 1, at: Point2(-1.5, 2)).message.contains("(-1.50, 2.00)"))
     }
 
     func testAHoleInOneScannedWallHasItsOwnMessage() {
@@ -2010,7 +2016,7 @@ final class RoomBuilderTests: XCTestCase {
         let msg = r.warnings.first { if case .scannedWallHoleBridged = $0 { return true } else { return false } }!.message
         XCTAssertTrue(msg.contains("hole") && msg.contains("0.40 m"), msg)
         XCTAssertFalse(msg.contains("open-plan"), msg)
-        XCTAssertEqual(RoomBuilder.BuildWarning.scannedWallHoleBridged(length: 0.4, at: .zero).severity, .caution)
+        XCTAssertEqual(RoomReconstructor.BuildWarning.scannedWallHoleBridged(length: 0.4, at: .zero).severity, .caution)
         // A genuinely missing side is still an open-plan boundary.
         XCTAssertTrue(has(build(openWest())) { if case .openBoundaryBridged = $0 { return true } else { return false } })
     }
@@ -2137,27 +2143,27 @@ final class RoomBuilderTests: XCTestCase {
         let a = [Point2(-1, 0), Point2(4, 0), Point2(4, 4), Point2(0, 4), Point2(1, 1), Point2(5, 1), Point2(0.05, 1)]
         let b = [Point2(4, 0), Point2(4, 4), Point2(0, 4), Point2(0, 0), Point2(2, 1), Point2(7, 1), Point2(0.05, 3)]
         let used = [true, true, true, true, false, false, false]
-        let walls = [RoomBuilder.LoopWall(start: Point2(0, 0), end: Point2(4, 0), segment: 0),
-                     RoomBuilder.LoopWall(start: Point2(4, 0), end: Point2(4, 4), segment: 1),
-                     RoomBuilder.LoopWall(start: Point2(4, 4), end: Point2(0, 4), segment: 2),
-                     RoomBuilder.LoopWall(start: Point2(0, 4), end: Point2(0, 0), segment: 3)]
-        let left = RoomBuilder.evaluateLeftOut(polygon: walls.map(\.start), walls: walls, a: a, b: b, used: used, tolerance: 0.15)
+        let walls = [RoomReconstructor.LoopWall(start: Point2(0, 0), end: Point2(4, 0), segment: 0),
+                     RoomReconstructor.LoopWall(start: Point2(4, 0), end: Point2(4, 4), segment: 1),
+                     RoomReconstructor.LoopWall(start: Point2(4, 4), end: Point2(0, 4), segment: 2),
+                     RoomReconstructor.LoopWall(start: Point2(0, 4), end: Point2(0, 0), segment: 3)]
+        let left = RoomReconstructor.evaluateLeftOut(polygon: walls.map(\.start), walls: walls, a: a, b: b, used: used, tolerance: 0.15)
         XCTAssertEqual(left.insideLength, 1.0 + 2.0, accuracy: 1e-9, "stub inside (1 m) + duplicate within 15 cm of the wall (2 m)")
         XCTAssertEqual(left.outsideLength, 2.0, accuracy: 1e-9)
         XCTAssertEqual(left.outsideTailLength, 1.0, accuracy: 1e-9)
         XCTAssertEqual(left.droppedOutside, [5])
         // Extra cost of the outside stub: 2 m, long-wall factor (2 - 1.5) / 1.5 = 1/3 -> 2 * (3 + 3/3).
-        XCTAssertEqual(left.outsideExtraCost, 2.0 * (RoomBuilder.outsideExtraCostPerMetre + RoomBuilder.longWallExtraCostPerMetre / 3), accuracy: 1e-9)
+        XCTAssertEqual(left.outsideExtraCost, 2.0 * (RoomReconstructor.outsideExtraCostPerMetre + RoomReconstructor.longWallExtraCostPerMetre / 3), accuracy: 1e-9)
         // A tail INSIDE the loop is not penalised: in the L (6 x 4 with the 2 x 2 notch) the notch floor, scanned from x = 6
         // to x = 2, is used only from x = 6 to the reflex corner at x = 4; its remaining 2 m run on across the room.
         let l = [Point2(0, 0), Point2(6, 0), Point2(6, 2), Point2(4, 2), Point2(4, 4), Point2(0, 4)]
-        let notchFloor = RoomBuilder.LoopWall(start: Point2(6, 2), end: Point2(4, 2), segment: 0)
-        let inward = RoomBuilder.evaluateLeftOut(polygon: l, walls: [notchFloor], a: [Point2(6, 2)], b: [Point2(2, 2)],
+        let notchFloor = RoomReconstructor.LoopWall(start: Point2(6, 2), end: Point2(4, 2), segment: 0)
+        let inward = RoomReconstructor.evaluateLeftOut(polygon: l, walls: [notchFloor], a: [Point2(6, 2)], b: [Point2(2, 2)],
                                                  used: [true], tolerance: 0.15)
         XCTAssertEqual(inward.outsideTailLength, 0, accuracy: 1e-9)
         // The same wall running on out of the room instead (scanned from x = 6 to x = 8, used from 6 to 4... i.e. reversed
         // direction) puts the tail outside: a segment (3,5)-(6,5) used only from x = 3 to 4.5 leaves 1.5 m above the room.
-        let above = RoomBuilder.evaluateLeftOut(polygon: l, walls: [RoomBuilder.LoopWall(start: Point2(3, 5), end: Point2(4.5, 5), segment: 0)],
+        let above = RoomReconstructor.evaluateLeftOut(polygon: l, walls: [RoomReconstructor.LoopWall(start: Point2(3, 5), end: Point2(4.5, 5), segment: 0)],
                                                 a: [Point2(3, 5)], b: [Point2(6, 5)], used: [true], tolerance: 0.15)
         XCTAssertEqual(above.outsideTailLength, 1.5, accuracy: 1e-9)
     }
@@ -2167,20 +2173,20 @@ final class RoomBuilderTests: XCTestCase {
             [Point2(x0, y0), Point2(x1, y0), Point2(x1, y1), Point2(x0, y1)]
         }
         let a = rect(0, 0, 4, 4)
-        XCTAssertEqual(RoomBuilder.unmatchedBoundaryLength(a, against: [a], tolerance: 0.3), 0, accuracy: 1e-9)
+        XCTAssertEqual(RoomReconstructor.unmatchedBoundaryLength(a, against: [a], tolerance: 0.3), 0, accuracy: 1e-9)
         // The same square shifted 1 m east: A's west edge (4 m) is 1 m from B's, A's south and north edges lose their first
         // 0.7 m (more than 0.3 m from B's corner), A's east edge (x = 4) runs through B's interior and matches only the
         // 0.3 m next to B's south and north edges: 4 + 0.7 + 0.7 + (4 - 0.6) = 8.8 m (sampled every 0.2 m).
         let b = rect(1, 0, 5, 4)
-        XCTAssertEqual(RoomBuilder.unmatchedBoundaryLength(a, against: [b], tolerance: 0.3), 8.8, accuracy: 0.45)
+        XCTAssertEqual(RoomReconstructor.unmatchedBoundaryLength(a, against: [b], tolerance: 0.3), 8.8, accuracy: 0.45)
         // Several reference polygons: matched if near ANY of them.
-        XCTAssertEqual(RoomBuilder.unmatchedBoundaryLength(a, against: [b, a], tolerance: 0.3), 0, accuracy: 1e-9)
+        XCTAssertEqual(RoomReconstructor.unmatchedBoundaryLength(a, against: [b, a], tolerance: 0.3), 0, accuracy: 1e-9)
         // A bridge follows the floor boundary only when it lies along it.
         let floor = rect(0, 0, 5, 4)
-        XCTAssertTrue(RoomBuilder.bridgeFollowsFloor(Point2(0, 4), Point2(0, 0), floors: [floor]), "along the west edge")
-        XCTAssertTrue(RoomBuilder.bridgeFollowsFloor(Point2(0.1, 3.9), Point2(0.15, 0.1), floors: [floor]), "within the slack")
-        XCTAssertFalse(RoomBuilder.bridgeFollowsFloor(Point2(0, 4), Point2(5, 0), floors: [floor]), "a diagonal through the room")
-        XCTAssertFalse(RoomBuilder.bridgeFollowsFloor(Point2(1, 1), Point2(1, 3), floors: [floor]), "a chord inside the room")
+        XCTAssertTrue(RoomReconstructor.bridgeFollowsFloor(Point2(0, 4), Point2(0, 0), floors: [floor]), "along the west edge")
+        XCTAssertTrue(RoomReconstructor.bridgeFollowsFloor(Point2(0.1, 3.9), Point2(0.15, 0.1), floors: [floor]), "within the slack")
+        XCTAssertFalse(RoomReconstructor.bridgeFollowsFloor(Point2(0, 4), Point2(5, 0), floors: [floor]), "a diagonal through the room")
+        XCTAssertFalse(RoomReconstructor.bridgeFollowsFloor(Point2(1, 1), Point2(1, 3), floors: [floor]), "a chord inside the room")
     }
 
     func testDenseGraphsKeepABoundedSymmetricDegree() {
@@ -2191,13 +2197,13 @@ final class RoomBuilderTests: XCTestCase {
             let angle = Double(k) * Double.pi / 25
             c.walls.append(rawWall(Point2(-2 * cos(angle), -2 * sin(angle)), Point2(2 * cos(angle), 2 * sin(angle))))
         }
-        let ex = RoomBuilder.extractSegments(from: c.walls, options: .standard)
-        let nodes = RoomBuilder.buildNodes(RoomBuilder.mergeCollinear(ex.segments, options: .standard).segments)
+        let ex = RoomReconstructor.extractSegments(from: c.walls, options: .standard)
+        let nodes = RoomReconstructor.buildNodes(RoomReconstructor.mergeCollinear(ex.segments, options: .standard).segments)
         XCTAssertEqual(nodes.count, 50)
-        let adj = RoomBuilder.buildEdges(nodes, options: .standard)
+        let adj = RoomReconstructor.buildEdges(nodes, options: .standard)
         var total = 0
         for (u, list) in adj.enumerated() {
-            XCTAssertLessThanOrEqual(list.count, RoomBuilder.maxEdgesPerNode)
+            XCTAssertLessThanOrEqual(list.count, RoomReconstructor.maxEdgesPerNode)
             total += list.count
             for e in list {
                 XCTAssertTrue(adj[e.to ^ 1].contains { $0.to == u ^ 1 }, "edge \(u) -> \(e.to) lost its reverse")
@@ -2207,9 +2213,9 @@ final class RoomBuilderTests: XCTestCase {
         XCTAssertLessThan(total, 50 * 48, "the unbounded graph has 2400 edges")
         // A normal room is untouched.
         let room = Fixtures.lShape(noise: .light, seed: 3)
-        let ex2 = RoomBuilder.extractSegments(from: room.capture.walls, options: .standard)
-        let nodes2 = RoomBuilder.buildNodes(RoomBuilder.mergeCollinear(ex2.segments, options: .standard).segments)
-        XCTAssertTrue(RoomBuilder.buildEdges(nodes2, options: .standard).allSatisfy { $0.count < 10 })
+        let ex2 = RoomReconstructor.extractSegments(from: room.capture.walls, options: .standard)
+        let nodes2 = RoomReconstructor.buildNodes(RoomReconstructor.mergeCollinear(ex2.segments, options: .standard).segments)
+        XCTAssertTrue(RoomReconstructor.buildEdges(nodes2, options: .standard).allSatisfy { $0.count < 10 })
     }
 
     func testTheGatesAndTheirOptions() {
@@ -2222,8 +2228,8 @@ final class RoomBuilderTests: XCTestCase {
         e.tweaks = [.init(wall: 2, omit: true)]
         e.interiorWalls = pod
         let f = Fixtures.rectangle(width: 10, depth: 6, seed: 2, extras: e)
-        func podArea(_ configure: (inout RoomBuilder.Options) -> Void) -> Double {
-            var o = RoomBuilder.Options.standard
+        func podArea(_ configure: (inout RoomReconstructor.Options) -> Void) -> Double {
+            var o = RoomReconstructor.Options.standard
             configure(&o)
             return Polygon.area(build(f, options: o).room.outline)
         }
@@ -2241,7 +2247,7 @@ final class RoomBuilderTests: XCTestCase {
         XCTAssertTrue(has(r) { if case .bridgedOutlineLeavesWallOutside(let l) = $0 { return abs(l - 2.0.squareRoot()) < 1e-9 } else { return false } }, "\(r.warnings.map(\.message))")
         XCTAssertEqual(r.worstSeverity, .critical)
         XCTAssertFalse(r.isReliable)
-        var lenient = RoomBuilder.Options.standard
+        var lenient = RoomReconstructor.Options.standard
         lenient.unverifiedOutsideWallLength = 2.0        // the 1.41 m chamfer wall is below this
         XCTAssertFalse(has(build(chamfer, options: lenient)) { if case .bridgedOutlineLeavesWallOutside = $0 { return true } else { return false } })
         // ...and with the floor it is not a guess at all: the floor polygon is used.
@@ -2250,10 +2256,10 @@ final class RoomBuilderTests: XCTestCase {
         XCTAssertFalse(has(withFloor) { if case .bridgedOutlineLeavesWallOutside = $0 { return true } else { return false } })
         XCTAssertEqual(Polygon.area(withFloor.room.outline), 19.5, accuracy: 1e-6)
         // New options have sensible defaults and take part in equality.
-        XCTAssertEqual(RoomBuilder.Options.standard.minFloorOverlap, 0.70)
-        XCTAssertEqual(RoomBuilder.Options.standard.maxOutsideWallFraction, 0.5)
-        XCTAssertEqual(RoomBuilder.Options.standard.unverifiedOutsideWallLength, 1.0)
-        XCTAssertNotEqual(RoomBuilder.Options(), lenient)
+        XCTAssertEqual(RoomReconstructor.Options.standard.minFloorOverlap, 0.70)
+        XCTAssertEqual(RoomReconstructor.Options.standard.maxOutsideWallFraction, 0.5)
+        XCTAssertEqual(RoomReconstructor.Options.standard.unverifiedOutsideWallLength, 1.0)
+        XCTAssertNotEqual(RoomReconstructor.Options(), lenient)
     }
 
     func testManyStrayWallsStayFastAndHonest() {
@@ -2276,18 +2282,18 @@ final class RoomBuilderTests: XCTestCase {
 
     func testReviewNotesListEveryCautionAndCriticalWarningMostSevereFirst() {
         let id = UUID()
-        let warnings: [RoomBuilder.BuildWarning] = [
+        let warnings: [RoomReconstructor.BuildWarning] = [
             .missingFloorSurface, .openBoundaryBridged(length: 4, at: Point2(0, 2)), .noClosedLoop(fallback: .floorPolygon),
             .openingAdjusted(id: id, kind: .door, movedBy: 0.02, narrowedBy: 0)]
         let sorted = warnings.enumerated().sorted { a, b in
             a.element.severity != b.element.severity ? a.element.severity > b.element.severity : a.offset < b.offset
         }.map(\.element)
-        let notes = RoomBuilder.reviewNotes(for: sorted)
+        let notes = RoomReconstructor.reviewNotes(for: sorted)
         let lines = notes.split(separator: "\n").map(String.init)
         XCTAssertEqual(lines.count, 2, "info warnings are routine and stay out of the notes")
         XCTAssertTrue(lines[0].hasPrefix("SCAN CHECK (critical): "))
         XCTAssertTrue(lines[1].hasPrefix("SCAN CHECK (caution): "))
-        XCTAssertEqual(RoomBuilder.reviewNotes(for: []), "")
+        XCTAssertEqual(RoomReconstructor.reviewNotes(for: []), "")
     }
 
     func testTheFloorPolygonTermsRewardAMatchingFloorAndPunishADisagreeingOne() {
@@ -2295,10 +2301,10 @@ final class RoomBuilderTests: XCTestCase {
         // (this room is unambiguous) but its cost is not. The right floor adds nothing; a wrong one adds at least
         // 50 per unit of (1 - IoU) plus 3 per metre of boundary that does not follow the other.
         let f = Fixtures.rectangle(width: 5, depth: 4, seed: 2)
-        let segments = RoomBuilder.mergeCollinear(RoomBuilder.extractSegments(from: f.capture.walls, options: .standard).segments,
+        let segments = RoomReconstructor.mergeCollinear(RoomReconstructor.extractSegments(from: f.capture.walls, options: .standard).segments,
                                                   options: .standard).segments
         func cost(_ floors: [[Point2]]) -> Double {
-            RoomBuilder.findLoop(segments: segments, floors: floors, options: .standard).outcome?.cost ?? -1
+            RoomReconstructor.findLoop(segments: segments, floors: floors, options: .standard).outcome?.cost ?? -1
         }
         func rect(_ w: Double, _ h: Double, at o: Point2 = .zero) -> [Point2] {
             [o, o + Point2(w, 0), o + Point2(w, h), o + Point2(0, h)]

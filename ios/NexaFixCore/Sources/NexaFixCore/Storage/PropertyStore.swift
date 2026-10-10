@@ -309,6 +309,12 @@ public final class PropertyStore: @unchecked Sendable {
         }
     }
 
+    /// The summary of ONE property, read from its own files only. Cheaper than `list()` (which reads
+    /// every property) when a single property has just been saved.
+    public func summary(id: UUID) throws -> PropertySummary {
+        try locked { Self.summary(of: try loadLocked(id: id)) }
+    }
+
     private static func summary(of loaded: LoadedProperty) -> PropertySummary {
         let p = loaded.property
         let counts = DataMeasureList.counts(for: p)

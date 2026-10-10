@@ -140,7 +140,7 @@ final class PlanRenderer {
 
     // MARK: Strokes
 
-    private func stroke(_ context: inout GraphicsContext, _ path: Path, style: NexaFixCore.StrokeStyle, boost: CGFloat) {
+    private func stroke(_ context: inout GraphicsContext, _ path: Path, style: DrawStroke, boost: CGFloat) {
         let width = CGFloat(PlanRenderMetrics.strokeWidth(forPaperWeight: style.weight)) + boost
         let shading = GraphicsContext.Shading.color(PlanRenderer.color(style.color))
         if style.dashed {

@@ -164,7 +164,7 @@ final class AppModel {
             unsavedPropertyIDs.remove(property.id)
             failedLoads.remove(property.id)
             revision += 1
-            refresh()
+            updateSummary(for: property.id)
             return true
         } catch {
             unsavedPropertyIDs.insert(property.id)
@@ -174,6 +174,22 @@ final class AppModel {
             present(UserFacingError(error, context: "save \(what)", severity: .dataAtRisk))
             return false
         }
+    }
+
+    /// Refreshes the one summary that changed, instead of re-reading every property after each save
+    /// (which grows with the number of properties and would stall the main thread). Falls back to a full
+    /// refresh when the single read fails.
+    private func updateSummary(for id: UUID) {
+        guard let summary = try? store.summary(id: id) else {
+            refresh()
+            return
+        }
+        if let index = summaries.firstIndex(where: { $0.id == id }) {
+            summaries[index] = summary
+        } else {
+            summaries.append(summary)
+        }
+        summaries.sort { $0.updatedAt > $1.updatedAt }
     }
 
     /// Tries again to save everything that is only in memory: properties whose save failed, and changes

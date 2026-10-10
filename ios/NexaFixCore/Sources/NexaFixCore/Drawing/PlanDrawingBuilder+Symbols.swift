@@ -71,7 +71,7 @@ extension PlanDrawingBuilder {
         let (from, to) = closed.cross(inward) > 0 ? (closedAngle, openAngle) : (openAngle, closedAngle)
         let swing = DrawingPrimitive.arc(center: hinge, radius: length,
                                          startAngle: normalizedDegrees(from), endAngle: normalizedDegrees(to),
-                                         StrokeStyle(weight: Weight.doorArc, color: Palette.muted))
+                                         DrawStroke(weight: Weight.doorArc, color: Palette.muted))
         context.add(.doors, swing)
         // Room labels keep out of the swept quarter circle.
         if let box = Bounds2(points: extentPoints(of: swing) + [hinge]) { context.obstacles.insert(box) }
@@ -93,7 +93,7 @@ extension PlanDrawingBuilder {
             context.add(.doors, .polyline([w.point(at: track.from, inset: inner), w.point(at: track.to, inset: inner),
                                            w.point(at: track.to, inset: outer), w.point(at: track.from, inset: outer)],
                                           closed: true,
-                                          stroke: StrokeStyle(weight: Weight.doorLeaf, color: Palette.ink),
+                                          stroke: DrawStroke(weight: Weight.doorLeaf, color: Palette.ink),
                                           fill: nil))
         }
     }
@@ -113,7 +113,7 @@ extension PlanDrawingBuilder {
         let c = corner + previous * size
         let b = a + previous * size
         return .polyline([a, b, c], closed: false,
-                         stroke: StrokeStyle(weight: Weight.squareMark, color: Palette.muted), fill: nil)
+                         stroke: DrawStroke(weight: Weight.squareMark, color: Palette.muted), fill: nil)
     }
 
     // MARK: Dimension ticks

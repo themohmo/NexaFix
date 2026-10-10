@@ -1,8 +1,8 @@
 import Foundation
 
-// Doors, windows, openings and objects for `RoomBuilder`.
+// Doors, windows, openings and objects for `RoomReconstructor`.
 
-extension RoomBuilder {
+extension RoomReconstructor {
 
     struct OpeningResult {
         var openings: [Opening]

@@ -414,19 +414,19 @@ public enum PlanPDFRenderer {
 
     struct Canvas {
         var page: PDFPage
-        private var stroke: StrokeStyle?
+        private var stroke: DrawStroke?
         private var fillColor: DrawColor?
         private var dashOn = false
 
         static let k = PDFUnits.pointsPerMillimetre
-        /// Dash pattern on paper for `StrokeStyle.dashed`, millimetres.
+        /// Dash pattern on paper for `DrawStroke.dashed`, millimetres.
         static let dashPattern: [Double] = [2.2, 1.1]
 
         init(sheet: Sheet) {
             page = PDFPage(widthMM: sheet.width, heightMM: sheet.height)
         }
 
-        mutating func setStroke(_ style: StrokeStyle) {
+        mutating func setStroke(_ style: DrawStroke) {
             if stroke != style {
                 if stroke?.color != style.color { page.setStrokeColor(style.color) }
                 if stroke?.weight != style.weight { page.setLineWidth(Swift.max(0.05, style.weight) * Canvas.k) }
@@ -448,19 +448,19 @@ public enum PlanPDFRenderer {
         }
 
         mutating func stroke(_ r: Rect, color: DrawColor, weight: Double) {
-            setStroke(StrokeStyle(weight: weight, color: color))
+            setStroke(DrawStroke(weight: weight, color: color))
             page.strokeRect(x: r.x * Canvas.k, y: r.y * Canvas.k, width: r.width * Canvas.k, height: r.height * Canvas.k)
         }
 
         mutating func line(_ x0: Double, _ y0: Double, _ x1: Double, _ y1: Double, color: DrawColor,
                            weight: Double, dashed: Bool = false) {
-            setStroke(StrokeStyle(weight: weight, color: color, dashed: dashed))
+            setStroke(DrawStroke(weight: weight, color: color, dashed: dashed))
             page.strokeLine(fromX: x0 * Canvas.k, y0 * Canvas.k, toX: x1 * Canvas.k, y1 * Canvas.k)
         }
 
         mutating func arc(cx: Double, cy: Double, radius: Double, from: Double, to: Double, color: DrawColor,
                           weight: Double) {
-            setStroke(StrokeStyle(weight: weight, color: color))
+            setStroke(DrawStroke(weight: weight, color: color))
             page.arc(centerX: cx * Canvas.k, centerY: cy * Canvas.k, radius: radius * Canvas.k,
                      startDegrees: from, endDegrees: to)
             page.stroke()

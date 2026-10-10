@@ -157,13 +157,13 @@ private enum DXFReader {
 // MARK: - Fixtures
 
 enum DXFFixtures {
-    static let wall = StrokeStyle(weight: 0.5, color: .black)
-    static let door = StrokeStyle(weight: 0.25, color: .black)
-    static let thin = StrokeStyle(weight: 0.13, color: DrawColor(0.4, 0.4, 0.4))
-    static let dim = StrokeStyle(weight: 0.13, color: DrawColor(0.2, 0.5, 0.2))
-    static let dashedBlue = StrokeStyle(weight: 0.25, color: DrawColor(0, 0, 1), dashed: true)
-    static let window = StrokeStyle(weight: 0.18, color: .black)
-    static let red = StrokeStyle(weight: 0.13, color: DrawColor(1, 0, 0))
+    static let wall = DrawStroke(weight: 0.5, color: .black)
+    static let door = DrawStroke(weight: 0.25, color: .black)
+    static let thin = DrawStroke(weight: 0.13, color: DrawColor(0.4, 0.4, 0.4))
+    static let dim = DrawStroke(weight: 0.13, color: DrawColor(0.2, 0.5, 0.2))
+    static let dashedBlue = DrawStroke(weight: 0.25, color: DrawColor(0, 0, 1), dashed: true)
+    static let window = DrawStroke(weight: 0.18, color: .black)
+    static let red = DrawStroke(weight: 0.13, color: DrawColor(1, 0, 0))
     static let ink = DrawColor(0.1, 0.1, 0.1)
 
     static func box(_ x0: Double, _ y0: Double, _ x1: Double, _ y1: Double) -> [Point2] {
@@ -1080,7 +1080,7 @@ final class DXFExporterTests: XCTestCase {
         XCTAssertEqual(withLinetype[0].string(6), "DASHED")
         XCTAssertEqual(withLinetype[0].layer, "NF-WALLS-OPEN")
         // Dashed lines, arcs and circles too.
-        let dashed = StrokeStyle(weight: 0.25, color: .black, dashed: true)
+        let dashed = DrawStroke(weight: 0.25, color: .black, dashed: true)
         let items = [
             LayeredPrimitive(.walls, .line(Point2(0, 0), Point2(1, 0), dashed)),
             LayeredPrimitive(.walls, .arc(center: .zero, radius: 1, startAngle: 0, endAngle: 90, dashed)),
@@ -1094,7 +1094,7 @@ final class DXFExporterTests: XCTestCase {
 
     func testLineweightsAreWrittenOnlyWhenTheyDifferFromTheLayer() throws {
         func line(_ layer: PlanLayer, weight: Double) -> LayeredPrimitive {
-            LayeredPrimitive(layer, .line(Point2(0, 0), Point2(1, 0), StrokeStyle(weight: weight)))
+            LayeredPrimitive(layer, .line(Point2(0, 0), Point2(1, 0), DrawStroke(weight: weight)))
         }
         let items = [
             line(.walls, weight: 0.5),            // equals the layer's 50: BYLAYER
@@ -1204,7 +1204,7 @@ final class DXFExporterTests: XCTestCase {
 
     func testPolylineVertexCleaning() throws {
         let stroke = DXFFixtures.wall
-        func polyline(_ pts: [Point2], closed: Bool, fill: DrawColor? = nil, stroke s: StrokeStyle? = stroke) -> LayeredPrimitive {
+        func polyline(_ pts: [Point2], closed: Bool, fill: DrawColor? = nil, stroke s: DrawStroke? = stroke) -> LayeredPrimitive {
             LayeredPrimitive(.walls, .polyline(pts, closed: closed, stroke: s, fill: fill))
         }
         // Consecutive duplicates collapse.
@@ -1982,7 +1982,7 @@ private enum DXFExpectation {
             d["color"] = DXFColor.aci(for: c)
             if options.colorMode == .trueColor { d["true_color"] = DXFColor.trueColor(c) }
         }
-        func stroked(_ type: String, _ layer: PlanLayer, _ geom: [Double], _ s: StrokeStyle) -> [String: Any] {
+        func stroked(_ type: String, _ layer: PlanLayer, _ geom: [Double], _ s: DrawStroke) -> [String: Any] {
             var d: [String: Any] = ["type": type, "layer": layer.rawValue, "geom": geom,
                                     "lineweight": lineweight(s.weight, layer: layer),
                                     "linetype": s.dashed ? "DASHED" : "CONTINUOUS"]
@@ -2083,7 +2083,7 @@ private enum DXFExpectation {
 private func dxfEdgeCasePlan() -> (plan: PlanDrawing, expected: [[String: Any]], lineLength: Double) {
     let nan = Double.nan
     let door = DXFFixtures.door
-    let dashed = StrokeStyle(weight: 0.25, color: DrawColor(0, 0, 1), dashed: true)
+    let dashed = DrawStroke(weight: 0.25, color: DrawColor(0, 0, 1), dashed: true)
     func text(_ s: String, _ rotation: Double = 0, _ anchor: TextAnchor = .left) -> LayeredPrimitive {
         LayeredPrimitive(.notes, .text(s, at: Point2(0.5, 0.25), height: 0.1, rotation: rotation, anchor: anchor,
                                        color: .black, bold: false))
@@ -2135,7 +2135,7 @@ private func dxfEdgeCasePlan() -> (plan: PlanDrawing, expected: [[String: Any]],
                      "lineweight": 25, "linetype": "DASHED"])
     // Lineweights at the extremes on the 0.13 mm dimension layer.
     for (mm, lw) in [(0.0, 0), (9.0, 211), (nan, 13), (-1.0, 13), (0.19, 18)] {
-        items.append(LayeredPrimitive(.dimensions, .line(Point2(0, 5), Point2(2, 5), StrokeStyle(weight: mm))))
+        items.append(LayeredPrimitive(.dimensions, .line(Point2(0, 5), Point2(2, 5), DrawStroke(weight: mm))))
         expected.append(["type": "LINE", "layer": "NF-DIMENSIONS", "geom": [0.0, 5000.0, 2000.0, 5000.0], "lineweight": lw,
                          "linetype": "CONTINUOUS"])
     }
@@ -2162,8 +2162,8 @@ private func dxfBulkPlan() -> PlanDrawing {
     var g = DXFSeededGenerator(seed: 2024)
     func r(_ lo: Double, _ hi: Double) -> Double { Double.random(in: lo...hi, using: &g) }
     func pt() -> Point2 { Point2(r(-30, 30), r(-30, 30)) }
-    func stroke() -> StrokeStyle {
-        StrokeStyle(weight: [0.13, 0.18, 0.25, 0.35, 0.5][Int(r(0, 4.999))], color: DrawColor(r(0, 1), r(0, 1), r(0, 1)),
+    func stroke() -> DrawStroke {
+        DrawStroke(weight: [0.13, 0.18, 0.25, 0.35, 0.5][Int(r(0, 4.999))], color: DrawColor(r(0, 1), r(0, 1), r(0, 1)),
                     dashed: r(0, 1) < 0.2)
     }
     let layers = PlanLayer.allCases

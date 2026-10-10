@@ -18,7 +18,7 @@ public struct DrawColor: Codable, Hashable, Sendable {
 }
 
 /// Stroke style. `weight` is the line width ON PAPER in millimetres.
-public struct StrokeStyle: Codable, Hashable, Sendable {
+public struct DrawStroke: Codable, Hashable, Sendable {
     public var weight: Double
     public var color: DrawColor
     public var dashed: Bool
@@ -47,12 +47,12 @@ public enum PlanLayer: String, Codable, CaseIterable, Sendable {
 }
 
 public enum DrawingPrimitive: Hashable, Sendable {
-    case line(Point2, Point2, StrokeStyle)
+    case line(Point2, Point2, DrawStroke)
     /// Optionally closed and filled. `fill` nil = outline only.
-    case polyline([Point2], closed: Bool, stroke: StrokeStyle?, fill: DrawColor?)
+    case polyline([Point2], closed: Bool, stroke: DrawStroke?, fill: DrawColor?)
     /// Counter-clockwise arc from `startAngle` to `endAngle`, degrees from plan +x.
-    case arc(center: Point2, radius: Double, startAngle: Double, endAngle: Double, StrokeStyle)
-    case circle(center: Point2, radius: Double, StrokeStyle)
+    case arc(center: Point2, radius: Double, startAngle: Double, endAngle: Double, DrawStroke)
+    case circle(center: Point2, radius: Double, DrawStroke)
     /// `height` is the cap height in model-space metres; `rotation` is degrees counter-clockwise.
     /// `bold` asks for the bold face where the renderer has one.
     case text(String, at: Point2, height: Double, rotation: Double, anchor: TextAnchor, color: DrawColor, bold: Bool)

@@ -29,7 +29,7 @@ import Foundation
 ///     too (`maxOutsideWallFraction`).
 ///  4. **Fallbacks.** If no acceptable loop exists: the floor surface polygon, else the convex hull
 ///     of wall end points, always with a loud `.noClosedLoop` warning (critical).
-///  5. **Openings and objects**, see `RoomBuilder+Openings.swift`.
+///  5. **Openings and objects**, see `RoomReconstructor+Openings.swift`.
 ///
 /// Curved walls: a surface with `isCurved` set must describe its straight CHORD (transform centre and
 /// `dimensions.x` = chord length). The builder stores the chord and flags `Wall.isCurved`; the arc
@@ -50,7 +50,7 @@ import Foundation
 /// the exports carry them.
 ///
 /// All lengths are metres. The result never contains NaN or infinity, whatever the input.
-public enum RoomBuilder {
+public enum RoomReconstructor {
 
     // MARK: Options
 
