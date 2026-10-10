@@ -120,7 +120,16 @@ final class SmokeTests: SmokeTestCase {
         if waitForShareSheet(timeout: 20) {
             settle(0.8)
             snapScreen("03-share-sheet")
-            dismissShareSheet()
+            if !dismissShareSheet() {
+                // The system sheet came up with the exported files, which is what this test checks. Whether the
+                // Simulator lets a test close the sheet by gesture is not a property of the app (the run that found
+                // this: the sheet is a remote view whose elements report an empty visible frame, so element-based
+                // swipes fail). The test ends here instead of failing on the clean-up; the app is shut down after it.
+                snapScreen("03b-share-sheet-did-not-close")
+                print("NOTE T3: the share sheet appeared but could not be closed by a gesture; ending the test here.")
+                assertAlive("after pressing Share")
+                return
+            }
         } else {
             // Not a failure: whether the system share sheet can appear depends on the machine. The button works
             // (it was enabled and tapped); the screenshot shows what the sheet looks like now.
@@ -161,19 +170,25 @@ final class SmokeTests: SmokeTestCase {
         poll(timeout) { self.shareSheetIsVisible() }
     }
 
-    /// The close button first, then a tap on the dimmed area above the sheet, then a swipe down. Whether the sheet is
-    /// gone is only ever judged by `shareSheetIsVisible()`; a swipe is tried only on a list that is on screen.
-    private func dismissShareSheet() {
+    /// Closes the system share sheet; true when it is gone. In this order: the close button, a tap on the dimmed area
+    /// above the card, then a drag of the card down. All by coordinates: the sheet is a remote view whose elements
+    /// report an empty visible frame, so `swipeDown()` on an element of it fails. Whether the sheet is gone is only
+    /// ever judged by `shareSheetIsVisible()`.
+    private func dismissShareSheet() -> Bool {
+        func gone(_ seconds: TimeInterval = 4) -> Bool { poll(seconds) { !self.shareSheetIsVisible() } }
+
         let close = app.buttons["Close"].firstMatch
         if close.waitForExistence(timeout: 2), close.isHittable {
             close.tap()
-            if poll(4, { !self.shareSheetIsVisible() }) { return }
+            if gone() { return true }
         }
-        app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.04)).tap()
-        if poll(4, { !self.shareSheetIsVisible() }) { return }
-        let list = app.otherElements["ActivityListView"]
-        if list.exists, !list.frame.isEmpty { list.swipeDown() }
-        _ = poll(4) { !self.shareSheetIsVisible() }
+        // About a quarter of the way down is above the share card (it starts a little below the middle) and over the
+        // share sheet's own dimming; on the Export sheet behind it that spot is a text banner, not a control.
+        app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.28)).tap()
+        if gone() { return true }
+        let grip = app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.50))
+        grip.press(forDuration: 0.1, thenDragTo: app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.98)))
+        return gone(6)
     }
 
     // MARK: T4 - settings

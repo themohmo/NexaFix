@@ -14,6 +14,7 @@ struct VerifySheet: View {
 
     @Environment(AppModel.self) private var app
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.dynamicTypeSize) private var typeSize
     @State private var model: VerifyModel
     @State private var problem: String?
     @FocusState private var fieldFocused: Bool
@@ -63,7 +64,8 @@ struct VerifySheet: View {
                 // sheet's content down puts the keyboard away.
             }
         }
-        .presentationDetents([.medium, .large])
+        // At accessibility text sizes the medium detent leaves no room for the field, the source and Save.
+        .presentationDetents(typeSize.isAccessibilitySize ? [.large] : [.medium, .large])
         .presentationDragIndicator(.visible)
         .task { @MainActor in
             // After the sheet has finished rising, so the keyboard does not fight the animation.
