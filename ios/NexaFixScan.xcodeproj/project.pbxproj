@@ -23,6 +23,7 @@
 		42DDC66F118833A99409D070 /* ScanHUD.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6028BDC819D988211662BE9A /* ScanHUD.swift */; };
 		4877EB64C9AFE6F01CD612AB /* ScanFlowView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A51E9463C68014940A5501EC /* ScanFlowView.swift */; };
 		48C6D6605F7D2623842BA5F0 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 1AA16E280A8DC4F6A3723904 /* Assets.xcassets */; };
+		497663F64FDB5B936E06F0E4 /* Helpers.swift in Sources */ = {isa = PBXBuildFile; fileRef = D09E20FAD6A0C3EE28B933C6 /* Helpers.swift */; };
 		5426F7EE7925CDE498A7849E /* PlanThumbnail.swift in Sources */ = {isa = PBXBuildFile; fileRef = 249CC0C64CC4274404F915F0 /* PlanThumbnail.swift */; };
 		59A1F2CD85836DC45338282A /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = A20369198A3F1319F99A9783 /* PrivacyInfo.xcprivacy */; };
 		5DED3C930385CDAFA48F6C15 /* RoomView.swift in Sources */ = {isa = PBXBuildFile; fileRef = EEC35E8CD21ED21FD99A78D3 /* RoomView.swift */; };
@@ -41,6 +42,7 @@
 		A18095C6797330BE9EC62F6E /* CapturedRoomMapper.swift in Sources */ = {isa = PBXBuildFile; fileRef = 48D74B2CF33BC84CFF3F1987 /* CapturedRoomMapper.swift */; };
 		A252BAB3A17034359F007272 /* PropertiesListView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2EA8DDCB512375AE0ADD5CB5 /* PropertiesListView.swift */; };
 		A60B3E511B56A1417C0D6315 /* ScanRecoveryStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = EF7954FCBC5AE78B43DC5267 /* ScanRecoveryStore.swift */; };
+		A7AFF859308684A017717108 /* SmokeTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 26188736B5692E22574A3137 /* SmokeTests.swift */; };
 		A8409986199D02162CCC0AB5 /* PermissionPrimer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 51E0D3F0C13EE2622A8E888B /* PermissionPrimer.swift */; };
 		A91FB52E3517BFFB48F36B82 /* ARReviewView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0632555A145AD34C3C9DDC59 /* ARReviewView.swift */; };
 		B186BFAE67DE83F9093C82FA /* Viewer3DController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7C4F442DA8A0D9C011AE222A /* Viewer3DController.swift */; };
@@ -53,6 +55,7 @@
 		E7A8F22682C05EDE2EC36C6C /* AppModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6AF6529C362B32F764FE9D92 /* AppModel.swift */; };
 		E8471B8EA401937922249F0A /* ARTrackingStatus.swift in Sources */ = {isa = PBXBuildFile; fileRef = 591227902885421DCA9C3193 /* ARTrackingStatus.swift */; };
 		E84CF2F6B5248A42DF3BACD6 /* NexaFixScanApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2372E95322CAF54B34C8A84D /* NexaFixScanApp.swift */; };
+		E8C9E78C42EB9984BE2C1507 /* UITestSupport.swift in Sources */ = {isa = PBXBuildFile; fileRef = 92F24B36A82141F0B0136088 /* UITestSupport.swift */; };
 		EA008A38517A69D55B45C0A3 /* ScanResult.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4F57B57712412736E93A2888 /* ScanResult.swift */; };
 		EA1ECA86F9DE5167D079301E /* Components.swift in Sources */ = {isa = PBXBuildFile; fileRef = B8A7EA2979E6263DCC6042B3 /* Components.swift */; };
 		EA5D76E8AC5696EE55AF5165 /* Materials.swift in Sources */ = {isa = PBXBuildFile; fileRef = F1B8FEE33D06B5D6ECA94B7A /* Materials.swift */; };
@@ -60,6 +63,16 @@
 		FE5B7D8E747358D70A84EDF0 /* RoomCaptureViewContainer.swift in Sources */ = {isa = PBXBuildFile; fileRef = CBF931572956635436F5AED4 /* RoomCaptureViewContainer.swift */; };
 		FF7489BE399BBE5794BC7CFD /* PlanCanvasView.swift in Sources */ = {isa = PBXBuildFile; fileRef = CCC0151771CC500521621A5D /* PlanCanvasView.swift */; };
 /* End PBXBuildFile section */
+
+/* Begin PBXContainerItemProxy section */
+		BC0DD4B2BFE43C02798A5119 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = A025E0498E08BBA2A5F6019D /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 64368A2B672F74EDF25613FE;
+			remoteInfo = NexaFixScan;
+		};
+/* End PBXContainerItemProxy section */
 
 /* Begin PBXFileReference section */
 		00E418846BE28060ECBCACE8 /* AROverlayCanvas.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AROverlayCanvas.swift; sourceTree = "<group>"; };
@@ -73,6 +86,7 @@
 		20DEF569C54B987F755C4855 /* ModelBridge.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ModelBridge.swift; sourceTree = "<group>"; };
 		2372E95322CAF54B34C8A84D /* NexaFixScanApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NexaFixScanApp.swift; sourceTree = "<group>"; };
 		249CC0C64CC4274404F915F0 /* PlanThumbnail.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlanThumbnail.swift; sourceTree = "<group>"; };
+		26188736B5692E22574A3137 /* SmokeTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SmokeTests.swift; sourceTree = "<group>"; };
 		2EA8DDCB512375AE0ADD5CB5 /* PropertiesListView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PropertiesListView.swift; sourceTree = "<group>"; };
 		2F6F93D21824CDD7DF19EB81 /* Motion.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Motion.swift; sourceTree = "<group>"; };
 		31E7C70255E0595799A8A553 /* DesignPreviews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DesignPreviews.swift; sourceTree = "<group>"; };
@@ -83,6 +97,7 @@
 		48D74B2CF33BC84CFF3F1987 /* CapturedRoomMapper.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CapturedRoomMapper.swift; sourceTree = "<group>"; };
 		4F57B57712412736E93A2888 /* ScanResult.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScanResult.swift; sourceTree = "<group>"; };
 		51E0D3F0C13EE2622A8E888B /* PermissionPrimer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PermissionPrimer.swift; sourceTree = "<group>"; };
+		52DDF14C1EFA7954DA3D9F37 /* NexaFixScanUITests.xctest */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.cfbundle; path = NexaFixScanUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		53882C0259696A37DA3353AD /* VerifySheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VerifySheet.swift; sourceTree = "<group>"; };
 		591227902885421DCA9C3193 /* ARTrackingStatus.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ARTrackingStatus.swift; sourceTree = "<group>"; };
 		6028BDC819D988211662BE9A /* ScanHUD.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScanHUD.swift; sourceTree = "<group>"; };
@@ -97,6 +112,7 @@
 		87095C509EB70E56D3A533EC /* Viewer3DView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Viewer3DView.swift; sourceTree = "<group>"; };
 		871C926A701856BC58B6A0E6 /* AppSettings.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppSettings.swift; sourceTree = "<group>"; };
 		90B871D3824D1E146C6DBE72 /* RootView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RootView.swift; sourceTree = "<group>"; };
+		92F24B36A82141F0B0136088 /* UITestSupport.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UITestSupport.swift; sourceTree = "<group>"; };
 		A20369198A3F1319F99A9783 /* PrivacyInfo.xcprivacy */ = {isa = PBXFileReference; path = PrivacyInfo.xcprivacy; sourceTree = "<group>"; };
 		A51E9463C68014940A5501EC /* ScanFlowView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScanFlowView.swift; sourceTree = "<group>"; };
 		AD6C575E09365F56C8FBBE43 /* ARReviewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ARReviewController.swift; sourceTree = "<group>"; };
@@ -106,6 +122,7 @@
 		C01B02D4D9ADC730EC4F4DD1 /* PlanRenderer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlanRenderer.swift; sourceTree = "<group>"; };
 		CBF931572956635436F5AED4 /* RoomCaptureViewContainer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RoomCaptureViewContainer.swift; sourceTree = "<group>"; };
 		CCC0151771CC500521621A5D /* PlanCanvasView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlanCanvasView.swift; sourceTree = "<group>"; };
+		D09E20FAD6A0C3EE28B933C6 /* Helpers.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Helpers.swift; sourceTree = "<group>"; };
 		D1E1D0E11BBEEA71E4BE2AFC /* NewPropertySheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NewPropertySheet.swift; sourceTree = "<group>"; };
 		D473F183FF875BF976B552B3 /* MeasurementFormatting.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MeasurementFormatting.swift; sourceTree = "<group>"; };
 		D942E12DF79EDAEC687062C0 /* OverlayStyle.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OverlayStyle.swift; sourceTree = "<group>"; };
@@ -152,6 +169,7 @@
 			children = (
 				D0CFD1BA370AAF2F651345FE /* Config */,
 				FD117D3213F806E454452D27 /* NexaFixScan */,
+				C11C8A0D78FF052A53512B17 /* NexaFixScanUITests */,
 				C52AECBABE12E8613E3B2745 /* Packages */,
 				B6261A369F2D76BD9E4293AA /* Products */,
 			);
@@ -197,6 +215,7 @@
 				871C926A701856BC58B6A0E6 /* AppSettings.swift */,
 				D473F183FF875BF976B552B3 /* MeasurementFormatting.swift */,
 				2372E95322CAF54B34C8A84D /* NexaFixScanApp.swift */,
+				92F24B36A82141F0B0136088 /* UITestSupport.swift */,
 				76588018785E861DC62950A6 /* UserFacingError.swift */,
 			);
 			path = App;
@@ -225,8 +244,18 @@
 			isa = PBXGroup;
 			children = (
 				038071558255B9A37A2CAB57 /* NexaFixScan.app */,
+				52DDF14C1EFA7954DA3D9F37 /* NexaFixScanUITests.xctest */,
 			);
 			name = Products;
+			sourceTree = "<group>";
+		};
+		C11C8A0D78FF052A53512B17 /* NexaFixScanUITests */ = {
+			isa = PBXGroup;
+			children = (
+				D09E20FAD6A0C3EE28B933C6 /* Helpers.swift */,
+				26188736B5692E22574A3137 /* SmokeTests.swift */,
+			);
+			path = NexaFixScanUITests;
 			sourceTree = "<group>";
 		};
 		C52AECBABE12E8613E3B2745 /* Packages */ = {
@@ -289,6 +318,24 @@
 /* End PBXGroup section */
 
 /* Begin PBXNativeTarget section */
+		259405F0D4B2FF18480840BE /* NexaFixScanUITests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 411AB6E0292B8A3A6490C04E /* Build configuration list for PBXNativeTarget "NexaFixScanUITests" */;
+			buildPhases = (
+				0C8D34A9169D3389C578BBCD /* Sources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				363AD8F5A57C621F79907A55 /* PBXTargetDependency */,
+			);
+			name = NexaFixScanUITests;
+			packageProductDependencies = (
+			);
+			productName = NexaFixScanUITests;
+			productReference = 52DDF14C1EFA7954DA3D9F37 /* NexaFixScanUITests.xctest */;
+			productType = "com.apple.product-type.bundle.ui-testing";
+		};
 		64368A2B672F74EDF25613FE /* NexaFixScan */ = {
 			isa = PBXNativeTarget;
 			buildConfigurationList = E484AB8F8053DE5117455F2B /* Build configuration list for PBXNativeTarget "NexaFixScan" */;
@@ -318,6 +365,10 @@
 				BuildIndependentTargetsInParallel = YES;
 				LastUpgradeCheck = 2700;
 				TargetAttributes = {
+					259405F0D4B2FF18480840BE = {
+						ProvisioningStyle = Automatic;
+						TestTargetID = 64368A2B672F74EDF25613FE;
+					};
 					64368A2B672F74EDF25613FE = {
 						ProvisioningStyle = Automatic;
 					};
@@ -341,6 +392,7 @@
 			projectRoot = "";
 			targets = (
 				64368A2B672F74EDF25613FE /* NexaFixScan */,
+				259405F0D4B2FF18480840BE /* NexaFixScanUITests */,
 			);
 		};
 /* End PBXProject section */
@@ -358,6 +410,15 @@
 /* End PBXResourcesBuildPhase section */
 
 /* Begin PBXSourcesBuildPhase section */
+		0C8D34A9169D3389C578BBCD /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				497663F64FDB5B936E06F0E4 /* Helpers.swift in Sources */,
+				A7AFF859308684A017717108 /* SmokeTests.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 		BFD3CEFAC6D350B054471558 /* Sources */ = {
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
@@ -407,6 +468,7 @@
 				62330D98D8DD4C0346E66E89 /* SettingsView.swift in Sources */,
 				7D76797C099B374B8132369F /* ShareSheet.swift in Sources */,
 				11940E89EC821519A24C072A /* Theme.swift in Sources */,
+				E8C9E78C42EB9984BE2C1507 /* UITestSupport.swift in Sources */,
 				87EC942EC373FC82EDF8A426 /* UserFacingError.swift in Sources */,
 				3E7798D8A02677E4EC250311 /* VerifySheet.swift in Sources */,
 				B186BFAE67DE83F9093C82FA /* Viewer3DController.swift in Sources */,
@@ -415,6 +477,14 @@
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 /* End PBXSourcesBuildPhase section */
+
+/* Begin PBXTargetDependency section */
+		363AD8F5A57C621F79907A55 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 64368A2B672F74EDF25613FE /* NexaFixScan */;
+			targetProxy = BC0DD4B2BFE43C02798A5119 /* PBXContainerItemProxy */;
+		};
+/* End PBXTargetDependency section */
 
 /* Begin XCBuildConfiguration section */
 		21A37CE124D7B5770669D5E0 /* Debug */ = {
@@ -510,6 +580,26 @@
 			};
 			name = Debug;
 		};
+		4C4294B99206C94E0B3181BF /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				GENERATE_INFOPLIST_FILE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@loader_path/Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = com.nexafix.scan.uitests;
+				PRODUCT_NAME = NexaFixScanUITests;
+				SDKROOT = iphoneos;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				TEST_TARGET_NAME = NexaFixScan;
+			};
+			name = Release;
+		};
 		BE86B3F4EE8AE34EA44C2D48 /* Release */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
@@ -576,6 +666,26 @@
 			};
 			name = Release;
 		};
+		F71A40DA67AA0EAEC4B4BD6D /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				GENERATE_INFOPLIST_FILE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@loader_path/Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = com.nexafix.scan.uitests;
+				PRODUCT_NAME = NexaFixScanUITests;
+				SDKROOT = iphoneos;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				TEST_TARGET_NAME = NexaFixScan;
+			};
+			name = Debug;
+		};
 		FAE0EBC5DBE05031FE809413 /* Release */ = {
 			isa = XCBuildConfiguration;
 			baseConfigurationReference = FAE27D7AB212166D6218D77B /* Signing.xcconfig */;
@@ -599,6 +709,15 @@
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
+		411AB6E0292B8A3A6490C04E /* Build configuration list for PBXNativeTarget "NexaFixScanUITests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				F71A40DA67AA0EAEC4B4BD6D /* Debug */,
+				4C4294B99206C94E0B3181BF /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
 		DEF37B823A5B0F964475F26C /* Build configuration list for PBXProject "NexaFixScan" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
