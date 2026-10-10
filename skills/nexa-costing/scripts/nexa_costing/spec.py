@@ -38,6 +38,13 @@ class Room:
     def wall_area(self) -> float:
         return max(0.0, self.perimeter * self.height - self.opening_area)
 
+    # Selector words that name a GROUP of rooms, never one room. Everything else that equals a room's
+    # name picks that room by name (see `Estimate.select_rooms`), even when it is also a tag.
+    GROUP_SELECTORS = frozenset({
+        "everything", "all_including_outdoor", "all", "*", "whole", "whole unit", "apartment", "indoor",
+        "all rooms", "dry", "dry areas", "dry area", "wet", "wet areas",
+    })
+
     def matches(self, selector: str) -> bool:
         s = selector.strip().lower()
         indoor = "outdoor" not in self.tags

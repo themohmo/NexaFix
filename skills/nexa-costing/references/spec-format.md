@@ -43,6 +43,10 @@ rooms:
 Room selectors (for `room:` / `rooms:`): a room name, a list of names,
 `all` (all indoor rooms), `dry` (indoor, not wet), `wet`, `bedrooms`,
 `everything` (incl. balconies), or a tag.
+An exact room name always wins over a tag with the same word: with rooms "Kitchen" and "Kitchen 2",
+`room: Kitchen` means the room called Kitchen only. To include both, list both:
+`rooms: [Kitchen, Kitchen 2]`. A word that is not a room's exact name still selects by tag
+(`bedrooms`, `dry`, `wet` ...).
 
 ## Scope
 

@@ -42,10 +42,15 @@ still works: demo data, verification, plans, the 3D viewer and exports. The Simu
 4. **Signing.** In Xcode click the blue project icon, choose the **NexaFixScan** target, open
    **Signing & Capabilities**, and under **Team** pick your Apple ID (add it with *Add an Account…* if it is
    not listed). If Xcode says the bundle identifier is not available, change **Bundle Identifier** to
-   something unique, for example `com.yourname.nexafixscan`.
+   something unique, for example `com.yourname.nexafixscan`. Then run **once**
+   `ios/tools/remember-signing.sh`: it saves your Team (and identifier) in `ios/Config/Local.xcconfig`, which
+   git ignores, so you do not have to pick it again each time `xcodegen generate` re-creates the project.
 5. **Prepare the phone.** Plug it in and tap *Trust* on the phone. Then, on the phone, turn on
    **Settings ▸ Privacy & Security ▸ Developer Mode** (it restarts the phone once).
-6. **Run.** Choose your iPhone in the device menu at the top of Xcode and press **▶**.
+6. **Run.** Choose your iPhone in the device menu at the top of Xcode and press **▶**. The first time,
+   Xcode spends a few minutes preparing the phone. Use the **NexaFixScan** scheme while fixing build
+   errors; for real site scans choose the **NexaFixScan Release** scheme (Debug builds are unoptimised and
+   the geometry and AR code is noticeably slower in them).
 7. **First launch with a free Apple ID.** If the phone says the developer is not trusted, go to
    **Settings ▸ General ▸ VPN & Device Management**, tap your Apple ID and choose **Trust**. A free-account
    install stops opening after 7 days; press ▶ in Xcode again to renew it. Your saved scans are kept.
@@ -131,7 +136,9 @@ to trust a scan in your kind of rooms.
 | What you see | What to do |
 |---|---|
 | `xcodegen: command not found` | `brew install xcodegen` (install Homebrew first from brew.sh) |
-| *Failed to register bundle identifier* / *not available* | Change the Bundle Identifier in Signing & Capabilities to something unique. |
+| *Signing requires a development team* | Pick your Team (step 4), then run `ios/tools/remember-signing.sh` so it survives re-generating. |
+| *Failed to register bundle identifier* / *not available* | Change the Bundle Identifier in Signing & Capabilities to something unique, then run `ios/tools/remember-signing.sh`. |
+| `xcodegen generate` fails | Send the message to Claude. The least essential lines in `project.yml` are `xcodeVersion`, the `configFiles` block and the second scheme; removing them still leaves a working project. |
 | *Untrusted developer* on the phone | Settings ▸ General ▸ VPN & Device Management ▸ Trust. |
 | *Developer Mode required* | Settings ▸ Privacy & Security ▸ Developer Mode ▸ On, restart. |
 | Scan button says LiDAR is needed | The device has no LiDAR (iPhone Pro / iPad Pro only). |
@@ -141,17 +148,36 @@ to trust a scan in your kind of rooms.
 
 ## What has and has not been tested
 
-- **Tested (1,000+ automated tests, run on Linux):** all geometry and logic: rebuilding rooms from scan data,
-  corner angles, unit parsing, verification, the PDF/DXF/CSV/JSON/costing exports (DXF opened with a CAD
-  library, PDF rendered and inspected, costing spec priced by the real engine), storage, and the AR / 3D / plan
-  logic.
-- **Checked against Apple's documentation but never compiled or run:** everything that touches SwiftUI,
-  ARKit, RealityKit and RoomPlan. The machine this was built on has no Apple SDKs. Stand-in modules were
-  used to check the code is consistent with itself, which proves nothing about Apple's real frameworks.
-  Expect a small number of compile errors the first time (send them to Claude).
-- **Not yet seen on a device:** how it looks and feels, how well real RoomPlan data reconstructs rooms,
-  and whether AR lines up. The first real scans decide the tuning. Please scan one room you know the size of
-  and compare against a laser before trusting the app, then send the results to Claude.
+- **Tested (about 1,100 automated Swift tests and 240 Python tests, run on Linux):** all geometry and
+  logic: rebuilding rooms from scan data, corner angles, unit parsing, verification, the PDF / DXF / CSV / JSON /
+  costing exports (the DXF opened with a CAD library, the PDF rendered and inspected, the costing spec priced by
+  the real engine), storage and crash recovery, and the AR / 3D / plan logic.
+- **Checked against Apple's documentation, never compiled or run:** everything that touches SwiftUI, ARKit,
+  RealityKit and RoomPlan. The machine this was built on has no Apple SDKs. All 49 app files were compiled
+  *together* against the real core using stand-in modules whose signatures were copied from Apple's
+  documentation (`ios/tools/typecheck`), and every Apple API call was audited against the docs, including
+  what iOS 26/27 renamed or deprecated. That proves the app is consistent with itself and with what the docs
+  say. It does not prove Apple's real compiler agrees, so **expect a small number of build errors the first
+  time** (send them to Claude) and a few harmless warnings.
+- **Not yet seen on a device:** how it looks and feels, how well real RoomPlan data reconstructs rooms, and
+  whether AR lines up. The first real scans decide the tuning.
+
+### First-run checklist (about 30 minutes)
+
+Please go through these once and tell Claude what you see:
+
+1. **It builds and opens.** Run the demo apartment: select a wall, **Verify**, export a PDF.
+2. **A scan completes.** Scan two rooms. If scanning stops with an "AR configuration" message or the room
+   never appears, tell Claude first: it points at one specific setting.
+3. **The scan screen is readable.** Apple's own coaching text sits at the top of the camera view; check it does
+   not overlap the app's pills or the close button.
+4. **Accuracy.** Pick one room whose walls you have measured with a laser. Compare each wall in the app with
+   the laser, then verify them in the app. Send the numbers to Claude.
+5. **AR lines up.** Tap **AR**, stand where you started scanning and look at the walls. The status should
+   reach *Lined up* within a few seconds; the labels should sit on the right walls.
+6. **Plan and 3D feel right.** Pinch and double-tap the plan; in 3D, **Measure** between two corners.
+7. **Exports open.** The PDF in Preview, the DXF in your CAD program, the CSV in Numbers or Excel.
+8. **Costing hand-off.** Run `from_scan.py` on the costing spec, then `estimate.py`.
 
 ## For developers
 
@@ -165,10 +191,14 @@ ios/
   NexaFixScan/         the SwiftUI app: App, DesignSystem, Capture, AR, Plan, Viewer, Screens, Resources
   docs/DESIGN.md       design language (colour, type, motion, haptics, screens)
   docs/SCAN-FILE-FORMAT.md   JSON / CSV / costing spec formats
-  tools/               icon generator and the typecheck harness
+  Config/              signing (Signing.xcconfig; your own Local.xcconfig is git-ignored), generated Info.plist
+  tools/               icon generator, preflight.py (build-config + privacy checks), remember-signing.sh,
+                       typecheck/ (compiles the whole app against the real core with Apple stand-ins)
 ```
 
 Run the core tests (Mac or Linux): `cd ios/NexaFixCore && swift test`.
+Check the build configuration and privacy manifest: `python3 ios/tools/preflight.py`.
 Regenerate the app icon: `python3 ios/tools/make_icon.py`.
+The Python side (costing engine and the scan bridge): `python3 -m pytest -q` from the repo root.
 Design principles: `docs/DESIGN.md`. The app follows Apple's design principles: simple, one primary action
 per screen, springs, touch-down feedback, Dynamic Type, Reduce Motion / Transparency, and Liquid Glass on iOS 26+.

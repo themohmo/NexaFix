@@ -835,11 +835,12 @@ def test_a_real_scope_is_priced_from_the_verified_dimensions(scan, tmp_path):
     assert abs(cove["qty"] - living["perimeterM"]) < abs(cove["qty"] - living["perimeterScannedM"])
     assert cove["qty"] == pytest.approx(living["perimeterM"], abs=0.05)
 
-    # Painting: walls of every room the engine's selector "Kitchen" picks, perimeter x effective ceiling less openings.
+    # Painting: walls of the room NAMED "Kitchen" (an exact room name beats the 'kitchen' tag, so "Kitchen 2"
+    # is not painted too), perimeter x effective ceiling less openings.
     spec = json.loads(spec_path.read_text(encoding="utf-8"))
     expected = expected_scanned = 0.0
     for entry in spec["rooms"]:
-        if not build_room(entry, 2.8, []).matches("Kitchen"):
+        if entry["name"] != "Kitchen":
             continue
         s = room_named(scan, entry["name"])
         solid = {w["id"] for w in s["walls"] if w["kind"] == "solid"}

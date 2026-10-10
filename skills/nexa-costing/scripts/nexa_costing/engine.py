@@ -8,10 +8,10 @@ from pathlib import Path
 from .calculators import CATEGORY, REGISTRY
 from .lines import Builder, Line
 from .ratebook import Ratebook
-from .spec import Package, build_packages, build_room, rooms_from_typology
+from .spec import Package, Room, build_packages, build_room, rooms_from_typology
 import re
 
-from .util import SpecError, area as parse_area, as_bool, ceil_int, ceil_to, count_phrase, dim, num, r2
+from .util import SpecError, area as parse_area, as_bool, ceil_int, ceil_to, count_phrase, dim, num, r2, slug
 
 _COUNT_RE = re.compile(r"\b([a-z]+) \((\d+)\) (points?|units?|pieces?)\b")
 
@@ -59,7 +59,14 @@ class Context:
         sels = selector if isinstance(selector, (list, tuple)) else [selector]
         out = []
         for s in sels:
-            hit = [r for r in self.rooms if r.matches(str(s))]
+            key = str(s)
+            # A room NAME beats a tag of the same word: with rooms 'Kitchen' and 'Kitchen 2' (both tagged
+            # kitchen), `rooms: Kitchen` means the room called Kitchen, not every kitchen. Group words
+            # (all, dry, wet, everything ...) keep their meaning.
+            exact = []
+            if key.strip().lower() not in Room.GROUP_SELECTORS:
+                exact = [r for r in self.rooms if slug(key) == slug(r.name)]
+            hit = exact or [r for r in self.rooms if r.matches(key)]
             if not hit:
                 names = ", ".join(r.name for r in self.rooms) or "no rooms defined"
                 raise SpecError(f"No room matches '{s}'. Rooms: {names}")
