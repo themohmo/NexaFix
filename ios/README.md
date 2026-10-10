@@ -21,43 +21,43 @@ Without LiDAR (an older iPhone, an iPad without LiDAR, or the Simulator) everyth
 still works: demo data, verification, plans, the 3D viewer and exports. The Simulator even offers a
 "Simulate a scan" button so you can try the whole flow.
 
-## Install it on your iPhone (first time, about 15 minutes)
+## Install it on your iPhone (first time, about 10 minutes, no Terminal)
 
-1. **Get the code** (skip if you already have it):
-   ```bash
-   git clone https://github.com/themohmo/NexaFix.git
-   cd NexaFix
-   git checkout claude/gallant-ride-jzhsjk
-   ```
-2. **Install XcodeGen** (one time). It builds the Xcode project from `ios/project.yml`:
-   ```bash
-   brew install xcodegen
-   ```
-3. **Generate and open the project**:
-   ```bash
-   cd ios
-   xcodegen generate
-   open NexaFixScan.xcodeproj
-   ```
-4. **Signing.** In Xcode click the blue project icon, choose the **NexaFixScan** target, open
-   **Signing & Capabilities**, and under **Team** pick your Apple ID (add it with *Add an Account…* if it is
-   not listed). If Xcode says the bundle identifier is not available, change **Bundle Identifier** to
-   something unique, for example `com.yourname.nexafixscan`. Then run **once**
-   `ios/tools/remember-signing.sh`: it saves your Team (and identifier) in `ios/Config/Local.xcconfig`, which
-   git ignores, so you do not have to pick it again each time `xcodegen generate` re-creates the project.
-5. **Prepare the phone.** Plug it in and tap *Trust* on the phone. Then, on the phone, turn on
-   **Settings ▸ Privacy & Security ▸ Developer Mode** (it restarts the phone once).
-6. **Run.** Choose your iPhone in the device menu at the top of Xcode and press **▶**. The first time,
-   Xcode spends a few minutes preparing the phone. Use the **NexaFixScan** scheme while fixing build
-   errors; for real site scans choose the **NexaFixScan Release** scheme (Debug builds are unoptimised and
-   the geometry and AR code is noticeably slower in them).
-7. **First launch with a free Apple ID.** If the phone says the developer is not trusted, go to
+The repository contains a ready-made Xcode project. GitHub's own Macs build the app with Apple's real SDKs
+on every change (see the **Actions** tab on GitHub), and save the finished project into the repo.
+
+1. **Get the code into Xcode.** Open Xcode. On the Welcome window choose **Clone Git Repository…** (or
+   *Source Control ▸ Clone…*), paste `https://github.com/themohmo/NexaFix.git` (the repository is public, so
+   no sign-in is needed), and when it asks which branch to check out, choose **`claude/gallant-ride-jzhsjk`**.
+   *Alternative without Git:* open
+   `https://github.com/themohmo/NexaFix/archive/refs/heads/claude/gallant-ride-jzhsjk.zip`, unzip it, and
+   go to step 2 inside the unzipped folder.
+2. **Open the project.** In Xcode choose *File ▸ Open…* and select **`ios/NexaFixScan.xcodeproj`** inside
+   the repository folder. Xcode shows a project called NexaFixScan. (Do not open the folder
+   `NexaFixCore`: that is only the library.)
+3. **Signing.** Click the blue **NexaFixScan** project icon at the top of the left sidebar, choose the
+   **NexaFixScan** target, open the **Signing & Capabilities** tab, and under **Team** pick your Apple ID
+   (add it with *Add an Account…* if it is not listed; a free Apple ID is enough). If Xcode says the bundle
+   identifier is not available, change **Bundle Identifier** to something unique, for example
+   `com.yourname.nexafixscan`.
+4. **Prepare the phone.** Plug it in with a cable, unlock it and tap *Trust This Computer*. Then on the phone
+   turn on **Settings ▸ Privacy & Security ▸ Developer Mode** (it restarts once; confirm *Turn On* afterwards).
+5. **Run.** Choose your iPhone in the device menu at the top of Xcode and press **▶**. The first time, Xcode
+   spends a few minutes preparing the phone, then builds (a minute or two). Use the **NexaFixScan** scheme to
+   start; for real site scans choose the **NexaFixScan Release** scheme (Debug builds are unoptimised and the
+   geometry and AR code is noticeably slower in them).
+6. **First launch with a free Apple ID.** If the phone says the developer is not trusted, go to
    **Settings ▸ General ▸ VPN & Device Management**, tap your Apple ID and choose **Trust**. A free-account
    install stops opening after 7 days; press ▶ in Xcode again to renew it. Your saved scans are kept.
 
-If the build shows errors, copy them to Claude (the red messages in Xcode's issue list). See
-[What has and has not been tested](#what-has-and-has-not-been-tested): the app layer has never been compiled
-by Apple's tools, so one or two small errors on the very first build would not be surprising.
+Optional, once: so that your Team survives when the project is regenerated, save it with
+`bash ios/tools/remember-signing.sh` (this writes `ios/Config/Local.xcconfig`, which git ignores).
+
+If Xcode shows build errors, copy the red messages to Claude. The app has been compiled with Xcode 26 and 27
+on GitHub's Macs with no errors, so a build error on your Mac would be new information.
+
+**Prefer Terminal, or the project file looks out of date?** Install XcodeGen (`brew install xcodegen`) and run
+`cd ios && xcodegen generate && open NexaFixScan.xcodeproj`. That recreates the project from `ios/project.yml`.
 
 ## Using the app
 
@@ -152,13 +152,12 @@ to trust a scan in your kind of rooms.
   logic: rebuilding rooms from scan data, corner angles, unit parsing, verification, the PDF / DXF / CSV / JSON /
   costing exports (the DXF opened with a CAD library, the PDF rendered and inspected, the costing spec priced by
   the real engine), storage and crash recovery, and the AR / 3D / plan logic.
-- **Checked against Apple's documentation, never compiled or run:** everything that touches SwiftUI, ARKit,
-  RealityKit and RoomPlan. The machine this was built on has no Apple SDKs. All 49 app files were compiled
-  *together* against the real core using stand-in modules whose signatures were copied from Apple's
-  documentation (`ios/tools/typecheck`), and every Apple API call was audited against the docs, including
-  what iOS 26/27 renamed or deprecated. That proves the app is consistent with itself and with what the docs
-  say. It does not prove Apple's real compiler agrees, so **expect a small number of build errors the first
-  time** (send them to Claude) and a few harmless warnings.
+- **Compiled by Apple's own tools (GitHub Actions, free on this public repo):** every change is built on
+  GitHub's Macs for an iPhone and for the Simulator, with Xcode 26 and Xcode 27, and the core tests are run on
+  macOS. Latest result: 0 compile errors and 1,079 core tests passing on Xcode 27.2 (iOS 27.2 SDK). Every Apple API call
+  was also audited against Apple's documentation, including what iOS 26 and 27 changed.
+- **Never run on a real iPhone:** a successful build proves the code is valid, not that scanning, AR and the
+  screens behave well. That needs your phone.
 - **Not yet seen on a device:** how it looks and feels, how well real RoomPlan data reconstructs rooms, and
   whether AR lines up. The first real scans decide the tuning.
 

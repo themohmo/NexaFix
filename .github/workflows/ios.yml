@@ -29,7 +29,7 @@ concurrency:
 
 jobs:
   build:
-    name: Xcode on ${{ matrix.runner }}
+    name: Xcode on ${{ matrix.runner }} (${{ matrix.xcode || 'newest' }})
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 75
     strategy:
@@ -37,8 +37,13 @@ jobs:
       matrix:
         include:
           - runner: macos-26      # stable image with Xcode 26.x
+            xcode: ''             # newest Xcode installed on the image
             publish: true
-          - runner: xcode-27      # public-preview image with Xcode 27 (the version the app is written for)
+          - runner: xcode-27      # image with Xcode 27
+            xcode: Xcode_27.0.app # exactly the Xcode 27.0 the app's author uses
+            publish: false
+          - runner: xcode-27
+            xcode: ''             # newest Xcode 27.x on the image
             publish: false
     steps:
       - uses: actions/checkout@v4
@@ -46,7 +51,11 @@ jobs:
       - name: Select the newest Xcode and show versions
         run: |
           ls -d /Applications/Xcode*.app || true
-          XC="$(ls -d /Applications/Xcode_*.app 2>/dev/null | sort -V | tail -n 1)"
+          if [ -n "${{ matrix.xcode }}" ]; then
+            XC="/Applications/${{ matrix.xcode }}"
+          else
+            XC="$(ls -d /Applications/Xcode_*.app 2>/dev/null | sort -V | tail -n 1)"
+          fi
           if [ -n "$XC" ]; then sudo xcode-select -s "$XC/Contents/Developer"; fi
           xcodebuild -version
           swift --version
@@ -93,7 +102,7 @@ jobs:
       - name: Errors and warnings (read this first)
         if: always()
         run: |
-          echo "RESULT runner=${{ matrix.runner }} device=${{ steps.device.outcome }} simulator=${{ steps.sim.outcome }} coreTests=${{ steps.core.outcome }}"
+          echo "RESULT runner=${{ matrix.runner }} xcode=${{ matrix.xcode || 'newest' }} device=${{ steps.device.outcome }} simulator=${{ steps.sim.outcome }} coreTests=${{ steps.core.outcome }}"
           for f in build-device.log build-simulator.log; do
             if [ -f "$f" ]; then
               echo
@@ -115,7 +124,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: logs-${{ matrix.runner }}
+          name: logs-${{ matrix.runner }}-${{ matrix.xcode || 'newest' }}
           path: |
             build-device.log
             build-simulator.log
