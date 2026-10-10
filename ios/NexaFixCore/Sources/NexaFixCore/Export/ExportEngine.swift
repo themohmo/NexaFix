@@ -224,8 +224,8 @@ public enum ExportEngine {
                         notes.append("\(floor.name) has no rooms, so it has no DXF drawing.")
                         continue
                     }
-                    let plan = PlanOptions(scale: scales[index] ?? 50, units: request.units)
-                    let drawing = PlanDrawingBuilder.build(floor: floor, property: request.property, options: plan)
+                    let drawing = cadDrawing(for: floor, in: request.property, scale: scales[index] ?? 50,
+                                             units: request.units)
                     let data = DXFExporter.data(drawing, options: DXFExporter.Options(units: .millimetres))
                     add(data, format: format, kind: "plan-" + floorToken(floor))
                 }
@@ -316,8 +316,49 @@ public enum ExportEngine {
 
     // MARK: Helpers
 
-    private static func floorToken(_ floor: Floor) -> String {
-        ExportNaming.sanitizedComponent(floor.name, maxLength: 16, fallback: "level")
+    /// The part of a file name that says which level it is: "Level-1", "Level-minus-1".
+    ///
+    /// `ExportNaming` turns every dash into a separator, so "Level -1" would read "Level-1", the same as the
+    /// first floor. A minus sign in front of a number is spelled out first, so a basement never looks like
+    /// the level above it.
+    static func floorToken(_ floor: Floor) -> String {
+        ExportNaming.sanitizedComponent(spellingOutMinus(in: floor.name), maxLength: 16, fallback: "level")
+    }
+
+    /// "Level -1" becomes "Level minus 1". A dash inside a word or a range ("Unit-2", "1-3") is left alone.
+    static func spellingOutMinus(in name: String) -> String {
+        let characters = Array(name)
+        var out = ""
+        for (index, character) in characters.enumerated() {
+            let isMinus = character == "-" || character == "\u{2212}"
+            let startsWord = index == 0 || characters[index - 1].isWhitespace || characters[index - 1] == "("
+            let beforeNumber = index + 1 < characters.count && characters[index + 1].isASCII
+                && characters[index + 1].isNumber
+            out += isMinus && startsWord && beforeNumber ? "minus " : String(character)
+        }
+        return out
+    }
+
+    /// The plan of one level for the DXF: the drawing of the floor at `scale`, with the property and level
+    /// named under it. The file name says the same, but a drawing is passed around without its name, and a
+    /// plan of the wrong storey is easy to cut from.
+    static func cadDrawing(for floor: Floor, in property: Property, scale: Double, units: DisplayUnits) -> PlanDrawing {
+        let drawing = PlanDrawingBuilder.build(floor: floor, property: property,
+                                               options: PlanOptions(scale: scale, units: units))
+        let caption = [property.name, floor.name]
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty }
+            .joined(separator: " - ")
+        let height = 3.5 * scale / 1000   // 3.5 mm tall on paper at the plot scale, in model metres
+        guard !caption.isEmpty, height.isFinite, height > 0,
+              drawing.bounds.min.x.isFinite, drawing.bounds.min.y.isFinite else { return drawing }
+        let origin = Point2(drawing.bounds.min.x, drawing.bounds.min.y - 2 * height)
+        var captioned = drawing
+        captioned.primitives.append(LayeredPrimitive(
+            .notes, .text(caption, at: origin, height: height, rotation: 0, anchor: .left, color: .black, bold: true)))
+        let width = Double(caption.count) * height * 0.6
+        captioned.bounds = drawing.bounds.union(Bounds2(min: origin, max: Point2(origin.x + width, origin.y + height)))
+        return captioned
     }
 
     private static func usdzData(for floor: Floor, in request: ExportRequest) -> Data? {
@@ -346,6 +387,9 @@ public struct ExportReadiness: Equatable, Sendable {
 
     /// A joinery-critical dimension nobody has checked.
     public struct Item: Equatable, Sendable, Identifiable {
+        /// Unique in one readiness: the floor and room ids plus the dimension's place in the room's list. Two
+        /// measurements may carry the same label ("Measurement"), so the label alone cannot tell them apart.
+        public let id: String
         public var floorName: String
         public var roomName: String
         /// "Wall A length", "Door 1 width", "Ceiling height", a custom measurement's label.
@@ -355,7 +399,15 @@ public struct ExportReadiness: Equatable, Sendable {
         /// Typical LiDAR error for that value, metres.
         public var toleranceM: Double
 
-        public var id: String { floorName + "/" + roomName + "/" + label }
+        init(id: String, floorName: String, roomName: String, label: String, scannedM: Double, toleranceM: Double) {
+            self.id = id
+            self.floorName = floorName
+            self.roomName = roomName
+            self.label = label
+            self.scannedM = scannedM
+            self.toleranceM = toleranceM
+        }
+
         /// "Living Room: Wall A length".
         public var title: String { roomName + ": " + label }
     }
@@ -378,7 +430,7 @@ public struct ExportReadiness: Equatable, Sendable {
         for floor in property.floors {
             for room in floor.rooms {
                 let roomName = room.name.trimmingCharacters(in: .whitespacesAndNewlines)
-                for item in DataMeasureList.items(for: room) {
+                for (position, item) in DataMeasureList.items(for: room).enumerated() {
                     total += 1
                     if let check = item.measured.verification {
                         verified += 1
@@ -389,7 +441,8 @@ public struct ExportReadiness: Equatable, Sendable {
                     if item.measured.isVerified {
                         joineryVerified += 1
                     } else {
-                        open.append(Item(floorName: floor.name,
+                        open.append(Item(id: "\(floor.id.uuidString)/\(room.id.uuidString)/\(position)",
+                                         floorName: floor.name,
                                          roomName: roomName.isEmpty ? room.kind.displayName : roomName,
                                          label: item.label, scannedM: item.measured.scanned,
                                          toleranceM: ScanAccuracy.typicalTolerance(forLength: item.measured.scanned)))

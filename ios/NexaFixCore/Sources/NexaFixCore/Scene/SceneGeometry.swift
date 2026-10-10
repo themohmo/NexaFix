@@ -16,7 +16,7 @@ import Foundation
 // MARK: - Mesh data
 
 /// Flat vertex data for one mesh: positions and normals as x, y, z triples, and triangle indices.
-public struct MeshBuffer: Hashable, Sendable {
+public struct SceneMeshBuffer: Hashable, Sendable {
     /// x, y, z per vertex, world space, metres (includes `Room.floorElevation`).
     public var positions: [Float]
     /// Unit normal x, y, z per vertex, same count as `positions`.
@@ -70,8 +70,8 @@ public struct MeshBuffer: Hashable, Sendable {
 
     /// One buffer holding all of `buffers`, in order, with indices shifted to match. Used by renderers that
     /// want one draw call per material instead of one per mesh.
-    public static func merging(_ buffers: [MeshBuffer]) -> MeshBuffer {
-        var merged = MeshBuffer()
+    public static func merging(_ buffers: [SceneMeshBuffer]) -> SceneMeshBuffer {
+        var merged = SceneMeshBuffer()
         merged.positions.reserveCapacity(buffers.reduce(0) { $0 + $1.positions.count })
         merged.normals.reserveCapacity(buffers.reduce(0) { $0 + $1.normals.count })
         merged.indices.reserveCapacity(buffers.reduce(0) { $0 + $1.indices.count })
@@ -109,7 +109,7 @@ public struct SceneMesh: Hashable, Identifiable, Sendable {
     public var id: String
     public var roomID: UUID
     public var material: SceneMaterialKind
-    public var buffer: MeshBuffer
+    public var buffer: SceneMeshBuffer
     /// A name a person would recognise: "Wall A", "Door 1 frame", "Sofa 1".
     public var label: String
     /// True when every face of this mesh is scan-derived (see the file header). A tape point may only be
@@ -119,7 +119,7 @@ public struct SceneMesh: Hashable, Identifiable, Sendable {
     public var boundsMin: Point3
     public var boundsMax: Point3
 
-    public init(id: String, roomID: UUID, material: SceneMaterialKind, buffer: MeshBuffer, label: String,
+    public init(id: String, roomID: UUID, material: SceneMaterialKind, buffer: SceneMeshBuffer, label: String,
                 isMeasurable: Bool = true) {
         self.id = id
         self.roomID = roomID
@@ -143,7 +143,7 @@ public struct SceneMesh: Hashable, Identifiable, Sendable {
 public struct SceneCamera: Hashable, Sendable {
     /// Vertical field of view the viewer renders with, degrees.
     public static let fieldOfViewDegrees = 40.0
-    /// Where a new viewer starts looking from: a three-quarter view from the south-west.
+    /// Where a new viewer starts looking from: a three-quarter view from the south-east (camera at +X, +Z).
     public static let defaultYawDegrees = 35.0
     public static let defaultPitchDegrees = 50.0
     /// The camera never goes below the horizon and never quite straight down (the up vector would flip).
@@ -244,6 +244,26 @@ public struct SceneCamera: Hashable, Sendable {
         return r / sin(atan(limiting)) * 1.1
     }
 
+    /// Metres on the plane through the target that one screen point covers, for a view `viewHeight` points tall.
+    /// Used to turn a finger drag into a 1:1 camera move.
+    public func metresPerPoint(viewHeight: Double) -> Double {
+        let h = viewHeight.isFinite ? Swift.max(viewHeight, 1) : 1
+        return 2 * distance * tan(SceneCamera.fieldOfViewDegrees * Double.pi / 360) / h
+    }
+
+    /// The camera moved the way a two-finger drag on the ground would move it: the ground follows the fingers.
+    /// - Parameters:
+    ///   - dx: finger movement to the right, points.
+    ///   - dy: finger movement down the screen, points.
+    ///   - viewHeight: height of the view, points.
+    public func dragged(dx: Double, dy: Double, viewHeight: Double) -> SceneCamera {
+        guard dx.isFinite, dy.isFinite else { return self }
+        let mpp = metresPerPoint(viewHeight: viewHeight)
+        // Moving a finger down the screen moves the ground point under it by 1 / sin(pitch) times as far.
+        let foreshortening = 1 / Swift.max(sin(pitchRadians), 0.35)
+        return panned(right: -dx * mpp, forward: dy * mpp * foreshortening)
+    }
+
     /// Zoom limits that suit a scene of the given size: close enough to read a detail, far enough to see the lot.
     public static func distanceLimits(forSceneDiagonal diagonal: Double) -> ClosedRange<Double> {
         let d = diagonal.isFinite ? Swift.max(diagonal, 1) : 1
@@ -339,12 +359,246 @@ public struct RoomScene: Hashable, Sendable {
     }
 }
 
+extension RoomScene {
+    /// The same scene without the meshes of the given kinds (for example the ceiling while it is switched off),
+    /// so picking and framing see exactly what is drawn.
+    public func without(_ kinds: Set<SceneMaterialKind>) -> RoomScene {
+        kinds.isEmpty ? self : RoomScene(meshes: meshes.filter { !kinds.contains($0.material) })
+    }
+}
+
+// MARK: - Flat shading
+
+/// Lighting baked into the model, so the viewer needs no lights: every face is shaded by the direction it
+/// faces (a sky term, a key light and a weaker fill light, all fixed in the world), and faces of the same
+/// material and shade are drawn together. The look is the same on every device and in every iOS version, and
+/// the four directions a wall can face get four different shades, so neighbouring walls never blend together.
+public enum SceneShading {
+    /// How many brightness steps faces are rounded to (and so the most batches a material can have).
+    public static let levels = 24
+    /// The darkest face: pointing straight down (a ceiling seen from below).
+    public static let darkest = 0.62
+
+    /// Unit vector towards the key light: high, from the east and south.
+    static let keyLight: Point3 = {
+        let v = Point3(0.55, 0.75, 0.37)
+        return v / v.length
+    }()
+
+    /// Unit vector towards the fill light: from the west and north, lower and weaker.
+    static let fillLight: Point3 = {
+        let v = Point3(-0.45, 0.55, -0.70)
+        return v / v.length
+    }()
+
+    /// Brightness of a face with the given normal, from `darkest` up to 1. A normal that is not a number or has
+    /// no length gets a middling value.
+    public static func brightness(forNormal normal: Point3) -> Double {
+        guard let n = SceneVector.normalized(normal) else { return 0.8 }
+        let sky = (n.y + 1) / 2
+        let key = Swift.max(0, n.dot(keyLight))
+        let fill = Swift.max(0, n.dot(fillLight))
+        return Swift.min(1, darkest + 0.14 * sky + 0.30 * key + 0.12 * fill)
+    }
+
+    /// The step (0 ..< levels) a brightness rounds to.
+    public static func level(forBrightness brightness: Double, levels: Int = SceneShading.levels) -> Int {
+        let steps = Swift.max(levels, 2) - 1
+        guard brightness.isFinite else { return steps }
+        let t = (brightness - darkest) / (1 - darkest)
+        return Swift.min(Swift.max(Int((t * Double(steps)).rounded()), 0), steps)
+    }
+
+    /// The brightness a step stands for.
+    public static func brightness(forLevel level: Int, levels: Int = SceneShading.levels) -> Double {
+        let steps = Swift.max(levels, 2) - 1
+        return darkest + (1 - darkest) * Double(Swift.min(Swift.max(level, 0), steps)) / Double(steps)
+    }
+}
+
+/// All faces of one material at one shade: a single draw call for the renderer.
+public struct SceneBatch: Hashable, Sendable {
+    public var material: SceneMaterialKind
+    /// 0 ..< `SceneShading.levels`.
+    public var level: Int
+    /// `SceneShading.darkest` ... 1: multiply the material's colour by this.
+    public var brightness: Double
+    public var buffer: SceneMeshBuffer
+
+    public init(material: SceneMaterialKind, level: Int, brightness: Double, buffer: SceneMeshBuffer) {
+        self.material = material
+        self.level = level
+        self.brightness = brightness
+        self.buffer = buffer
+    }
+}
+
+extension RoomScene {
+    /// The scene regrouped for drawing: one batch per material and shade, across all rooms. Every triangle of
+    /// every mesh lands in exactly one batch with its own vertices, so the batches together draw the same
+    /// surface as the meshes. Order is fixed: materials in `SceneMaterialKind.allCases` order, darkest shade first.
+    public func shadedBatches(levels: Int = SceneShading.levels) -> [SceneBatch] {
+        struct Key: Hashable {
+            var material: Int
+            var level: Int
+        }
+        let order = SceneMaterialKind.allCases
+        var buffers: [Key: SceneMeshBuffer] = [:]
+        for mesh in meshes {
+            let buffer = mesh.buffer
+            let materialIndex = order.firstIndex(of: mesh.material) ?? 0
+            for t in 0..<buffer.triangleCount {
+                guard let (a, b, c) = buffer.triangle(t) else { continue }
+                let i0 = Int(buffer.indices[3 * t])
+                let normal = buffer.normal(i0)
+                let flat = normal.length > 0.5 ? normal : SceneVector.cross(b - a, c - a)
+                let level = SceneShading.level(forBrightness: SceneShading.brightness(forNormal: flat), levels: levels)
+                let key = Key(material: materialIndex, level: level)
+                var target = buffers[key] ?? SceneMeshBuffer()
+                let base = UInt32(target.positions.count / 3)
+                for (k, p) in [a, b, c].enumerated() {
+                    target.positions.append(Float(p.x))
+                    target.positions.append(Float(p.y))
+                    target.positions.append(Float(p.z))
+                    let n = buffer.normal(Int(buffer.indices[3 * t + k]))
+                    target.normals.append(Float(n.x))
+                    target.normals.append(Float(n.y))
+                    target.normals.append(Float(n.z))
+                }
+                target.indices.append(base)
+                target.indices.append(base + 1)
+                target.indices.append(base + 2)
+                buffers[key] = target
+            }
+        }
+        return buffers.keys
+            .sorted { ($0.material, $0.level) < ($1.material, $1.level) }
+            .compactMap { key in
+                guard let buffer = buffers[key], !buffer.isEmpty else { return nil }
+                return SceneBatch(material: order[key.material], level: key.level,
+                                  brightness: SceneShading.brightness(forLevel: key.level, levels: levels),
+                                  buffer: buffer)
+            }
+    }
+}
+
+// MARK: - Camera motion
+
+/// A camera moving to a new view with the viewer's critically damped spring (the same response as
+/// `Motion.standard`, 0.35 s with no overshoot). Retargeting mid-flight keeps every velocity, so a new request
+/// never jerks the picture. Pure maths: the renderer calls `advance(by:)` once per frame.
+public struct SceneCameraAnimator: Hashable, Sendable {
+    /// `Motion.standard`: response 0.35, damping fraction 1.
+    public static let response = 0.35
+    public static let dampingFraction = 1.0
+
+    private var yaw: Spring1D
+    private var pitch: Spring1D
+    private var distance: Spring1D
+    private var x: Spring1D
+    private var y: Spring1D
+    private var z: Spring1D
+
+    /// Starts at rest on `camera`.
+    public init(camera: SceneCamera) {
+        yaw = Spring1D(value: camera.yawDegrees)
+        pitch = Spring1D(value: camera.pitchDegrees)
+        distance = Spring1D(value: camera.distance)
+        x = Spring1D(value: camera.target.x)
+        y = Spring1D(value: camera.target.y)
+        z = Spring1D(value: camera.target.z)
+    }
+
+    /// Where the camera is now.
+    public var camera: SceneCamera {
+        SceneCamera(target: Point3(x.value, y.value, z.value), distance: distance.value,
+                    yawDegrees: yaw.value, pitchDegrees: pitch.value)
+    }
+
+    /// True once every value is within a hair of its target and has stopped.
+    public var isSettled: Bool {
+        yaw.isSettled(tolerance: 0.01) && pitch.isSettled(tolerance: 0.01) && distance.isSettled(tolerance: 0.0005)
+            && x.isSettled(tolerance: 0.0005) && y.isSettled(tolerance: 0.0005) && z.isSettled(tolerance: 0.0005)
+    }
+
+    /// Aims at `target`, turning the short way round in yaw. Values keep their current velocity.
+    public mutating func move(to target: SceneCamera) {
+        let here = camera
+        let there = here.shortestPath(to: target)
+        yaw.target = there.yawDegrees
+        pitch.target = Swift.min(Swift.max(there.pitchDegrees, SceneCamera.pitchLimits.lowerBound),
+                                 SceneCamera.pitchLimits.upperBound)
+        distance.target = Swift.max(there.distance, 0.01)
+        x.target = there.target.x
+        y.target = there.target.y
+        z.target = there.target.z
+    }
+
+    /// Jumps to `camera` and stops (Reduce Motion, or a gesture taking over).
+    public mutating func snap(to camera: SceneCamera) {
+        self = SceneCameraAnimator(camera: camera)
+    }
+
+    /// Lets the springs run for `dt` seconds (clamped to a tenth of a second so a stalled frame cannot fling the
+    /// camera).
+    public mutating func advance(by dt: Double) {
+        guard dt.isFinite, dt > 0 else { return }
+        let step = Swift.min(dt, 0.1)
+        let r = SceneCameraAnimator.response, d = SceneCameraAnimator.dampingFraction
+        yaw.advance(by: step, response: r, dampingFraction: d)
+        pitch.advance(by: step, response: r, dampingFraction: d)
+        distance.advance(by: step, response: r, dampingFraction: d)
+        x.advance(by: step, response: r, dampingFraction: d)
+        y.advance(by: step, response: r, dampingFraction: d)
+        z.advance(by: step, response: r, dampingFraction: d)
+    }
+}
+
+/// An orbit that keeps turning after the finger lifts and slows the way a scroll view does
+/// (`GestureMath.decelerationRate`). Velocities are degrees per second.
+public struct OrbitInertia: Hashable, Sendable {
+    public var yawVelocity: Double
+    public var pitchVelocity: Double
+
+    /// Below this speed (degrees per second) the motion counts as stopped.
+    public static let restSpeed = 3.0
+
+    public init(yawVelocity: Double, pitchVelocity: Double) {
+        self.yawVelocity = yawVelocity.isFinite ? yawVelocity : 0
+        self.pitchVelocity = pitchVelocity.isFinite ? pitchVelocity : 0
+    }
+
+    public var isMoving: Bool {
+        abs(yawVelocity) > OrbitInertia.restSpeed || abs(pitchVelocity) > OrbitInertia.restSpeed
+    }
+
+    /// Applies `dt` seconds of the motion to `camera` and slows it down.
+    public mutating func advance(_ camera: SceneCamera, by dt: Double) -> SceneCamera {
+        guard dt.isFinite, dt > 0, isMoving else {
+            yawVelocity = 0
+            pitchVelocity = 0
+            return camera
+        }
+        let step = Swift.min(dt, 0.1)
+        let moved = camera.orbited(yawDelta: yawVelocity * step, pitchDelta: pitchVelocity * step)
+        yawVelocity = GestureMath.decayed(yawVelocity, over: step)
+        pitchVelocity = GestureMath.decayed(pitchVelocity, over: step)
+        // Hitting the top or bottom limit stops the pitch, not the turn.
+        if moved.pitchDegrees == SceneCamera.pitchLimits.lowerBound || moved.pitchDegrees == SceneCamera.pitchLimits.upperBound {
+            pitchVelocity = 0
+        }
+        return moved
+    }
+}
+
 // MARK: - Options
 
-/// What `SceneBuilder` builds and how thick it makes things.
+/// What `RoomSceneBuilder` builds and how thick it makes things.
 public struct SceneOptions: Hashable, Sendable {
     /// Wall thickness, metres. Walls are built OUTWARD from the clear face, so every clear dimension of the
-    /// room is exactly what was scanned. Held between 1 cm and 1 m.
+    /// room is exactly what was scanned. Held between 1 cm and 1 m. A wall is built thinner than this (down to
+    /// nothing) where another room's floor is closer than this behind it, so the made-up wall never reaches
+    /// into a room that was scanned.
     public var wallThickness: Double
     /// Build the ceiling (its underside, and a slab above it when `ceilingSlabThickness` is above zero).
     public var includeCeiling: Bool
@@ -370,7 +624,7 @@ public struct SceneOptions: Hashable, Sendable {
 // MARK: - Builder
 
 /// Builds the 3D model of a floor from its rooms.
-public enum SceneBuilder {
+public enum RoomSceneBuilder {
     /// Frame bar width and the glass thickness, metres.
     static let frameBarWidth = 0.05
     static let frameBarDepth = 0.06
@@ -380,10 +634,11 @@ public enum SceneBuilder {
 
     /// The model of `rooms`, which share one coordinate frame. Rooms are built one after another in the order
     /// given, so ids and order are deterministic. A room with fewer than three walls or a non-finite corner
-    /// gives nothing.
+    /// gives nothing. Each room is built knowing about the others, so a wall between two close rooms is thinned
+    /// to fit the gap (see `meshes(for:among:options:)`).
     public static func scene(for rooms: [Room], options: SceneOptions = SceneOptions()) -> RoomScene {
         var meshes: [SceneMesh] = []
-        for room in rooms { meshes.append(contentsOf: self.meshes(for: room, options: options)) }
+        for room in rooms { meshes.append(contentsOf: self.meshes(for: room, among: rooms, options: options)) }
         return RoomScene(meshes: meshes)
     }
 
@@ -393,12 +648,22 @@ public enum SceneBuilder {
     ///   neighbouring solid wall so that no gap shows at a corner. Faces that touch another piece (the side of a
     ///   piece against its neighbour, the mitre against the next wall) are left out, so the walls are free of
     ///   hidden internal faces and translucent walls look clean. Open-plan (`.virtual`) walls give nothing.
+    /// - A wall is never built into another room: where the floor of a different room (one of `rooms`, on
+    ///   the same storey) lies closer behind a wall than the wall is thick, the wall is built only as thick as
+    ///   that gap leaves, less 2 mm, and has no body at all when the gap is under 1 cm or the two floors
+    ///   overlap there by up to 25 cm (two scans of one thin partition can disagree). Party walls of 5 or 10
+    ///   cm therefore stay on their own side, and a tape point taken inside one room cannot land on the made-up
+    ///   shell of the next.
     /// - The floor is the room outline, triangulated (L and U shapes work). The ceiling is its mirror image at
     ///   the scanned ceiling height.
     /// - Objects are boxes from footprint, elevation and height.
     /// - Door and window frames are four thin bars inside the opening; windows also get a glass pane.
-    public static func meshes(for room: Room, options: SceneOptions = SceneOptions()) -> [SceneMesh] {
-        RoomMeshBuilder(room: room, options: options).build()
+    ///
+    /// - Parameter rooms: The other rooms of the storey, in the same coordinate frame. `room` itself may be among
+    ///   them; it is ignored.
+    public static func meshes(for room: Room, among rooms: [Room] = [], options: SceneOptions = SceneOptions())
+        -> [SceneMesh] {
+        RoomMeshBuilder(room: room, neighbours: rooms.filter { $0.id != room.id }, options: options).build()
     }
 }
 
@@ -425,11 +690,19 @@ struct FaceWriter {
     private(set) var indices: [UInt32] = []
 
     var isEmpty: Bool { indices.isEmpty }
-    var buffer: MeshBuffer { MeshBuffer(positions: positions, normals: normals, indices: indices) }
+    var buffer: SceneMeshBuffer { SceneMeshBuffer(positions: positions, normals: normals, indices: indices) }
 
     /// Adds a planar convex polygon. The order of `points` does not matter: the face is wound so that its
-    /// normal points the same way as `facing`. A polygon with no area is skipped.
-    mutating func addFace(_ points: [Point3], facing hint: Point3) {
+    /// normal points the same way as `facing`. A polygon with no area is skipped. Corners that coincide with
+    /// the one before them (a quad that has collapsed to a triangle) are merged, so no zero-area triangle is
+    /// written.
+    mutating func addFace(_ corners: [Point3], facing hint: Point3) {
+        var points: [Point3] = []
+        points.reserveCapacity(corners.count)
+        for p in corners where points.last.map({ ($0 - p).length > 1e-9 }) ?? true { points.append(p) }
+        if points.count > 1, let first = points.first, let last = points.last, (first - last).length <= 1e-9 {
+            points.removeLast()
+        }
         guard points.count >= 3 else { return }
         // Newell's method: robust for any planar polygon.
         var n = Point3.zero
@@ -440,7 +713,7 @@ struct FaceWriter {
                        n.z + (p.x - q.x) * (p.y + q.y))
         }
         let area = n.length / 2
-        guard area.isFinite, area > SceneBuilder.minimumSize, let unit = SceneVector.normalized(n) else { return }
+        guard area.isFinite, area > RoomSceneBuilder.minimumSize, let unit = SceneVector.normalized(n) else { return }
         var ordered = points
         var normal = unit
         if unit.dot(hint) < 0 {
@@ -475,6 +748,9 @@ private struct SolidWall {
     /// Unit normal into the room.
     let inward: Point2
     let length: Double
+    /// How far this wall is built outward, metres: the requested thickness, or less where another room's floor
+    /// is close behind the wall. Zero means the wall has only its clear face.
+    let thickness: Double
     var outerStart: Point2
     var outerEnd: Point2
     /// Index into the frames array of the solid wall mitred at the start / at the end, if any.
@@ -483,28 +759,80 @@ private struct SolidWall {
 
     func inner(at s: Double) -> Point2 { start + direction * s }
 
+    /// Where, measured along the wall from its start, the outer face begins and ends: the mitred corners. At a
+    /// convex corner that is beyond the wall's own end (below 0, above `length`); at an inside (reflex) corner it
+    /// is short of it, because the neighbouring wall's body fills the corner.
+    var outerAlongStart: Double { direction.dot(outerStart - start) }
+    var outerAlongEnd: Double { direction.dot(outerEnd - start) }
+
     /// The point on the outer face `s` metres along the wall; the mitred corner at either end.
-    func outer(at s: Double, thickness: Double) -> Point2 {
+    ///
+    /// Between the corners the outer face is the clear face pushed out by `thickness`. A point that lies inside
+    /// a reflex corner's shift is held at the corner, so a piece shorter than the shift gets an outer edge of no
+    /// length, never one that runs backwards (which would turn its top and outer faces inside out).
+    func outer(at s: Double) -> Point2 {
         if s <= 1e-9 { return outerStart }
         if s >= length - 1e-9 { return outerEnd }
-        return start + direction * s - inward * thickness
+        let lo = outerAlongStart, hi = outerAlongEnd
+        let c = lo <= hi ? Swift.min(Swift.max(s, lo), hi) : s
+        return start + direction * c - inward * thickness
     }
 }
 
+/// The floor outline of another room, for keeping walls out of it.
+private struct NeighbourOutline {
+    let points: [Point2]
+    /// Which side of each edge is inside the room.
+    let counterClockwise: Bool
+}
+
 private struct RoomMeshBuilder {
+    /// A wall is built this much shy of the next room's floor, metres, so its outer face never coincides with a
+    /// scanned face (a tie there could hand a tape tap to the made-up one).
+    static let neighbourMargin = 0.002
+    /// Walls thinner than this are not built at all, metres (same as the smallest `SceneOptions.wallThickness`).
+    static let smallestBody = 0.01
+    /// How far two rooms may overlap at a wall and still be taken for neighbours that disagree about where the wall
+    /// is, metres. Overlap beyond this is a different problem, and the rooms are built as they are.
+    static let overlapTolerance = 0.25
+
     let room: Room
     let options: SceneOptions
+    /// The floors of the other rooms that share this room's heights, for keeping walls out of them.
+    let neighbourOutlines: [NeighbourOutline]
     let thickness: Double
     let floorY: Double
     let clockwise: Bool
 
-    init(room: Room, options: SceneOptions) {
+    init(room: Room, neighbours others: [Room], options: SceneOptions) {
         self.room = room
         self.options = options
         let t = options.wallThickness
         self.thickness = t.isFinite ? Swift.min(Swift.max(t, 0.01), 1) : 0.12
         self.floorY = room.floorElevation.isFinite ? room.floorElevation : 0
         self.clockwise = !Polygon.isCounterClockwise(room.outline)
+        let mine = RoomMeshBuilder.verticalRange(of: room)
+        self.neighbourOutlines = others.compactMap { other -> NeighbourOutline? in
+            guard other.walls.count >= 3,
+                  other.walls.allSatisfy({ $0.start.x.isFinite && $0.start.y.isFinite && $0.end.x.isFinite && $0.end.y.isFinite }),
+                  Polygon.area(other.outline) > 1e-9 else { return nil }
+            let theirs = RoomMeshBuilder.verticalRange(of: other)
+            // Rooms on other storeys, or stacked at different heights, cannot be reached by this room's walls.
+            guard Swift.min(mine.upperBound, theirs.upperBound) - Swift.max(mine.lowerBound, theirs.lowerBound) > 0.05
+            else { return nil }
+            return NeighbourOutline(points: other.outline, counterClockwise: Polygon.isCounterClockwise(other.outline))
+        }
+    }
+
+    /// The heights a room's walls and ceiling occupy.
+    private static func verticalRange(of room: Room) -> ClosedRange<Double> {
+        let floor = room.floorElevation.isFinite ? room.floorElevation : 0
+        let c = room.ceilingHeight.scanned
+        var height = c.isFinite && c > 0.05 ? c : 0
+        if height == 0 {
+            height = room.walls.map { $0.height.scanned }.filter { $0.isFinite }.max() ?? 0
+        }
+        return floor...(floor + Swift.max(height, 0.05))
     }
 
     private var roomPrefix: String { "room:\(room.id.uuidString)" }
@@ -540,9 +868,10 @@ private struct RoomMeshBuilder {
             guard length.isFinite, length > 1e-6 else { return nil }
             let direction = wall.direction
             let inward = clockwise ? -direction.perpendicularCCW : direction.perpendicularCCW
+            let own = allowedThickness(start: wall.start, direction: direction, inward: inward, length: length)
             return SolidWall(wall: wall, index: index, start: wall.start, direction: direction, inward: inward,
-                             length: length, outerStart: wall.start - inward * thickness,
-                             outerEnd: wall.end - inward * thickness, previous: nil, next: nil)
+                             length: length, thickness: own, outerStart: wall.start - inward * own,
+                             outerEnd: wall.end - inward * own, previous: nil, next: nil)
         }
         // A wall is mitred with the wall before / after it when that one is solid and meets it at the same corner.
         // Zero-length walls in between are skipped, as in the plan drawing.
@@ -561,17 +890,83 @@ private struct RoomMeshBuilder {
             if let p = neighbour(of: i, step: -1), let prev = frames[p],
                prev.wall.end.distance(to: me.wall.start) < 1e-3 {
                 frames[i]?.previous = p
-                let m = SceneBuilder.mitre(previous: prev.inward, current: me.inward)
-                frames[i]?.outerStart = me.start - m * thickness
+                let offset = RoomSceneBuilder.cornerOffset(previous: prev.inward, current: me.inward,
+                                                           previousThickness: prev.thickness, currentThickness: me.thickness)
+                frames[i]?.outerStart = me.start - offset
             }
             if let q = neighbour(of: i, step: 1), let nextFrame = frames[q],
                me.wall.end.distance(to: nextFrame.wall.start) < 1e-3 {
                 frames[i]?.next = q
-                let m = SceneBuilder.mitre(previous: me.inward, current: nextFrame.inward)
-                frames[i]?.outerEnd = me.wall.end - m * thickness
+                let offset = RoomSceneBuilder.cornerOffset(previous: me.inward, current: nextFrame.inward,
+                                                           previousThickness: me.thickness, currentThickness: nextFrame.thickness)
+                frames[i]?.outerEnd = me.wall.end - offset
             }
         }
         return frames
+    }
+
+    /// How thick the wall along `start` + `direction` x `length` may be built: the requested thickness, or less
+    /// where the floor of another room is close behind it.
+    ///
+    /// "Behind" is the outward side. Each edge of each neighbouring floor outline is cut to the wall's span (less
+    /// a millimetre at each end, so a room that only touches the wall's end, at a shared corner, does not
+    /// count) and looked at from the wall:
+    /// - wholly in front of the clear face: its nearest approach is the gap;
+    /// - along the clear face or just behind it, with the floor on the far (outward) side of the edge: the two
+    ///   rooms share the wall line or overlap there (two scans of one thin partition can disagree by a few
+    ///   centimetres), so there is no room at all. "Just behind" is up to `overlapTolerance`;
+    /// - anything else (an edge that crosses the face, or lies along it with the floor on this room's side)
+    ///   does not stand in the wall's way.
+    ///
+    /// The mitred corners carry the wall's outer face a little past its ends, so the stretch of one thickness
+    /// beyond each end is checked as well, counting only edges wholly in front of the wall there: one that
+    /// crosses the wall's line belongs to the neighbouring wall's corner, which that wall's own thickness already
+    /// looks after. What is left is the gap less `neighbourMargin`; a body thinner than `smallestBody` is not built.
+    private func allowedThickness(start: Point2, direction: Point2, inward: Point2, length: Double) -> Double {
+        var gap = Double.infinity
+        let touching = 1e-3
+        let behindLimit = Swift.max(thickness, RoomMeshBuilder.overlapTolerance)
+        let zones: [(from: Double, to: Double, core: Bool)] = [
+            (touching, length - touching, true),
+            (-thickness, touching, false),
+            (length - touching, length + thickness, false),
+        ]
+        for neighbour in neighbourOutlines {
+            let outline = neighbour.points
+            for i in outline.indices {
+                let a = outline[i], b = outline[(i + 1) % outline.count]
+                // Along-the-wall and outward coordinates of the edge's ends.
+                let sa = (a - start).dot(direction), sb = (b - start).dot(direction)
+                let ua = -(a - start).dot(inward), ub = -(b - start).dot(inward)
+                // Does this edge have the floor on the wall's outward side?
+                let edge = b - a
+                let left = Point2(-edge.y, edge.x)
+                let floorIsOutward = (neighbour.counterClockwise ? left : -left).dot(-inward) > 0
+                for zone in zones {
+                    // The part of the edge over this stretch of the wall.
+                    var t0 = 0.0, t1 = 1.0
+                    let ds = sb - sa
+                    if abs(ds) < 1e-12 {
+                        guard sa >= zone.from, sa <= zone.to else { continue }
+                    } else {
+                        let p = (zone.from - sa) / ds, q = (zone.to - sa) / ds
+                        t0 = Swift.max(0, Swift.min(p, q))
+                        t1 = Swift.min(1, Swift.max(p, q))
+                        guard t0 <= t1 else { continue }
+                    }
+                    let u0 = ua + (ub - ua) * t0, u1 = ua + (ub - ua) * t1
+                    let nearest = Swift.min(u0, u1), farthest = Swift.max(u0, u1)
+                    if nearest > touching {
+                        gap = Swift.min(gap, nearest)
+                    } else if zone.core, farthest <= touching, floorIsOutward, nearest >= -behindLimit {
+                        gap = 0
+                    }
+                }
+            }
+        }
+        guard gap < thickness + RoomMeshBuilder.neighbourMargin else { return thickness }
+        let room = gap - RoomMeshBuilder.neighbourMargin
+        return room < RoomMeshBuilder.smallestBody ? 0 : room
     }
 
     private func world(_ p: Point2, _ y: Double) -> Point3 { Point3(p.x, y, -p.y) }
@@ -593,7 +988,11 @@ private struct RoomMeshBuilder {
             let a = piece.along.lowerBound, b = piece.along.upperBound
             let y0 = floorY + piece.bottom, y1 = floorY + piece.top
             let ai = f.inner(at: a), bi = f.inner(at: b)
-            let ao = f.outer(at: a, thickness: thickness), bo = f.outer(at: b, thickness: thickness)
+            let ao = f.outer(at: a), bo = f.outer(at: b)
+            // The outer edge must run the way the clear edge does. A wall squeezed out by the next room has no
+            // body, and a piece on a wall shorter than its two corner shifts has an outer edge that runs
+            // backwards; neither gets an outer face or a top (the neighbouring bodies fill that space).
+            let hasBody = f.thickness > 1e-9 && f.direction.dot(bo - ao) >= -1e-9
 
             var inner = FaceWriter()
             var shell = FaceWriter()
@@ -601,29 +1000,32 @@ private struct RoomMeshBuilder {
 
             // The clear face: what the scan measured.
             inner.addFace([world(ai, y0), world(bi, y0), world(bi, y1), world(ai, y1)], facing: inwardHint)
-            // The outer face and the top.
-            shell.addFace([world(ao, y0), world(bo, y0), world(bo, y1), world(ao, y1)], facing: outwardHint)
-            let topFace = [world(ai, y1), world(bi, y1), world(bo, y1), world(ao, y1)]
-            if piece.top >= wallHeight - 1e-9 {
-                shell.addFace(topFace, facing: Point3(0, 1, 0))
-            } else {
-                reveal.addFace(topFace, facing: Point3(0, 1, 0))
-            }
-            if piece.bottom > 1e-9 {
-                reveal.addFace([world(ai, y0), world(bi, y0), world(bo, y0), world(ao, y0)], facing: Point3(0, -1, 0))
+            if hasBody {
+                // The outer face and the top.
+                shell.addFace([world(ao, y0), world(bo, y0), world(bo, y1), world(ao, y1)], facing: outwardHint)
+                let topFace = [world(ai, y1), world(bi, y1), world(bo, y1), world(ao, y1)]
+                if piece.top >= wallHeight - 1e-9 {
+                    shell.addFace(topFace, facing: Point3(0, 1, 0))
+                } else {
+                    reveal.addFace(topFace, facing: Point3(0, 1, 0))
+                }
+                if piece.bottom > 1e-9 {
+                    reveal.addFace([world(ai, y0), world(bi, y0), world(bo, y0), world(ao, y0)], facing: Point3(0, -1, 0))
+                }
             }
 
             // The two ends. Whatever a neighbour covers is hidden; the rest is visible.
             let startCover = cover(atStartOf: piece, wall: f, pieces: pieces, frames: frames, piecesByWall: piecesByWall)
             let endCover = cover(atEndOf: piece, wall: f, pieces: pieces, frames: frames, piecesByWall: piecesByWall)
-            let startIsFreeCorner = a <= 1e-9 && f.previous == nil
-            let endIsFreeCorner = b >= f.length - 1e-9 && f.next == nil
-            for r in SceneBuilder.subtract(piece.bottom...piece.top, covered: startCover) {
+            // A neighbour with no body (squeezed out by the next room) hides nothing: the corner is free.
+            let startIsFreeCorner = a <= 1e-9 && !neighbourHasBody(f.previous, in: frames)
+            let endIsFreeCorner = b >= f.length - 1e-9 && !neighbourHasBody(f.next, in: frames)
+            for r in RoomSceneBuilder.subtract(piece.bottom...piece.top, covered: startCover) {
                 let face = [world(ai, floorY + r.lowerBound), world(ai, floorY + r.upperBound),
                             world(ao, floorY + r.upperBound), world(ao, floorY + r.lowerBound)]
                 if startIsFreeCorner { shell.addFace(face, facing: backHint) } else { reveal.addFace(face, facing: backHint) }
             }
-            for r in SceneBuilder.subtract(piece.bottom...piece.top, covered: endCover) {
+            for r in RoomSceneBuilder.subtract(piece.bottom...piece.top, covered: endCover) {
                 let face = [world(bi, floorY + r.lowerBound), world(bi, floorY + r.upperBound),
                             world(bo, floorY + r.upperBound), world(bo, floorY + r.lowerBound)]
                 if endIsFreeCorner { shell.addFace(face, facing: alongHint) } else { reveal.addFace(face, facing: alongHint) }
@@ -653,11 +1055,17 @@ private struct RoomMeshBuilder {
         return meshes
     }
 
+    /// Is the wall at `index` there, with a body that can hide the end of a neighbour?
+    private func neighbourHasBody(_ index: Int?, in frames: [SolidWall?]) -> Bool {
+        guard let index, let frame = frames[index] else { return false }
+        return frame.thickness > 1e-9
+    }
+
     /// Vertical ranges (metres above the floor) that other solid pieces cover at the start of `piece`.
     private func cover(atStartOf piece: WallPiece, wall f: SolidWall, pieces: [WallPiece], frames: [SolidWall?],
                        piecesByWall: [UUID: [WallPiece]]) -> [ClosedRange<Double>] {
         if piece.along.lowerBound <= 1e-9 {
-            guard let p = f.previous, let prev = frames[p] else { return [] }
+            guard neighbourHasBody(f.previous, in: frames), let p = f.previous, let prev = frames[p] else { return [] }
             return (piecesByWall[prev.wall.id] ?? [])
                 .filter { $0.along.upperBound >= prev.length - 1e-9 }
                 .map { $0.bottom...$0.top }
@@ -671,7 +1079,7 @@ private struct RoomMeshBuilder {
     private func cover(atEndOf piece: WallPiece, wall f: SolidWall, pieces: [WallPiece], frames: [SolidWall?],
                        piecesByWall: [UUID: [WallPiece]]) -> [ClosedRange<Double>] {
         if piece.along.upperBound >= f.length - 1e-9 {
-            guard let q = f.next, let next = frames[q] else { return [] }
+            guard neighbourHasBody(f.next, in: frames), let q = f.next, let next = frames[q] else { return [] }
             return (piecesByWall[next.wall.id] ?? [])
                 .filter { $0.along.lowerBound <= 1e-9 }
                 .map { $0.bottom...$0.top }
@@ -782,12 +1190,13 @@ private struct RoomMeshBuilder {
             let opening = room.openings[index]
             guard let wallID = opening.wallID,
                   let f = frames.compactMap({ $0 }).first(where: { $0.wall.id == wallID }),
-                  let hole = SceneBuilder.clip(opening, to: f.wall) else { continue }
+                  let hole = RoomSceneBuilder.clip(opening, to: f.wall) else { continue }
             let title = titles[opening.id] ?? opening.kind.displayName
-            let bar = Swift.min(SceneBuilder.frameBarWidth, 0.25 * Swift.min(hole.x1 - hole.x0, hole.y1 - hole.y0))
-            guard bar >= 0.01, hole.x1 - hole.x0 >= 0.2, hole.y1 - hole.y0 >= 0.2 else { continue }
+            let bar = Swift.min(RoomSceneBuilder.frameBarWidth, 0.25 * Swift.min(hole.x1 - hole.x0, hole.y1 - hole.y0))
+            guard bar >= 0.01, hole.x1 - hole.x0 >= 0.2, hole.y1 - hole.y0 >= 0.2,
+                  f.thickness >= RoomMeshBuilder.smallestBody else { continue }
             let eps = 0.002
-            let depth = Swift.min(thickness, SceneBuilder.frameBarDepth)
+            let depth = Swift.min(f.thickness, RoomSceneBuilder.frameBarDepth)
             let hasSill = opening.kind == .window || hole.y0 > 0.05
             let u0 = hole.x0 + eps, u1 = hole.x1 - eps
             let v0 = hole.y0 + eps, v1 = hole.y1 - eps
@@ -806,9 +1215,9 @@ private struct RoomMeshBuilder {
 
             if opening.kind == .window {
                 var glass = FaceWriter()
-                let mid = thickness / 2
+                let mid = f.thickness / 2
                 box(&glass, f, u0 + bar, u1 - bar, v0 + bar, v1 - bar,
-                    mid - SceneBuilder.glassThickness / 2, mid + SceneBuilder.glassThickness / 2)
+                    mid - RoomSceneBuilder.glassThickness / 2, mid + RoomSceneBuilder.glassThickness / 2)
                 if !glass.isEmpty {
                     meshes.append(SceneMesh(id: "\(roomPrefix):opening:\(opening.id.uuidString):glass", roomID: room.id,
                                             material: .windowGlass, buffer: glass.buffer, label: "\(title) glass",
@@ -842,7 +1251,7 @@ private struct RoomMeshBuilder {
 
 // MARK: - Shared geometry helpers
 
-extension SceneBuilder {
+extension RoomSceneBuilder {
     /// Displacement of the offset outline's corner, for a unit offset along the inward normals of two
     /// consecutive walls: where the two offset lines meet. Limited to three times the offset so a very sharp
     /// corner does not shoot a spike out of the model. Same rule as the plan drawing's wall bands.
@@ -853,6 +1262,26 @@ extension SceneBuilder {
         let length = m.length
         if length > 3 { m = m * (3 / length) }
         return m
+    }
+
+    /// How far the outer corner lies from the clear corner (subtract it from the corner), for two consecutive
+    /// walls with their own thicknesses: the point where the two outer faces meet, so both walls end on the same
+    /// point and no gap or overlap shows between them.
+    ///
+    /// Equal thicknesses use `mitre` (and so the same cap as the plan drawing). Otherwise the point is solved
+    /// from "`previous` . x = previousThickness" and "`current` . x = currentThickness", capped at three times the
+    /// thicker wall; walls that run in line (or fold back on themselves) have no such point, and the thinner
+    /// thickness is used along the current wall's normal so that both walls still agree on it.
+    static func cornerOffset(previous np: Point2, current nc: Point2, previousThickness tp: Double,
+                             currentThickness tc: Double) -> Point2 {
+        if tp == tc { return mitre(previous: np, current: nc) * tp }
+        let det = np.x * nc.y - np.y * nc.x
+        if abs(det) < 1e-6 { return nc * Swift.min(tp, tc) }
+        var x = Point2((tp * nc.y - tc * np.y) / det, (tc * np.x - tp * nc.x) / det)
+        let reach = 3 * Swift.max(tp, tc)
+        let length = x.length
+        if length > reach, length > 0 { x = x * (reach / length) }
+        return x
     }
 
     /// The parts of `range` that no range in `covered` touches. Pieces shorter than a micrometre are dropped.

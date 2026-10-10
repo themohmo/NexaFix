@@ -1,11 +1,13 @@
 import SwiftUI
+import Observation
 import NexaFixCore
 
 // The app's one navigation stack, and the things that sit above it: the new-property and settings
 // sheets, the full-screen scan, the banner for work that is not saved, and the error alert.
 //
 // Screens below ask the `AppRouter` to do things ("scan this level", "open this property") instead of
-// presenting each other, so a sheet can finish dismissing before the camera comes up.
+// presenting each other, so a sheet can finish dismissing before the camera comes up. Each screen adds
+// `.statusBanners()` so the unsaved-work banner and the scan notice sit under its own navigation bar.
 
 // MARK: - Routes
 
@@ -34,6 +36,8 @@ struct ScanNotice: Identifiable, Equatable {
     var summary: String
     var warnings: [String]
     var saved: Bool
+    /// The scan is still being written. Shown with a spinner and no dismiss button.
+    var inProgress = false
 }
 
 // MARK: - Router
@@ -95,6 +99,7 @@ final class AppRouter {
 
 // MARK: - Root
 
+@MainActor
 struct RootView: View {
     @Environment(AppModel.self) private var model
     @State private var router = AppRouter()
@@ -111,8 +116,6 @@ struct RootView: View {
                     }
                 }
         }
-        .environment(router)
-        .safeAreaInset(edge: .top, spacing: 0) { banners }
         .sheet(item: $router.sheet, onDismiss: { router.sheetDidDismiss() }) { sheet in
             switch sheet {
             case .newProperty:
@@ -126,7 +129,8 @@ struct RootView: View {
         }
         .alert(model.presentedError?.title ?? "", isPresented: errorIsPresented, presenting: model.presentedError) { error in
             if error.severity == .dataAtRisk {
-                Button("Try again") { model.retryUnsavedSaves() }
+                // After the alert has closed, so a second failure is not cleared by the alert closing.
+                Button("Try again") { Task { @MainActor in model.retryUnsavedSaves() } }
                 Button("OK", role: .cancel) {}
             } else {
                 Button("OK", role: .cancel) {}
@@ -134,6 +138,10 @@ struct RootView: View {
         } message: { error in
             Text(verbatim: RootView.alertMessage(for: error))
         }
+        // Outermost, after every presentation above: a sheet or cover gets the environment of the view that
+        // presents it, so a value written further in (on the stack alone) would never reach them and the first
+        // read of the router in a sheet would stop the app.
+        .environment(router)
     }
 
     // MARK: Scan
@@ -157,33 +165,19 @@ struct RootView: View {
     }
 
     /// The camera has handed back its rooms: write the files, save the property, show it.
+    ///
+    /// The cover closes at once and a "Saving" notice stands in for the result. Writing a whole level's model
+    /// takes a moment, and it happens off the main thread so neither the cover nor the plan stutters.
     @MainActor
     private func finishScan(_ result: ScanResult, request: ScanRequest) {
         router.scan = nil
-        let outcome = ScanIntake.commit(result, to: request.propertyID, model: model)
-        if outcome.saved { Haptics.success() }
         router.open(request.propertyID)
-        router.notice = ScanNotice(summary: outcome.summary, warnings: outcome.warnings, saved: outcome.saved)
-    }
-
-    // MARK: Banners
-
-    @ViewBuilder
-    private var banners: some View {
-        VStack(spacing: Spacing.s) {
-            if !model.unsavedPropertyIDs.isEmpty {
-                UnsavedBanner(count: model.unsavedPropertyIDs.count) { model.retryUnsavedSaves() }
-                    .transition(.sheetRise)
-            }
-            if let notice = router.notice {
-                ScanNoticeBanner(notice: notice) { router.notice = nil }
-                    .transition(.sheetRise)
-            }
+        router.notice = ScanNotice(summary: "Saving the scan", warnings: [], saved: true, inProgress: true)
+        Task { @MainActor in
+            let outcome = await ScanIntake.commit(result, to: request.propertyID, model: model)
+            if outcome.saved { Haptics.success() }
+            router.notice = ScanNotice(summary: outcome.summary, warnings: outcome.warnings, saved: outcome.saved)
         }
-        .padding(.horizontal, Spacing.l)
-        .padding(.top, model.unsavedPropertyIDs.isEmpty && router.notice == nil ? 0 : Spacing.s)
-        .motion(value: model.unsavedPropertyIDs.isEmpty)
-        .motion(value: router.notice?.id)
     }
 
     // MARK: Errors
@@ -197,6 +191,44 @@ struct RootView: View {
     static func alertMessage(for error: UserFacingError) -> String {
         guard let recovery = error.recovery, !recovery.isEmpty else { return error.message }
         return error.message + "\n\n" + recovery
+    }
+}
+
+// MARK: - Status banners
+
+/// The persistent bar for work that is only in memory, and the one-line result of the last scan.
+/// Add it to the root view of every screen in the stack: `.statusBanners()`.
+private struct StatusBanners: ViewModifier {
+    @Environment(AppModel.self) private var model
+    @Environment(AppRouter.self) private var router
+
+    func body(content: Content) -> some View {
+        content.safeAreaInset(edge: .top, spacing: 0) { banners }
+    }
+
+    @MainActor @ViewBuilder
+    private var banners: some View {
+        VStack(spacing: Spacing.s) {
+            if !model.unsavedPropertyIDs.isEmpty {
+                UnsavedBanner(count: model.unsavedPropertyIDs.count) { model.retryUnsavedSaves() }
+                    .transition(.sheetRise)
+            }
+            if let notice = router.notice {
+                ScanNoticeBanner(notice: notice) { router.notice = nil }
+                    .transition(.sheetRise)
+            }
+        }
+        .padding(.horizontal, Spacing.l)
+        .padding(.vertical, model.unsavedPropertyIDs.isEmpty && router.notice == nil ? 0 : Spacing.s)
+        .motion(value: model.unsavedPropertyIDs.isEmpty)
+        .motion(value: router.notice?.id)
+    }
+}
+
+extension View {
+    /// Shows the unsaved-work bar and the scan notice under this screen's navigation bar.
+    func statusBanners() -> some View {
+        modifier(StatusBanners())
     }
 }
 
@@ -257,23 +289,30 @@ private struct ScanNoticeBanner: View {
         let shape = RoundedRectangle(cornerRadius: Radius.row, style: .continuous)
         VStack(alignment: .leading, spacing: Spacing.s) {
             HStack(alignment: .firstTextBaseline, spacing: Spacing.s) {
-                Image(systemName: notice.saved ? "cube.transparent" : "exclamationmark.triangle.fill")
-                    .foregroundStyle(notice.saved ? Palette.accent : Palette.caution)
-                    .accessibilityHidden(true)
+                if notice.inProgress {
+                    ProgressView()
+                        .accessibilityHidden(true)
+                } else {
+                    Image(systemName: notice.saved ? "cube.transparent" : "exclamationmark.triangle.fill")
+                        .foregroundStyle(notice.saved ? Palette.accent : Palette.caution)
+                        .accessibilityHidden(true)
+                }
                 Text(verbatim: notice.summary)
                     .font(.footnote.weight(.semibold))
                     .foregroundStyle(Palette.ink)
                     .fixedSize(horizontal: false, vertical: true)
                 Spacer(minLength: 0)
-                Button(action: dismiss) {
-                    Image(systemName: "xmark")
-                        .font(.footnote.weight(.semibold))
-                        .foregroundStyle(Palette.muted)
-                        .frame(width: 44, height: 44)
-                        .contentShape(Rectangle())
+                if !notice.inProgress {
+                    Button(action: dismiss) {
+                        Image(systemName: "xmark")
+                            .font(.footnote.weight(.semibold))
+                            .foregroundStyle(Palette.muted)
+                            .frame(width: 44, height: 44)
+                            .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.pressable)
+                    .accessibilityLabel("Dismiss")
                 }
-                .buttonStyle(.pressable)
-                .accessibilityLabel("Dismiss")
             }
             ForEach(Array(notice.warnings.enumerated()), id: \.offset) { _, warning in
                 HStack(alignment: .firstTextBaseline, spacing: Spacing.s) {
@@ -297,9 +336,19 @@ private struct ScanNoticeBanner: View {
         .accessibilityElement(children: .contain)
         .task(id: notice.id) {
             // A clean result goes away by itself; a warning waits to be read.
-            guard notice.warnings.isEmpty, notice.saved else { return }
+            guard notice.warnings.isEmpty, notice.saved, !notice.inProgress else { return }
             try? await Task.sleep(nanoseconds: 5_000_000_000)
             if !Task.isCancelled { dismiss() }
         }
     }
 }
+
+#if DEBUG
+#Preview("Home with the demo apartment") {
+    RootView().environment(AppModel.preview())
+}
+
+#Preview("Home, nothing yet") {
+    RootView().environment(AppModel.preview(withDemo: false))
+}
+#endif

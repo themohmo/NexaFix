@@ -343,17 +343,33 @@ public struct VerifyModel: Equatable, Sendable {
         guard let scanned = measured?.scanned else { return nil }
         let zeroIsFine = target.allowsZeroValue && value == 0
         if value < 0.001 && !zeroIsFine {
-            return "That is under 1 mm. Check the number or unit."
+            return "That is under 1 mm. Check the number or unit." + commaNote
         }
         if scanned >= 0.005 {
             if value > 3 * scanned || value < scanned / 3 {
-                return "That is far from the scan (\(scannedText)). Check the number or unit."
+                return "That is far from the scan (\(scannedText)). Check the number or unit." + commaNote
             }
         } else if value > 0.5 {
             // A scan of about nothing (a door that starts at the floor) leaves no ratio to test.
-            return "That is far from the scan (\(scannedText)). Check the number or unit."
+            return "That is far from the scan (\(scannedText)). Check the number or unit." + commaNote
         }
         return nil
+    }
+
+    /// Said after a warning when the text looks like "3,245": people write a comma between thousands, but a
+    /// comma is read as a decimal point, so the number is not what they meant.
+    private var commaNote: String {
+        VerifyModel.looksLikeThousandsComma(trimmedText) ? " A comma is read as a decimal point." : ""
+    }
+
+    /// "3,245" or "1,250 mm": up to three digits, then groups of exactly three after each comma, and no
+    /// decimal point after them.
+    static func looksLikeThousandsComma(_ text: String) -> Bool {
+        let run = text.prefix { $0.isASCII && ($0.isNumber || $0 == ",") }
+        guard run.contains(","), text.dropFirst(run.count).first != "." else { return false }
+        let groups = run.split(separator: ",", omittingEmptySubsequences: false)
+        guard let first = groups.first, (1...3).contains(first.count) else { return false }
+        return groups.dropFirst().allSatisfy { $0.count == 3 }
     }
 
     /// The number as it goes into the field: no unit text where the unit is the field's own.

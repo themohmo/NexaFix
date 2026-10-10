@@ -247,10 +247,14 @@ final class ExportEngineTests: XCTestCase {
         let pages = PlanPDFRenderer.pageInfos(property: p, options: ExportEngine.pdfOptions(for: r)).filter { $0.kind == .plan }
         XCTAssertEqual(pages.count, 2)
         for (index, floor) in p.floors.enumerated() {
-            let options = PlanOptions(scale: pages[index].scale ?? 50, units: r.units)
-            let drawing = PlanDrawingBuilder.build(floor: floor, property: p, options: options)
+            let scale = pages[index].scale ?? 50
+            let drawing = ExportEngine.cadDrawing(for: floor, in: p, scale: scale, units: r.units)
             XCTAssertEqual(out[index].data, DXFExporter.data(drawing, options: .init(units: .millimetres)),
                            "floor \(index)")
+            // The plan itself is the floor's plan at the PDF's scale; the file only adds a caption under it.
+            let plain = PlanDrawingBuilder.build(floor: floor, property: p,
+                                                 options: PlanOptions(scale: scale, units: r.units))
+            XCTAssertEqual(Array(drawing.primitives.dropLast()), plain.primitives, "floor \(index)")
         }
         XCTAssertNotEqual(pages[0].scale, pages[1].scale, "the small and the large floor are drawn at different scales")
     }
@@ -261,6 +265,62 @@ final class ExportEngineTests: XCTestCase {
         XCTAssertTrue(text.contains("AC1015"))
         XCTAssertTrue(text.contains("NF-WALLS"))
         XCTAssertTrue(text.hasSuffix("EOF\n") || text.hasSuffix("EOF\r\n"))
+    }
+
+    func testABasementIsNotMistakenForTheLevelAbove() throws {
+        // "Level -1" used to be named like "Level 1" because the file name drops dashes.
+        let ground = Floor(id: id(10), name: "Level 1", level: 1, rooms: [small(name: "Hall One")])
+        let basement = Floor(id: id(11), name: "Level -1", level: -1, rooms: [small(name: "Store")])
+        let out = try ExportEngine.run(request(property(floors: [ground, basement]), [.cadDXF, .model3D],
+                                               usdz: [id(10): .data(Data("a".utf8)), id(11): .data(Data("b".utf8))]))
+        XCTAssertEqual(names(out), ["NexaFix_Marina-Gate-2-Unit-2304_\(day)_plan-Level-1.dxf",
+                                    "NexaFix_Marina-Gate-2-Unit-2304_\(day)_plan-Level-minus-1.dxf",
+                                    "NexaFix_Marina-Gate-2-Unit-2304_\(day)_model-Level-1.usdz",
+                                    "NexaFix_Marina-Gate-2-Unit-2304_\(day)_model-Level-minus-1.usdz"])
+    }
+
+    func testTheMinusSignIsOnlySpelledOutInFrontOfANumber() {
+        func token(_ name: String) -> String {
+            ExportEngine.floorToken(Floor(id: id(10), name: name, level: 0, rooms: []))
+        }
+        XCTAssertEqual(token("Level -1"), "Level-minus-1")
+        XCTAssertEqual(token("-2"), "minus-2")
+        XCTAssertEqual(token("Basement (-1)"), "Basement-minus-1")
+        XCTAssertEqual(token("Level \u{2212}3"), "Level-minus-3")
+        XCTAssertEqual(token("Level 1"), "Level-1")
+        XCTAssertEqual(token("Unit-2"), "Unit-2", "a dash inside a word stays a dash")
+        XCTAssertEqual(token("Floors 1-3"), "Floors-1-3")
+        XCTAssertEqual(token("Level - A"), "Level-A")
+        XCTAssertEqual(token(""), "level")
+    }
+
+    func testTheDXFSaysWhichPropertyAndLevelItIs() throws {
+        let ground = Floor(id: id(10), name: "Level 1", level: 1, rooms: [small(name: "Hall One")])
+        let basement = Floor(id: id(11), name: "Level -1", level: -1, rooms: [small(name: "Store")])
+        let out = try ExportEngine.run(request(property(floors: [ground, basement]), [.cadDXF]))
+        let first = String(decoding: out[0].data, as: UTF8.self)
+        let second = String(decoding: out[1].data, as: UTF8.self)
+        XCTAssertTrue(first.contains("Marina Gate 2 - Unit 2304 - Level 1"))
+        XCTAssertTrue(second.contains("Marina Gate 2 - Unit 2304 - Level -1"))
+        XCTAssertFalse(first.contains("Level -1"))
+        XCTAssertFalse(second.contains("Unit 2304 - Level 1"))
+    }
+
+    func testTheDXFCaptionSitsBelowThePlanAndInsideItsExtent() {
+        let floor = Floor(id: id(10), name: "Level 1", level: 1, rooms: [small()])
+        let p = property(floors: [floor])
+        let plain = PlanDrawingBuilder.build(floor: floor, property: p, options: PlanOptions(scale: 50))
+        let drawing = ExportEngine.cadDrawing(for: floor, in: p, scale: 50, units: .default)
+        XCTAssertEqual(drawing.primitives.count, plain.primitives.count + 1)
+        guard case let .text(text, at, height, _, _, _, _) = drawing.primitives.last?.primitive else {
+            return XCTFail("the caption is the last thing drawn")
+        }
+        XCTAssertEqual(drawing.primitives.last?.layer, .notes)
+        XCTAssertEqual(text, "Marina Gate 2 - Unit 2304 - Level 1")
+        XCTAssertEqual(height, 0.175, accuracy: 1e-12, "3.5 mm on paper at 1:50")
+        XCTAssertLessThan(at.y, plain.bounds.min.y)
+        XCTAssertEqual(drawing.bounds.min.y, at.y, accuracy: 1e-12)
+        XCTAssertGreaterThanOrEqual(drawing.bounds.max.x, plain.bounds.max.x)
     }
 
     func testFloorsDoNotShareADrawing() throws {
@@ -490,6 +550,36 @@ final class ExportEngineTests: XCTestCase {
         XCTAssertEqual(first.scannedM, 6.2, accuracy: 1e-9)
         XCTAssertEqual(first.toleranceM, 0.093, accuracy: 1e-9)
         XCTAssertEqual(Set(readiness.unverifiedJoinery.map(\.id)).count, readiness.unverifiedJoinery.count)
+    }
+
+    func testTwoMeasurementsWithTheSameLabelGetDifferentIds() {
+        // Free-text labels repeat ("Measurement" is what a blank name becomes); a list needs unique ids.
+        var p = apartment()
+        var room = p.floors[0].rooms[0]
+        for length in [1.2, 1.2, 2.4] {
+            room.customMeasurements.append(CustomMeasurement(
+                label: "Measurement", a: Point3(0, 0, 0), b: Point3(length, 0, 0)))
+        }
+        p.floors[0].rooms[0] = room
+        let items = ExportReadiness(property: p).unverifiedJoinery
+        XCTAssertEqual(items.filter { $0.label == "Measurement" }.count, 3)
+        XCTAssertEqual(Set(items.map(\.id)).count, items.count)
+        // The ids belong to the dimensions, not to the order of the list: checking a wall keeps the others' ids.
+        let before = Dictionary(uniqueKeysWithValues: items.map { ($0.id, $0.label) })
+        var checked = p
+        checked.floors[0].rooms[0].walls[0].length.verify(6.24, source: .laser, date: now)
+        for item in ExportReadiness(property: checked).unverifiedJoinery {
+            XCTAssertEqual(before[item.id], item.label)
+        }
+    }
+
+    func testIdsAreUniqueAcrossRoomsWithTheSameNameAndAcrossFloors() {
+        let twin = small(name: "Hall")
+        let p = property(floors: [Floor(id: id(10), name: "Level 1", level: 1, rooms: [twin]),
+                                  Floor(id: id(11), name: "Level 1", level: 1, rooms: [small(name: "Hall")])])
+        let items = ExportReadiness(property: p).unverifiedJoinery
+        XCTAssertGreaterThan(items.count, 4)
+        XCTAssertEqual(Set(items.map(\.id)).count, items.count)
     }
 
     func testOnlyJoineryCriticalDimensionsAreListed() {

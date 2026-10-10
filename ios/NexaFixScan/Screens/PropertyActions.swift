@@ -2,12 +2,12 @@ import Foundation
 import NexaFixCore
 
 // Everything the screens do to a property that is not drawing: duplicate, rename, delete, change a
-// room, record a check, take in a finished scan. Plain Swift on Foundation, NexaFixCore and the app's own
-// plain-Swift types, so it is type-checked and run on Linux (see ios/tools). The views stay thin and call
-// these.
+// room, record a check, take in a finished scan, and the plain numbers and words the screens show.
+// Plain Swift on Foundation, NexaFixCore and the app's own plain-Swift types, so it is type-checked on
+// Linux. The views stay thin and call these.
 //
 // Every change to a saved property goes through `AppModel.update`, so a failed save is never silent and
-// unsaved changes stay listed until they are written.
+// unsaved changes stay listed until they are written. Nothing derived is ever stored.
 
 // MARK: - Actions on properties and rooms
 
@@ -88,6 +88,12 @@ struct PropertyActions {
 
     // MARK: Checks and measurements
 
+    /// Whether the dimension is still in the room, so a sheet that has been open a while does not save a
+    /// check for something that has gone.
+    func targetExists(propertyID: UUID, roomID: UUID, target: MeasureTarget) -> Bool {
+        model.property(propertyID)?.findRoom(roomID)?.measured(target) != nil
+    }
+
     /// Records a site check for one dimension, or clears it with nil. Applied to the room as it is now, so
     /// nothing else in the room changes. Returns whether the change reached storage.
     @discardableResult
@@ -140,12 +146,23 @@ enum ScanIntake {
         var saved: Bool
     }
 
+    /// One file to write, with its bytes. Plain values, so the writing can happen off the main thread.
+    private struct FileJob: Sendable {
+        let asset: ScanCommit.PlannedAsset
+        let data: Data?
+    }
+
     /// Adds the scan to the property as a new floor.
     ///
     /// The order matters: files are written first, and the property only mentions files that were written.
-    /// A room is never lost because a file failed (the failure is reported and the room is kept without
-    /// that file). Applying the same result twice adds nothing the second time.
-    static func commit(_ result: ScanResult, to propertyID: UUID, model: AppModel, now: Date = Date()) -> Outcome {
+    /// A room is never lost because a file failed (the failure is reported in `Outcome.warnings` and the room
+    /// is kept without that file). Applying the same result twice adds nothing the second time.
+    ///
+    /// A whole-floor model is tens of megabytes, so the files are written on a background task; only the
+    /// planning and the final save run on the main actor. A failed file is a warning in the outcome, never the
+    /// "your work is not saved" alert: the rooms are saved, and no retry of the alert could bring the file back.
+    static func commit(_ result: ScanResult, to propertyID: UUID, model: AppModel,
+                       now: Date = Date()) async -> Outcome {
         guard let property = model.property(propertyID) else {
             return Outcome(summary: "The scan could not be added because the property could not be opened.",
                            warnings: result.warnings, floorID: nil, saved: false)
@@ -161,21 +178,27 @@ enum ScanIntake {
             return Outcome(summary: plan.summary, warnings: result.warnings, floorID: nil, saved: false)
         }
 
-        // Files first.
+        // Files first, off the main thread.
+        let jobs = plan.assets.map { asset -> FileJob in
+            switch asset.kind {
+            case .structureUSDZ: return FileJob(asset: asset, data: result.structureUSDZ)
+            case .worldMap: return FileJob(asset: asset, data: result.worldMapData)
+            case .capturedRoom(let roomID): return FileJob(asset: asset, data: result.capturedRoomJSON[roomID])
+            }
+        }
+        let store = model.store
+        let wrote = await Task.detached(priority: .userInitiated) { () -> [Bool] in
+            jobs.map { write($0, to: store, propertyID: propertyID) }
+        }.value
+
         var written = ScanCommit.AvailableAssets()
         var warnings = result.warnings
-        for asset in plan.assets {
-            let data: Data?
-            switch asset.kind {
-            case .structureUSDZ: data = result.structureUSDZ
-            case .worldMap: data = result.worldMapData
-            case .capturedRoom(let roomID): data = result.capturedRoomJSON[roomID]
-            }
-            guard let data, model.writeAsset(data, relativePath: asset.relativePath, propertyID: propertyID) != nil else {
-                warnings.append(failureWarning(for: asset.kind))
+        for (job, ok) in zip(jobs, wrote) {
+            guard ok else {
+                warnings.append(failureWarning(for: job.asset.kind))
                 continue
             }
-            switch asset.kind {
+            switch job.asset.kind {
             case .structureUSDZ: written.structureUSDZ = true
             case .worldMap: written.worldMap = true
             case .capturedRoom(let roomID): written.capturedRoomIDs.insert(roomID)
@@ -186,18 +209,34 @@ enum ScanIntake {
         // makes the result identical to the plan.
         let rooms = result.rooms
         let story = result.story
+        let writtenFiles = written
         let saved = model.update(propertyID: propertyID) { live in
-            live = ScanCommit.apply(rooms: rooms, story: story, scannedAt: now, to: live, available: written,
+            live = ScanCommit.apply(rooms: rooms, story: story, scannedAt: now, to: live, available: writtenFiles,
                                     makeID: { floorID }).property
         }
         return Outcome(summary: plan.summary, warnings: warnings, floorID: floorID, saved: saved)
     }
 
+    /// Writes one file; false when there were no bytes or the write failed.
+    private nonisolated static func write(_ job: FileJob, to store: PropertyStore, propertyID: UUID) -> Bool {
+        guard let data = job.data, !data.isEmpty else { return false }
+        do {
+            try store.writeAsset(data, relativePath: job.asset.relativePath, for: propertyID)
+            return true
+        } catch {
+            return false
+        }
+    }
+
     private static func failureWarning(for kind: ScanCommit.PlannedAsset.Kind) -> String {
+        let advice = "Free up some space on this iPhone, then scan the level again."
         switch kind {
-        case .structureUSDZ: return "The 3D model could not be saved, so it cannot be exported. The rooms were kept."
-        case .worldMap: return "The AR map could not be saved, so AR review will not line up. The rooms were kept."
-        case .capturedRoom: return "One room\u{2019}s detailed scan data could not be saved. The room itself was kept."
+        case .structureUSDZ:
+            return "The 3D model could not be saved, so this level cannot be exported as a model. The rooms were kept. " + advice
+        case .worldMap:
+            return "The AR map could not be saved, so AR review will not line up on this level. The rooms were kept. " + advice
+        case .capturedRoom:
+            return "One room\u{2019}s detailed scan data could not be saved. The room itself was kept."
         }
     }
 }
@@ -223,6 +262,66 @@ enum PropertyDefaults {
         if let floorID, let floor = property.floors.first(where: { $0.id == floorID }) { return floor.level }
         return property.floors.last?.level ?? firstStory
     }
+
+    /// Keeps a level inside the range the picker offers.
+    static func clampedStory(_ story: Int) -> Int {
+        min(max(story, storyRange.lowerBound), storyRange.upperBound)
+    }
+}
+
+/// The fields of the New property sheet, and whether they are enough to go on.
+struct NewPropertyDraft: Equatable {
+    var name = ""
+    var client = ""
+    var address = ""
+    var reference: String
+    var kind: PropertyKind = .apartment
+    /// The level of the first scan.
+    var story = PropertyDefaults.firstStory
+
+    /// A blank form with the reference suggested for `now`.
+    init(now: Date = Date()) {
+        reference = PropertyDefaults.suggestedReference(on: now)
+    }
+
+    /// A form filled with what a property already has, for editing its details.
+    init(editing property: Property) {
+        name = property.name
+        client = property.client
+        address = property.address
+        reference = property.reference
+        kind = property.kind
+    }
+
+    var trimmedName: String { name.trimmingCharacters(in: .whitespacesAndNewlines) }
+
+    /// A name is the one required field.
+    var canCreate: Bool { !trimmedName.isEmpty }
+
+    /// "Level 23": what the scan will be called.
+    var levelName: String { ScanCommit.levelName(story) }
+}
+
+// MARK: - Searching the list
+
+enum PropertyListFilter {
+    /// True when every word of `query` is found, ignoring case and accents, in at least one of `fields`.
+    /// An empty query matches everything.
+    static func matches(_ query: String, fields: [String]) -> Bool {
+        let words = query.split(whereSeparator: { $0.isWhitespace }).map(String.init)
+        guard !words.isEmpty else { return true }
+        return words.allSatisfy { word in
+            fields.contains { $0.range(of: word, options: [.caseInsensitive, .diacriticInsensitive]) != nil }
+        }
+    }
+
+    static func summaries(_ list: [PropertySummary], query: String) -> [PropertySummary] {
+        list.filter { matches(query, fields: [$0.name, $0.client]) }
+    }
+
+    static func properties(_ list: [Property], query: String) -> [Property] {
+        list.filter { matches(query, fields: [$0.name, $0.client, $0.address, $0.reference]) }
+    }
 }
 
 // MARK: - What a property card shows
@@ -234,21 +333,22 @@ struct PropertyCardInfo {
     let areaM2: Double
     let verified: Int
     let total: Int
-    /// A plain outline of the first floor that has rooms; nil when nothing is drawable.
-    let drawing: PlanDrawing?
+    /// The plan of the first floor that has rooms, for the small picture on the card; nil when there is none.
+    let thumbnail: PlanDrawing?
 
     static func make(_ property: Property) -> PropertyCardInfo {
         let progress = VerificationChecklist.propertyProgress(property)
         let area = property.allRooms.reduce(0.0) { $0 + $1.metrics.effectiveFloorArea }
-        var drawing: PlanDrawing?
+        var thumbnail: PlanDrawing?
         if let floor = property.floors.first(where: { !$0.rooms.isEmpty }) {
+            // Structure only: dimensions, angles, furniture and labels would be smudges at card size.
             let options = PlanOptions(scale: 100, showDimensions: false, showAngles: false, showFurniture: false,
                                       showRoomLabels: false, showOpeningSizes: false, markVerified: false)
-            drawing = PlanDrawingBuilder.build(floor: floor, property: property, options: options)
+            thumbnail = PlanDrawingBuilder.build(floor: floor, property: property, options: options)
         }
         return PropertyCardInfo(roomCount: property.roomCount, floorCount: property.floors.count,
                                 areaM2: area.isFinite ? area : 0, verified: progress.verified,
-                                total: progress.total, drawing: drawing)
+                                total: progress.total, thumbnail: thumbnail)
     }
 
     var summary: VerificationSummary { VerificationSummary(verified: verified, total: total) }
@@ -271,8 +371,9 @@ struct PropertyCardInfo {
 
     /// Whole units, because a card is a glance: "112 m\u{00B2}", "1205 sq ft".
     static func areaText(_ squareMetres: Double, unit: AreaUnit) -> String {
+        guard squareMetres.isFinite else { return "\u{2013} \(unit.symbol)" }
         let value = unit == .squareMetres ? squareMetres : squareMetres / UnitFormatter.squareMetresPerSquareFoot
-        return "\(Int(value.rounded())) \(unit.symbol)"
+        return "\(Int(min(max(value, 0), 1e9).rounded())) \(unit.symbol)"
     }
 }
 
@@ -322,6 +423,262 @@ final class PlanDrawingCache {
     }
 }
 
+extension Property {
+    /// The floor the plan shows: the preferred one if it exists, otherwise the most recent floor that has
+    /// rooms, otherwise the last floor.
+    func activeFloor(preferring id: UUID?) -> Floor? {
+        if let id, let floor = floors.first(where: { $0.id == id }) { return floor }
+        return floors.last(where: { !$0.rooms.isEmpty }) ?? floors.last
+    }
+}
+
+/// One chip in the row of levels. Each level is one scan, so the chip says when it was made.
+struct FloorChip: Identifiable, Equatable {
+    let id: UUID
+    let title: String
+    /// When the first room of the level was scanned.
+    let scannedAt: Date?
+    let roomCount: Int
+
+    /// A chip for every level that has rooms. A level with none (the empty starter level of a new property)
+    /// has no plan to show.
+    static func chips(for property: Property) -> [FloorChip] {
+        property.floors.filter { !$0.rooms.isEmpty }.map { floor in
+            FloorChip(id: floor.id, title: floor.name, scannedAt: floor.rooms.map(\.scannedAt).min(),
+                      roomCount: floor.rooms.count)
+        }
+    }
+}
+
+// MARK: - The card under the plan
+
+/// What the card under the plan says about the thing that was tapped.
+struct SelectionCardInfo: Equatable {
+    enum Kind: Equatable { case room, wall, corner, opening, object }
+
+    /// One dimension that can be checked on site.
+    struct Row: Equatable, Identifiable {
+        let target: MeasureTarget
+        /// "Length", "Height", "Width", "Sill height", "Ceiling height".
+        let label: String
+        let measured: Measured
+        var id: MeasureTarget { target }
+    }
+
+    struct ObjectSize: Equatable {
+        let width: Double
+        let depth: Double
+        let height: Double
+    }
+
+    let kind: Kind
+    let roomID: UUID
+    /// "Wall A", "Door 1", "Living Room", "Wall D to Wall A".
+    let title: String
+    /// The room, and what is special about the thing.
+    let subtitle: String
+    /// The dimensions the person can check from here. Empty for corners and objects.
+    let rows: [Row]
+    let corner: CornerReading?
+    let areaM2: Double?
+    let objectSize: ObjectSize?
+
+    /// nil when what was tapped is no longer in the property.
+    static func make(selection: PlanSelection, in property: Property) -> SelectionCardInfo? {
+        switch selection {
+        case .room(let roomID):
+            guard let room = property.findRoom(roomID) else { return nil }
+            return SelectionCardInfo(
+                kind: .room, roomID: roomID, title: roomTitle(room), subtitle: room.kind.displayName,
+                rows: [Row(target: .ceilingHeight, label: "Ceiling height", measured: room.ceilingHeight)],
+                corner: nil, areaM2: room.metrics.effectiveFloorArea, objectSize: nil)
+
+        case .wall(let roomID, let wallID):
+            guard let room = property.findRoom(roomID), let wall = room.wall(withID: wallID) else { return nil }
+            var rows = [Row(target: .wallLength(wallID), label: "Length", measured: wall.length)]
+            if wall.kind == .solid {
+                rows.append(Row(target: .wallHeight(wallID), label: "Height", measured: wall.height))
+            }
+            let place = roomTitle(room) + (wall.kind == .virtual ? " \u{00B7} Open boundary" : "")
+            return SelectionCardInfo(kind: .wall, roomID: roomID, title: room.wallTitle(forID: wallID) ?? "Wall",
+                                     subtitle: place, rows: rows, corner: nil, areaM2: nil, objectSize: nil)
+
+        case .corner(let roomID, let index):
+            guard let room = property.findRoom(roomID), let reading = CornerReading.reading(at: index, in: room) else {
+                return nil
+            }
+            // "Corner B" is the corner that starts Wall B, the name the plan, the 3D view and AR all use.
+            return SelectionCardInfo(kind: .corner, roomID: roomID, title: "Corner " + Room.wallLetters(forIndex: index),
+                                     subtitle: roomTitle(room) + " \u{00B7} " + reading.title,
+                                     rows: [], corner: reading, areaM2: nil, objectSize: nil)
+
+        case .opening(let roomID, let openingID):
+            guard let room = property.findRoom(roomID), let opening = room.openings.first(where: { $0.id == openingID })
+            else { return nil }
+            var rows = [Row(target: .openingWidth(openingID), label: "Width", measured: opening.width),
+                        Row(target: .openingHeight(openingID), label: "Height", measured: opening.height)]
+            // A sill is worth a row only when it is off the floor (every ordinary door sits on it).
+            if opening.sillHeight.scanned >= 0.005 || opening.sillHeight.isVerified {
+                rows.append(Row(target: .openingSill(openingID), label: "Sill height", measured: opening.sillHeight))
+            }
+            var place = roomTitle(room)
+            if let wallID = opening.wallID, let wall = room.wallTitle(forID: wallID) { place += " \u{00B7} " + wall }
+            return SelectionCardInfo(kind: .opening, roomID: roomID,
+                                     title: room.title(for: .openingWidth(openingID)), subtitle: place,
+                                     rows: rows, corner: nil, areaM2: nil, objectSize: nil)
+
+        case .object(let roomID, let objectID):
+            guard let room = property.findRoom(roomID), let object = room.objects.first(where: { $0.id == objectID })
+            else { return nil }
+            // Furniture is numbered per kind ("Sofa 1"), the way the plan labels it.
+            let title = PlanHitTester(rooms: [room]).selectionTitle(for: selection) ?? object.kind.displayName
+            return SelectionCardInfo(kind: .object, roomID: roomID, title: title,
+                                     subtitle: roomTitle(room), rows: [], corner: nil, areaM2: nil,
+                                     objectSize: ObjectSize(width: object.width, depth: object.depth,
+                                                            height: object.height))
+        }
+    }
+
+    /// The room's name, or its kind when it has none.
+    static func roomTitle(_ room: Room) -> String {
+        let name = room.name.trimmingCharacters(in: .whitespacesAndNewlines)
+        return name.isEmpty ? room.kind.displayName : name
+    }
+}
+
+// MARK: - Rooms
+
+/// One row of the Rooms tab.
+struct RoomRowInfo: Identifiable, Equatable {
+    let id: UUID
+    let name: String
+    let kind: RoomKind
+    /// "6 240 \u{00D7} 4 500 mm", or "Irregular" when the room is not a rectangle.
+    let sizeText: String
+    let sizeSpoken: String
+    let areaM2: Double
+    let ceilingHeight: Double
+    /// The ceiling height was checked on site. A scanned ceiling carries no mark; a checked one does.
+    let ceilingVerified: Bool
+    let summary: VerificationSummary
+
+    static func make(_ room: Room, units: DisplayUnits) -> RoomRowInfo {
+        let metrics = room.metrics
+        var sizeText = "Irregular"
+        var sizeSpoken = "irregular shape"
+        if metrics.isRectangular, let length = metrics.length, let width = metrics.width {
+            sizeText = GroupedLength.dimensions(length, width, unit: units.length, precision: .compact)
+            sizeSpoken = SpokenMeasurement.length(length, unit: units.length) + " by "
+                + SpokenMeasurement.length(width, unit: units.length)
+        }
+        let checklist = VerificationChecklist(room: room)
+        return RoomRowInfo(id: room.id, name: SelectionCardInfo.roomTitle(room), kind: room.kind,
+                           sizeText: sizeText, sizeSpoken: sizeSpoken, areaM2: metrics.effectiveFloorArea,
+                           ceilingHeight: metrics.ceilingHeight, ceilingVerified: room.ceilingHeight.isVerified,
+                           summary: VerificationSummary(verified: checklist.verifiedCount,
+                                                        total: checklist.totalCount))
+    }
+
+    /// "4 600 \u{00D7} 4 000 mm \u{00B7} 18.4 m\u{00B2} \u{00B7} Ceiling 2 800 mm", with a check mark after a ceiling that
+    /// was checked on site.
+    func line(units: DisplayUnits) -> String {
+        [sizeText,
+         UnitFormatter.area(areaM2, unit: units.area, precision: .compact),
+         "Ceiling " + GroupedLength.text(ceilingHeight, unit: units.length, precision: .compact)
+            + (ceilingVerified ? " \u{2713}" : "")]
+            .joined(separator: " \u{00B7} ")
+    }
+
+    /// "Master Bedroom, 4 600 by 4 000 millimetres, 18.4 square metres, ceiling 2 800 millimetres, scanned,
+    /// 9 of 21 dimensions checked".
+    func spoken(units: DisplayUnits) -> String {
+        [name, sizeSpoken, SpokenMeasurement.area(areaM2, unit: units.area),
+         "ceiling " + SpokenMeasurement.length(ceilingHeight, unit: units.length)
+            + (ceilingVerified ? ", checked" : ", scanned"),
+         summary.spoken]
+            .joined(separator: ", ")
+    }
+}
+
+/// How much of a room's floor area rests on wall lengths somebody checked on site.
+enum AreaBasis: Equatable {
+    /// Every wall length is what LiDAR read, or the room is not a rectangle (its area is the scanned outline).
+    case scan
+    /// A rectangle with some wall lengths checked and some not: most of the number still rests on the scan.
+    case partlyChecked
+    /// A rectangle with every side checked.
+    case checked
+
+    /// The line above the area figure.
+    var caption: String {
+        switch self {
+        case .scan: return "Floor area, from the scan"
+        case .partlyChecked: return "Floor area, partly from checked wall lengths"
+        case .checked: return "Floor area, from checked wall lengths"
+        }
+    }
+
+    /// Only a rectangle's area is worked out from its wall lengths, so only it can be checked.
+    static func of(_ room: Room, metrics: RoomMetrics) -> AreaBasis {
+        guard metrics.isRectangular, !metrics.sides.isEmpty else { return .scan }
+        if metrics.sides.allSatisfy(\.isVerified) { return .checked }
+        return room.walls.contains { $0.length.isVerified } ? .partlyChecked : .scan
+    }
+}
+
+/// The numbers at the top of the Room screen, and its dimension lists.
+struct RoomOverview {
+    let title: String
+    let kind: RoomKind
+    let areaM2: Double
+    /// Whether the area figure rests on the scan or on checked wall lengths.
+    let areaBasis: AreaBasis
+    /// Rectangular rooms only.
+    let length: Double?
+    let width: Double?
+    let perimeter: Double
+    let ceiling: Measured
+    let volumeM3: Double
+    let checklist: VerificationChecklist
+    let corners: [CornerReading]
+
+    init(room: Room) {
+        let metrics = room.metrics
+        title = SelectionCardInfo.roomTitle(room)
+        kind = room.kind
+        areaM2 = metrics.effectiveFloorArea
+        areaBasis = AreaBasis.of(room, metrics: metrics)
+        length = metrics.isRectangular ? metrics.length : nil
+        width = metrics.isRectangular ? metrics.width : nil
+        perimeter = metrics.perimeter
+        ceiling = room.ceilingHeight
+        volumeM3 = metrics.volume
+        checklist = VerificationChecklist(room: room)
+        corners = CornerReading.readings(for: room)
+    }
+
+    var summary: VerificationSummary {
+        VerificationSummary(verified: checklist.verifiedCount, total: checklist.totalCount)
+    }
+
+    /// Dimensions the person can check, by section of the screen.
+    func items(in group: VerificationChecklist.Group) -> [VerificationChecklist.Item] {
+        checklist.items(in: group)
+    }
+
+    /// "6 240 \u{00D7} 4 500 mm", or nil when the room is not a rectangle.
+    func sizeText(units: DisplayUnits) -> String? {
+        guard let length, let width else { return nil }
+        return GroupedLength.dimensions(length, width, unit: units.length, precision: .compact)
+    }
+
+    func sizeSpoken(units: DisplayUnits) -> String? {
+        guard let length, let width else { return nil }
+        return SpokenMeasurement.length(length, unit: units.length) + " by "
+            + SpokenMeasurement.length(width, unit: units.length)
+    }
+}
+
 // MARK: - Corners
 
 /// One corner of a room as the Room screen and the selection card describe it.
@@ -335,6 +692,8 @@ struct CornerReading: Identifiable, Equatable {
         case outOfSquare
         /// The inside of an L-shape; not a fault.
         case reflex
+        /// Where one wall simply carries on; not a corner at all.
+        case straight
     }
 
     /// Corner `index` is the start of wall `index` (and the end of the wall before it).
@@ -349,7 +708,10 @@ struct CornerReading: Identifiable, Equatable {
 
     var id: Int { index }
 
-    /// "Square", "2.4\u{00B0} off square", "Inside corner of an L-shape".
+    /// Out of square by 1 degree or more, in either direction, and not an L-shape or a straight run.
+    var isOffSquare: Bool { level == .slightlyOff || level == .outOfSquare }
+
+    /// "Square", "2.4\u{00B0} wider than square", "Inside corner of an L-shape".
     var note: String {
         switch level {
         case .square: return "Square"
@@ -357,6 +719,7 @@ struct CornerReading: Identifiable, Equatable {
             let size = UnitFormatter.angle(abs(deviation))
             return deviation > 0 ? "\(size) wider than square" : "\(size) tighter than square"
         case .reflex: return "Inside corner of an L-shape"
+        case .straight: return "The wall carries on straight"
         }
     }
 
@@ -366,6 +729,7 @@ struct CornerReading: Identifiable, Equatable {
         switch level {
         case .square: return "\(title), \(degrees), square"
         case .reflex: return "\(title), \(degrees), inside corner of an L-shape"
+        case .straight: return "\(title), \(degrees), the wall carries on straight"
         case .slightlyOff, .outOfSquare:
             return "\(title), \(degrees), " + SpokenMeasurement.angle(abs(deviation))
                 + (deviation > 0 ? " wider than square" : " tighter than square")
@@ -374,6 +738,7 @@ struct CornerReading: Identifiable, Equatable {
 
     static func level(forAngle angle: Double) -> Level {
         let deviation = angle - 90
+        if abs(angle - 180) <= RoomMetrics.straightTolerance { return .straight }
         if angle > 180 + RoomMetrics.straightTolerance { return .reflex }
         if abs(deviation) <= RoomMetrics.squareTolerance { return .square }
         return abs(deviation) < 3 ? .slightlyOff : .outOfSquare
@@ -388,7 +753,9 @@ struct CornerReading: Identifiable, Equatable {
     /// One corner by index; nil when the room has no such corner.
     static func reading(at index: Int, in room: Room) -> CornerReading? {
         guard room.walls.count >= 3, index >= 0, index < room.walls.count else { return nil }
-        return reading(for: room.metrics.corners[index], in: room)
+        let corners = room.metrics.corners
+        guard index < corners.count else { return nil }
+        return reading(for: corners[index], in: room)
     }
 
     private static func reading(for corner: Corner, in room: Room) -> CornerReading {
@@ -419,9 +786,92 @@ struct VolumeText {
             visible = "\(number) m\u{00B3}"
             spoken = "\(SpokenMeasurement.trimmed(number)) cubic metres"
         case .squareFeet:
-            let number = String(Int((cubicMetres / 0.028316846592).rounded()))
+            let number = String(Int(min(max(cubicMetres / 0.028316846592, -1e12), 1e12).rounded()))
             visible = "\(number) cu ft"
             spoken = "\(number) cubic feet"
         }
     }
+}
+
+// MARK: - Settings
+
+/// The choices on the Settings screen and the examples beside them.
+enum SettingsChoices {
+    struct Scale: Identifiable, Hashable {
+        /// The scale denominator (50 means 1:50); nil is "Automatic".
+        let value: Double?
+        var id: String { value.map { String($0) } ?? "auto" }
+        var title: String { SettingsChoices.scaleTitle(value) }
+    }
+
+    static let standardScales: [Double] = [20, 25, 50, 75, 100, 150, 200]
+
+    /// Automatic, then 1:20 to 1:200. A saved scale outside the list is kept as its own choice so the picker
+    /// never shows nothing.
+    static func scales(including current: Double?) -> [Scale] {
+        var values = standardScales
+        if let current, !values.contains(current) {
+            values.append(current)
+            values.sort()
+        }
+        return [Scale(value: nil)] + values.map { Scale(value: $0) }
+    }
+
+    static func scaleTitle(_ value: Double?) -> String {
+        guard let value else { return "Automatic" }
+        if value == value.rounded(), abs(value) < 1e9 { return "1:\(Int(value))" }
+        return "1:" + String(format: "%.1f", value)
+    }
+
+    /// One paper choice: the word the export code reads, and the word on screen.
+    struct Paper: Identifiable, Hashable {
+        let value: String
+        let title: String
+        var id: String { value }
+    }
+
+    /// Paper choices as the export code spells them, with the words for the picker.
+    static let papers: [Paper] = [Paper(value: "auto", title: "Automatic"), Paper(value: "a4", title: "A4"),
+                                  Paper(value: "a3", title: "A3")]
+
+    static func paperTitle(_ value: String) -> String {
+        papers.first { $0.value == value }?.title ?? "Automatic"
+    }
+
+    /// "Version 1.0.0 (1)" from the app's Info.plist values; "Version not available" without them.
+    static func versionText(short: String?, build: String?) -> String {
+        let version = short?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        let number = build?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        if version.isEmpty { return number.isEmpty ? "Version not available" : "Build \(number)" }
+        return number.isEmpty ? "Version \(version)" : "Version \(version) (\(number))"
+    }
+
+    /// A fixed length, so the person sees what their choice looks like: "3 245 mm", `10' 7 3/4"`.
+    static func lengthExample(_ unit: LengthUnit) -> String {
+        GroupedLength.text(3.245, unit: unit)
+    }
+
+    /// "18.42 m\u{00B2}" or "198.3 sq ft".
+    static func areaExample(_ unit: AreaUnit) -> String {
+        UnitFormatter.area(18.42, unit: unit)
+    }
+}
+
+/// How close the scans were to the laser across every property on this device.
+struct AccuracyOverview: Equatable {
+    let sampleCount: Int
+    /// "12 checks: typically 6 mm (0.3 %), worst 21 mm", or "No laser checks yet".
+    let summary: String
+    /// "Scans read about 4 mm short on average", or "".
+    let bias: String
+
+    static func make(properties: [Property], unit: LengthUnit) -> AccuracyOverview {
+        let report = AccuracyReport(rooms: properties.flatMap(\.allRooms))
+        return AccuracyOverview(sampleCount: report.sampleCount, summary: report.summary(unit: unit),
+                                bias: report.biasDescription(unit: unit))
+    }
+
+    /// The question and the answer under the row.
+    static let footerTitle = "How accurate is my phone?"
+    static let footerText = "The scan reads every wall and opening with LiDAR, typically within 1\u{2013}2 %. Each time you check a dimension with a laser, tape or drawing, the app compares it with what the scan read, and this row adds up all your checks on this device. The more rooms you check, the better it describes your phone. Until then, treat scanned numbers as estimates and check anything joinery will be cut to."
 }

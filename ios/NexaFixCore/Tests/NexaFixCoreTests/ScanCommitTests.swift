@@ -114,6 +114,12 @@ final class ScanCommitTests: XCTestCase {
         XCTAssertEqual(second.property.floors.map(\.level), [23, 24])
     }
 
+    func testLevelName() {
+        XCTAssertEqual(ScanCommit.levelName(23), "Level 23")
+        XCTAssertEqual(ScanCommit.levelName(0), "Level 0")
+        XCTAssertEqual(ScanCommit.levelName(-1), "Level -1")
+    }
+
     func testGroundAndBasementLevels() {
         let ground = ScanCommit.apply(rooms: [room(1, "A")], story: 0, scannedAt: day1, to: empty())
         let basement = ScanCommit.apply(rooms: [room(2, "B")], story: -1, scannedAt: day1, to: ground.property)

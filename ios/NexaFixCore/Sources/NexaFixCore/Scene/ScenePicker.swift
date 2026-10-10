@@ -106,7 +106,7 @@ public struct PickResult: Hashable, Sendable {
 public enum ScenePicker {
     /// How close to a surface a snap point may be and still count as visible, metres. Snap points sit on
     /// surfaces, so a hit this close to one is the surface it belongs to.
-    static let visibilityMargin = 0.02
+    public static let visibilityMargin = 0.02
 
     /// Casts `ray` into `scene` and returns the surface it hits first, or a corner it should snap to.
     ///
@@ -138,11 +138,7 @@ public enum ScenePicker {
         let tanAngle = tan(angle * Double.pi / 180)
 
         func visible(_ target: Point3) -> Bool {
-            let v = target - o
-            let distance = v.length
-            guard distance > visibilityMargin else { return true }
-            return firstHit(origin: o, direction: v / distance, in: scene,
-                            maxDistance: distance - visibilityMargin, mode: mode, cull: cullBackFaces) == nil
+            isVisible(target, from: o, in: scene, mode: mode, cullBackFaces: cullBackFaces)
         }
 
         // 1. A corner near the ray.
@@ -194,6 +190,18 @@ public enum ScenePicker {
         PickResult(point: point, surfacePoint: surface?.point,
                    normal: surface?.normal ?? Point3(-d.x, -d.y, -d.z), meshID: surface?.meshID,
                    distance: surface?.t ?? distance, snapped: snapped, snappedEdge: edge, isMeasurable: measurable)
+    }
+
+    /// Can an eye at `eye` see `point`? False when a surface lies between them (further than `margin` metres
+    /// before the point, so a point that sits on a surface counts as seeing that surface). Faces that point away
+    /// from the eye do not block, as in `pick`. Used to hide labels that are behind a wall.
+    public static func isVisible(_ point: Point3, from eye: Point3, in scene: RoomScene, mode: PickMode = .opaque,
+                                 margin: Double = visibilityMargin, cullBackFaces: Bool = true) -> Bool {
+        let v = point - eye
+        let distance = v.length
+        guard distance.isFinite, distance > margin else { return true }
+        return firstHit(origin: eye, direction: v / distance, in: scene, maxDistance: distance - margin,
+                        mode: mode, cull: cullBackFaces) == nil
     }
 
     // MARK: Edges
@@ -248,7 +256,9 @@ public enum ScenePicker {
         var best: SurfaceHit?
         for mesh in scene.meshes {
             if mode == .seeThrough && !mesh.isMeasurable { continue }
-            guard !mesh.buffer.isEmpty, rayMeetsBox(o, d, mesh.boundsMin, mesh.boundsMax, maxDistance) else { continue }
+            guard !mesh.buffer.isEmpty,
+                  let entry = rayBoxEntry(o, d, mesh.boundsMin, mesh.boundsMax, maxDistance) else { continue }
+            if let current = best, entry > current.t + 1e-9 { continue }
             let buffer = mesh.buffer
             for tri in 0..<buffer.triangleCount {
                 guard let (v0, v1, v2) = buffer.triangle(tri) else { continue }
@@ -303,25 +313,30 @@ public enum ScenePicker {
         return (t, n)
     }
 
-    /// Slab test of a unit ray against a box (padded a little, so a flat mesh still has a box).
-    static func rayMeetsBox(_ o: Point3, _ d: Point3, _ lo: Point3, _ hi: Point3, _ maxDistance: Double) -> Bool {
+    /// Slab test of a unit ray against a box (padded a little, so a flat mesh still has a box). Returns the
+    /// distance at which the ray enters the box (0 when it starts inside), or nil when it misses within
+    /// `maxDistance`.
+    static func rayBoxEntry(_ o: Point3, _ d: Point3, _ lo: Point3, _ hi: Point3, _ maxDistance: Double) -> Double? {
         let pad = 1e-5
         var tMin = 0.0
         var tMax = maxDistance
-        let origin = [o.x, o.y, o.z], dir = [d.x, d.y, d.z]
-        let low = [lo.x - pad, lo.y - pad, lo.z - pad], high = [hi.x + pad, hi.y + pad, hi.z + pad]
-        for axis in 0..<3 {
-            if abs(dir[axis]) < 1e-15 {
-                if origin[axis] < low[axis] || origin[axis] > high[axis] { return false }
-            } else {
-                let t1 = (low[axis] - origin[axis]) / dir[axis]
-                let t2 = (high[axis] - origin[axis]) / dir[axis]
-                tMin = Swift.max(tMin, Swift.min(t1, t2))
-                tMax = Swift.min(tMax, Swift.max(t1, t2))
-                if tMin > tMax { return false }
+        func slab(_ origin: Double, _ direction: Double, _ low: Double, _ high: Double) -> Bool {
+            if abs(direction) < 1e-15 {
+                return origin >= low - pad && origin <= high + pad
             }
+            let t1 = (low - pad - origin) / direction
+            let t2 = (high + pad - origin) / direction
+            tMin = Swift.max(tMin, Swift.min(t1, t2))
+            tMax = Swift.min(tMax, Swift.max(t1, t2))
+            return tMin <= tMax
         }
-        return true
+        guard slab(o.x, d.x, lo.x, hi.x), slab(o.y, d.y, lo.y, hi.y), slab(o.z, d.z, lo.z, hi.z) else { return nil }
+        return tMin
+    }
+
+    /// Does the ray meet the box within `maxDistance`?
+    static func rayMeetsBox(_ o: Point3, _ d: Point3, _ lo: Point3, _ hi: Point3, _ maxDistance: Double) -> Bool {
+        rayBoxEntry(o, d, lo, hi, maxDistance) != nil
     }
 
     /// The point on segment `a`-`b` that comes closest to the ray, with its distance along the (unit) ray and
@@ -425,5 +440,53 @@ public enum MeasurementRoomLocator {
             best = Swift.min(best, p.distance(to: a + ab * t))
         }
         return best
+    }
+}
+
+// MARK: - Placing a tape point
+
+/// What a tap in measure mode should do with the pick under it.
+public enum TapePlacement: Hashable, Sendable {
+    /// Put a point here. `snapLabel` names the corner or edge it jumped to ("Floor corner A"), nil for a plain
+    /// surface point.
+    case place(Point3, snapLabel: String?)
+    /// The tap landed on a surface the model made up (the outside of a wall, a frame): say so, place nothing.
+    case notScanned
+    /// The tap landed on nothing.
+    case missed
+}
+
+extension PickResult {
+    /// A snapped corner or edge always comes from the scan, so it is always allowed; a raw surface point only if
+    /// the surface is scan-derived.
+    public var placement: TapePlacement {
+        if isSnapped { return .place(point, snapLabel: snapLabel) }
+        return isMeasurable ? .place(point, snapLabel: nil) : .notScanned
+    }
+}
+
+extension Optional where Wrapped == PickResult {
+    /// `.missed` for no pick at all, else the pick's placement.
+    public var placement: TapePlacement {
+        map { $0.placement } ?? .missed
+    }
+}
+
+// MARK: - Naming a tape measurement
+
+public enum MeasurementNaming {
+    /// "Measurement 3" for the third measurement: the count plus one, moving on past any number already used.
+    public static func defaultLabel(existing labels: [String]) -> String {
+        let used = Set(labels.map { $0.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() })
+        var n = labels.count + 1
+        while used.contains("measurement \(n)") { n += 1 }
+        return "Measurement \(n)"
+    }
+
+    /// What the person typed, trimmed and shortened to 60 characters; the default when it is empty.
+    public static func label(typed: String, existing labels: [String]) -> String {
+        let trimmed = typed.trimmingCharacters(in: .whitespacesAndNewlines)
+        if trimmed.isEmpty { return defaultLabel(existing: labels) }
+        return String(trimmed.prefix(60))
     }
 }

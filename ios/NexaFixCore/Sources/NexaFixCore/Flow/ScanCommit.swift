@@ -127,7 +127,7 @@ public enum ScanCommit {
 
         let floorID = makeID()
         var kept = property.floors.filter { !($0.rooms.isEmpty && $0.assets == FloorAssets()) }
-        let floorName = uniqueFloorName(base: "Level \(story)", existing: kept.map(\.name))
+        let floorName = uniqueFloorName(base: levelName(story), existing: kept.map(\.name))
 
         var assets: [PlannedAsset] = []
         var assetRecord = FloorAssets()
@@ -177,6 +177,10 @@ public enum ScanCommit {
                           floorID: floorID, addedRoomIDs: placed.map(\.id), skippedRoomIDs: skipped,
                           renames: renames)
     }
+
+    /// "Level 23", "Level 0" for the ground floor, "Level -1" for a basement: the name a scan of this
+    /// story starts with, before `uniqueFloorName` numbers it.
+    public static func levelName(_ story: Int) -> String { "Level \(story)" }
 
     /// `base` if no floor has that name, otherwise "base (2)", "base (3)" ... Names compare ignoring case
     /// and extra spaces.

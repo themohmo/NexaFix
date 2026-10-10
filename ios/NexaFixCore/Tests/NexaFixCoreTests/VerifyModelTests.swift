@@ -233,6 +233,38 @@ final class VerifyModelTests: XCTestCase {
         XCTAssertFalse(m.canSave)
     }
 
+    func testAThousandsCommaIsExplainedNotSilentlyRead() {
+        // "3,245" in millimetres: a comma is a decimal point to the parser, so this is 3.245 mm.
+        let room = living()   // 6.2 m
+        let id = room.walls[0].id
+        let m = model(room, .wallLength(id), text: "3,245")
+        XCTAssertEqual(m.parsedValue ?? 0, 0.003245, accuracy: 1e-9)
+        XCTAssertEqual(m.check, .farFromScan(
+            "That is far from the scan (6\(nb)200\(nb)mm). Check the number or unit. A comma is read as a decimal point."))
+        XCTAssertTrue(m.needsConfirmation, "nothing is saved without the person confirming")
+        XCTAssertFalse(m.canSave)
+
+        // With a unit after it, the same note.
+        XCTAssertTrue(model(room, .wallLength(id), text: "3,245 mm").message?.hasSuffix("A comma is read as a decimal point.") == true)
+        // Two commas are not a number at all, and the unreadable message already shows how to write one.
+        if case .unreadable = model(room, .wallLength(id), text: "1,234,567").check {} else { XCTFail("not a length") }
+
+        // An ordinary decimal comma gets no note, in range or out of it.
+        XCTAssertEqual(model(room, .wallLength(id), metres, text: "6,2").check, .ok)
+        XCTAssertEqual(model(room, .wallLength(id), text: "30,5").message,
+                       "That is far from the scan (6\(nb)200\(nb)mm). Check the number or unit.")
+        // A decimal point after the groups is not a thousands comma.
+        XCTAssertFalse(VerifyModel.looksLikeThousandsComma("3,245.5"))
+        XCTAssertFalse(VerifyModel.looksLikeThousandsComma("3245"))
+        XCTAssertFalse(VerifyModel.looksLikeThousandsComma("3,24"))
+        XCTAssertFalse(VerifyModel.looksLikeThousandsComma("3,2456"))
+        XCTAssertFalse(VerifyModel.looksLikeThousandsComma("1234,567"))
+        XCTAssertFalse(VerifyModel.looksLikeThousandsComma(",245"))
+        XCTAssertFalse(VerifyModel.looksLikeThousandsComma("3,"))
+        XCTAssertTrue(VerifyModel.looksLikeThousandsComma("3,245"))
+        XCTAssertTrue(VerifyModel.looksLikeThousandsComma("13,245m"))
+    }
+
     func testTypingAgainWithdrawsTheConfirmation() {
         let room = living()
         var m = model(room, .wallLength(room.walls[0].id), text: "20000")
