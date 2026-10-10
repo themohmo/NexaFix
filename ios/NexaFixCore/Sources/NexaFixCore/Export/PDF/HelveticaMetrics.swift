@@ -41,17 +41,33 @@ public enum WinAnsiEncoding {
         }
     }
 
+    /// The characters of `text` that `encode` has to replace with "?" because the encoding has no
+    /// glyph for them (Arabic, Cyrillic, CJK, most emoji ...), in order of appearance. The
+    /// zero-width format characters `encode` drops are not reported, since nothing visible is lost.
+    public static func unencodableCharacters(in text: String) -> [Character] {
+        var lost: [Character] = []
+        for character in text.precomposedStringWithCanonicalMapping {
+            let scalars = character.unicodeScalars
+            if scalars.allSatisfy({ isDropped($0) }) { continue }
+            if scalars.contains(where: { !isDropped($0) && byte(for: $0) == nil }) { lost.append(character) }
+        }
+        return lost
+    }
+
+    private static func isDropped(_ scalar: Unicode.Scalar) -> Bool {
+        switch scalar.value {
+        case 0x200B...0x200F, 0x2060, 0xFEFF, 0xFE00...0xFE0F: return true
+        default: return false
+        }
+    }
+
     /// Encode a string. Unsupported characters become "?"; zero-width format characters are dropped.
     public static func encode(_ text: String) -> [UInt8] {
         var bytes: [UInt8] = []
         bytes.reserveCapacity(text.utf8.count)
         for scalar in text.precomposedStringWithCanonicalMapping.unicodeScalars {
-            switch scalar.value {
-            case 0x200B...0x200F, 0x2060, 0xFEFF, 0xFE00...0xFE0F:
-                continue
-            default:
-                bytes.append(byte(for: scalar) ?? replacementByte)
-            }
+            if isDropped(scalar) { continue }
+            bytes.append(byte(for: scalar) ?? replacementByte)
         }
         return bytes
     }
@@ -86,19 +102,28 @@ public enum HelveticaMetrics {
 
     /// `text` shortened with "..." so it is no wider than `maxWidth` points. Returns `text`
     /// unchanged when it already fits, and "" when even the ellipsis does not fit.
+    ///
+    /// Linear in the length of `text`: glyph widths are added up once and the longest prefix that
+    /// still leaves room for the ellipsis is found on the running total, so a very long name costs
+    /// no more than a short one.
     public static func truncated(_ text: String, toWidth maxWidth: Double, bold: Bool = false,
                                  fontSize: Double) -> String {
         if width(of: text, bold: bold, fontSize: fontSize) <= maxWidth { return text }
         let ellipsis = "..."
-        if width(of: ellipsis, bold: bold, fontSize: fontSize) > maxWidth { return "" }
-        var chars = Array(text)
-        while !chars.isEmpty {
-            chars.removeLast()
-            while let last = chars.last, last == " " { chars.removeLast() }
-            let candidate = String(chars) + ellipsis
-            if width(of: candidate, bold: bold, fontSize: fontSize) <= maxWidth { return candidate }
+        let ellipsisWidth = width(of: ellipsis, bold: bold, fontSize: fontSize)
+        if ellipsisWidth > maxWidth { return "" }
+        let budget = maxWidth - ellipsisWidth
+        var kept: [Character] = []
+        var used = 0.0
+        for character in text {
+            let w = width(of: String(character), bold: bold, fontSize: fontSize)
+            if used + w > budget { break }
+            used += w
+            kept.append(character)
         }
-        return ellipsis
+        // A space just before the ellipsis only looks like a gap.
+        while let last = kept.last, last == " " { kept.removeLast() }
+        return String(kept) + ellipsis
     }
 
     /// Greedy word wrap into lines no wider than `maxWidth` points. A single word wider than the

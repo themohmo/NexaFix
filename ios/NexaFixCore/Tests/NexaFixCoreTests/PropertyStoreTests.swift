@@ -916,6 +916,437 @@ final class PropertyStoreTests: XCTestCase {
         XCTAssertEqual(rows.first?.roomCount, 120)
     }
 
+    // MARK: Hostile bytes
+    //
+    // Foundation's JSONDecoder traps (an uncatchable fatal error, not a thrown error) on some malformed
+    // OBJECT KEYS: invalid UTF-8, a raw control character, a bad escape, a lone surrogate escape. The same
+    // damage inside a string VALUE is thrown normally. A property.json damaged that way must be handled
+    // like any other damage (recovered from the backup), because `list()` runs at every app launch.
+
+    /// `data` with the quoted key `"<key>"` replaced by `"<prefix><bytes><suffix>"`, where the pieces are raw bytes.
+    private func replacingKey(_ key: String, in data: Data, with replacement: [UInt8]) throws -> Data {
+        let needle = Data(("\"" + key + "\"").utf8)
+        let range = try XCTUnwrap(data.range(of: needle), "no key \(key) in the file")
+        var out = Data(data[data.startIndex..<range.lowerBound])
+        out.append(contentsOf: [0x22] + replacement + [0x22])
+        out.append(data[range.upperBound...])
+        return out
+    }
+
+    /// Byte strings that used to kill the process when they sat inside an object key.
+    private static let hostileKeyBytes: [(name: String, bytes: [UInt8])] = [
+        ("invalid UTF-8 byte", Array("sch".utf8) + [0xFF] + Array("maVersion".utf8)),
+        ("lone continuation byte", [0x80]),
+        ("overlong encoding", [0xC0, 0xAF]),
+        ("UTF-8 encoded surrogate", [0xED, 0xA0, 0x80]),
+        ("raw tab", Array("schema".utf8) + [0x09] + Array("Version".utf8)),
+        ("raw line feed", Array("schema".utf8) + [0x0A] + Array("Version".utf8)),
+        ("raw NUL", Array("schema".utf8) + [0x00] + Array("Version".utf8)),
+        ("raw 0x11", Array("schema".utf8) + [0x11] + Array("Version".utf8)),
+        ("bad escape", Array("schema".utf8) + [0x5C] + Array("Version".utf8)),
+        ("short unicode escape", Array("schema".utf8) + Array("\\u12".utf8)),
+        ("lone high surrogate escape", Array("\\ud800".utf8)),
+        ("lone low surrogate escape", Array("\\udc00".utf8)),
+    ]
+
+    func testAnObjectKeyWithInvalidBytesIsDamageNotACrash() throws {
+        var p = simple("v1")
+        try store.save(p)
+        p.name = "v2"
+        try store.save(p)
+        let good = try Data(contentsOf: file(p.id))
+
+        for (name, bytes) in Self.hostileKeyBytes {
+            for key in ["schemaVersion", "floors", "name"] {            // envelope level, deep, and a leaf field
+                let damaged = try replacingKey(key, in: good, with: bytes)
+                try damaged.write(to: file(p.id))
+                let context = "\(name) in key \(key)"
+
+                XCTAssertThrowsError(try PropertyStore.decode(damaged), context)
+                let loaded = try store.loadWithStatus(id: p.id)
+                XCTAssertTrue(loaded.recoveredFromBackup, context)
+                XCTAssertEqual(loaded.property.name, "v1", context)
+                XCTAssertEqual(try store.list().first?.health, .recoveredFromBackup, context)
+
+                // Saving over it sets the damaged bytes aside and writes a good file.
+                var next = loaded.property
+                next.name = "v3"
+                try store.save(next)
+                XCTAssertEqual(try Data(contentsOf: file(p.id, "property.json.corrupt")), damaged, context)
+                XCTAssertEqual(try store.loadWithStatus(id: p.id).property.name, "v3", context)
+                XCTAssertFalse(try store.loadWithStatus(id: p.id).recoveredFromBackup, context)
+
+                // Reset for the next round: a good primary and a good v1 backup.
+                try good.write(to: file(p.id))
+                try FileManager.default.removeItem(at: file(p.id, "property.json.corrupt"))
+                try PropertyStore.encode(simple("v1", id: p.id)).write(to: file(p.id, "property.json.bak"))
+            }
+        }
+    }
+
+    func testAnAsciiOnlyLoneSurrogateKeyIsDamageToo() throws {
+        var p = simple("v1")
+        try store.save(p)
+        p.name = "v2"
+        try store.save(p)
+        try Data("{\"schemaVersion\":1,\"\\ud800\":1,\"property\":{}}".utf8).write(to: file(p.id))
+        XCTAssertEqual(try store.loadWithStatus(id: p.id).property.name, "v1")
+        XCTAssertEqual(try store.list().map(\.health), [.recoveredFromBackup])
+    }
+
+    func testHostileKeyWithoutABackupIsAnErrorNotACrash() throws {
+        let p = simple()
+        try store.save(p)
+        let good = try Data(contentsOf: file(p.id))
+        try replacingKey("property", in: good, with: [0xFF]).write(to: file(p.id))
+        XCTAssertThrowsError(try store.load(id: p.id)) { error in
+            guard case PropertyStoreError.corrupt = error else { return XCTFail("\(error)") }
+        }
+        let row = try XCTUnwrap(try store.list().first)
+        XCTAssertEqual(row.health, .unreadable)
+        // And a save over it still works (the damage is kept aside).
+        try store.save(p)
+        XCTAssertEqual(try store.load(id: p.id), p)
+    }
+
+    /// Every key of a real file, with each hostile byte put at the start, the middle and the end of it.
+    func testEveryObjectKeyOfARealFileSurvivesEveryHostileByte() throws {
+        let good = try PropertyStore.encode(simple("Villa"))
+        // Keys are the quoted strings directly followed by a colon (the encoder writes `"key" : value`).
+        var keyRanges: [Range<Int>] = []                      // byte offsets of the characters between the quotes
+        let bytes = Array(good)
+        var i = 0
+        while i < bytes.count {
+            if bytes[i] == 0x22 {
+                var j = i + 1
+                while j < bytes.count, bytes[j] != 0x22 { j += bytes[j] == 0x5C ? 2 : 1 }
+                var k = j + 1
+                while k < bytes.count, bytes[k] == 0x20 { k += 1 }
+                if k < bytes.count, bytes[k] == 0x3A, j > i + 1 { keyRanges.append((i + 1)..<j) }
+                i = j + 1
+            } else {
+                i += 1
+            }
+        }
+        XCTAssertGreaterThan(keyRanges.count, 80, "a one-room property already has dozens of keys")
+
+        var attempts = 0
+        for range in keyRanges {
+            for position in [range.lowerBound, (range.lowerBound + range.upperBound) / 2, range.upperBound - 1] {
+                for hostile: UInt8 in [0x00, 0x09, 0x0A, 0x11, 0x5C, 0x80, 0xC0, 0xFF] {
+                    var mutated = bytes
+                    mutated[position] = hostile
+                    attempts += 1
+                    // Reaching the next line is the assertion: a trap would end the test process. Most of
+                    // these must throw; the few that happen to stay valid (a backslash before a valid
+                    // escape character) may decode.
+                    _ = try? PropertyStore.decode(Data(mutated))
+                }
+            }
+        }
+        XCTAssertGreaterThan(attempts, 2_000)
+    }
+
+    /// Seeded random damage anywhere in the file: never a crash, and whenever the result decodes it is a
+    /// property with the right id (the store would otherwise treat it as damage).
+    func testRandomByteDamageNeverCrashesTheDecoder() throws {
+        let good = Array(try PropertyStore.encode(simple("Villa")))
+        var rng = DataTestsSplitMix64(seed: 0x5EED_0F_DA7A)
+        let interesting: [UInt8] = [0x00, 0x09, 0x0A, 0x0D, 0x11, 0x22, 0x5C, 0x7B, 0x7D, 0x80, 0xC0, 0xED, 0xFF]
+        var decoded = 0, rejected = 0
+        for _ in 0..<1_500 {
+            var mutated = good
+            for _ in 0..<(1 + Int(rng.next() % 3)) {
+                let position = Int(rng.next() % UInt64(mutated.count))
+                mutated[position] = rng.next() % 2 == 0 ? interesting[Int(rng.next() % UInt64(interesting.count))] : UInt8(truncatingIfNeeded: rng.next())
+            }
+            if (try? PropertyStore.decode(Data(mutated))) != nil { decoded += 1 } else { rejected += 1 }
+        }
+        XCTAssertGreaterThan(rejected, 100, "the sweep should actually break files")
+        XCTAssertGreaterThan(decoded, 10, "and some damage lands in values that stay valid")
+    }
+
+    func testTruncationAtEveryByteOfTheHeaderIsAnErrorNotACrash() throws {
+        let good = try PropertyStore.encode(simple())
+        for length in 0..<min(good.count, 400) {
+            XCTAssertThrowsError(try PropertyStore.decode(good.prefix(length)), "prefix of \(length) bytes")
+        }
+    }
+
+    func testDeeplyNestedAndHugeGarbageIsRejected() throws {
+        XCTAssertThrowsError(try PropertyStore.decode(Data(String(repeating: "[", count: 1_000_000).utf8)))
+        XCTAssertThrowsError(try PropertyStore.decode(Data(String(repeating: "{\"a\":", count: 100_000).utf8)))
+        XCTAssertThrowsError(try PropertyStore.decode(Data(repeating: 0xFF, count: 5_000_000)))
+        XCTAssertThrowsError(try PropertyStore.decode(Data([0xFE, 0xFF, 0x00, 0x7B])))     // UTF-16 BOM
+    }
+
+    /// The guard must not turn files that always loaded into "damage": a byte order mark, other line ends and
+    /// UTF-16 are what other tools (Notepad, a sync client) leave behind after a hand edit.
+    func testHarmlessEncodingsAndWhitespaceStillLoad() throws {
+        let p = simple("Villa")
+        let good = try PropertyStore.encode(p)
+        let text = String(decoding: good, as: UTF8.self)
+        let variants: [(String, Data)] = [
+            ("UTF-8 BOM", Data([0xEF, 0xBB, 0xBF]) + good),
+            ("CRLF", Data(text.replacingOccurrences(of: "\n", with: "\r\n").utf8)),
+            ("leading blank lines", Data("\n\n  ".utf8) + good),
+            ("trailing blank lines", good + Data("\n\n\t ".utf8)),
+            ("UTF-16 with BOM", Data([0xFF, 0xFE]) + (text.data(using: .utf16LittleEndian) ?? Data())),
+        ]
+        for (name, data) in variants {
+            XCTAssertEqual(try PropertyStore.decode(data), p, name)
+            // And through the store, as the primary file.
+            try store.save(p)
+            try data.write(to: file(p.id))
+            let loaded = try store.loadWithStatus(id: p.id)
+            XCTAssertFalse(loaded.recoveredFromBackup, name)
+            XCTAssertEqual(loaded.property, p, name)
+        }
+    }
+
+    func testAbsurdNumbersInTheEnvelopeAreRejectedNotTrapped() throws {
+        for text in ["{\"schemaVersion\": 99999999999999999999, \"property\": {}}", "{\"schemaVersion\": -1, \"property\": {}}",
+                     "{\"schemaVersion\": 1.5, \"property\": {}}", "{\"schemaVersion\": 1e999, \"property\": {}}",
+                     "{\"schemaVersion\": 1, \"property\": {\"id\": 1e99999}}", "{\"schemaVersion\": 1, \"property\": null}",
+                     "{\"schemaVersion\": 1, \"schemaVersion\": 2, \"property\": {}}", "{\"schemaVersion\": 1,}",
+                     "{\"schemaVersion\": NaN}", "{\"schemaVersion\": 1} trailing"] {
+            XCTAssertThrowsError(try PropertyStore.decode(Data(text.utf8)), text)
+        }
+    }
+
+    // MARK: Path tricks
+
+    /// A character that extends the one before it, so "/" + mark is ONE Swift Character that a
+    /// `split(separator: "/")` does not see as a separator, while the file system still does.
+    private static let extendingMarks: [String] = ["\u{0301}", "\u{0300}", "\u{200D}", "\u{200C}", "\u{FE0F}", "\u{20E3}", "\u{1F3FD}"]
+
+    func testTraversalHiddenBehindACombiningMarkIsRejected() throws {
+        let p = simple()
+        try store.save(p)
+        for mark in Self.extendingMarks {
+            for path in ["../\(mark)x", "a/../\(mark)x", "\(mark)/../\(mark)x", "/\(mark)etc/passwd", "../\(mark)../\(mark)x"] {
+                XCTAssertThrowsError(try store.resolve(relativePath: path, in: p.id), "\(path.debugDescription)") { error in
+                    XCTAssertEqual(error as? PropertyStoreError, .unsafePath(path))
+                }
+                XCTAssertThrowsError(try store.writeAsset(Data("PWNED".utf8), relativePath: path, for: p.id), "\(path.debugDescription)")
+                XCTAssertThrowsError(try store.readAsset(relativePath: path, for: p.id), "\(path.debugDescription)")
+            }
+        }
+        // Nothing was created next to (or above) the property folder.
+        let names = try FileManager.default.contentsOfDirectory(atPath: root.path)
+        XCTAssertEqual(names, [p.id.uuidString])
+        let parent = try FileManager.default.contentsOfDirectory(atPath: root.deletingLastPathComponent().path)
+        XCTAssertFalse(parent.contains { $0.hasPrefix("\u{0301}") || $0.contains("escape") })
+    }
+
+    func testAMarkAfterASlashInsideAPlainPathIsJustAFileName() throws {
+        let p = simple()
+        try store.save(p)
+        let url = try store.resolve(relativePath: "rooms/\u{0301}capture.json", in: p.id)
+        // (compared by scalars: String.hasPrefix works on Characters and "/" + mark is one of them)
+        XCTAssertTrue(url.path.unicodeScalars.starts(with: (store.folderURL(for: p.id).standardizedFileURL.path + "/rooms/").unicodeScalars))
+        // Right after the folder prefix too: "<folder>/" + mark is one Character, so a Character-based prefix test fails here.
+        let top = try store.resolve(relativePath: "\u{0301}top.json", in: p.id)
+        XCTAssertTrue(top.path.unicodeScalars.starts(with: (store.folderURL(for: p.id).standardizedFileURL.path + "/\u{0301}top.json").unicodeScalars))
+        try store.writeAsset(Data("top".utf8), relativePath: "\u{0301}top.json", for: p.id)
+        XCTAssertEqual(try store.readAsset(relativePath: "\u{0301}top.json", for: p.id), Data("top".utf8))
+        try store.writeAsset(Data("ok".utf8), relativePath: "rooms/\u{200D}capture.json", for: p.id)
+        XCTAssertEqual(try store.readAsset(relativePath: "rooms/\u{200D}capture.json", for: p.id), Data("ok".utf8))
+        // A name that merely contains dots next to a mark is still not a traversal component.
+        XCTAssertNoThrow(try store.resolve(relativePath: "..\u{0301}x", in: p.id))
+    }
+
+    func testTheStoresFilesCannotBeTurnedIntoFoldersByAssetPaths() throws {
+        let p = simple()
+        try store.save(p)
+        // (the last one hides a zero width joiner in the name, which some file systems ignore when comparing names)
+        for path in ["property.json/x.bin", "property.json.bak/x.bin", "PROPERTY.JSON.CORRUPT/a/b.bin", "property.json//x", "Property.Json/",
+                     "property\u{200D}.json/x.bin"] {
+            XCTAssertThrowsError(try store.writeAsset(Data("x".utf8), relativePath: path, for: p.id), path) { error in
+                XCTAssertEqual(error as? PropertyStoreError, .reservedPath(path))
+            }
+        }
+        XCTAssertEqual(try listing(p.id), ["property.json"], "no folder took the place of a store file")
+        // Saves keep working, twice (the second one writes the backup).
+        var next = p
+        next.name = "again"
+        try store.save(next)
+        next.name = "and again"
+        try store.save(next)
+        XCTAssertEqual(try store.load(id: p.id).name, "and again")
+        // Deeper names that merely contain the reserved words are ordinary assets.
+        try store.writeAsset(Data("x".utf8), relativePath: "sub/property.json/x.bin", for: p.id)
+        try store.writeAsset(Data("x".utf8), relativePath: "property.json.bak.old", for: p.id)
+        try store.writeAsset(Data("x".utf8), relativePath: "my-property.json/x.bin", for: p.id)
+    }
+
+    // MARK: Recovery stays visible
+
+    func testTheSetAsideFileKeepsTheWarningAliveAfterTheNextSave() throws {
+        var p = simple("v1")
+        try store.save(p)
+        p.name = "v2"
+        try store.save(p)
+        XCTAssertFalse(try XCTUnwrap(try store.list().first).damagedFileKept)
+        XCTAssertNil(store.damagedFileURL(for: p.id))
+
+        try garbage(p.id)
+        let damaged = try Data(contentsOf: file(p.id))
+        XCTAssertEqual(try XCTUnwrap(try store.list().first).health, .recoveredFromBackup)
+
+        var recovered = try store.load(id: p.id)
+        recovered.name = "v3"
+        try store.save(recovered)
+
+        // Healthy now, but the list still says that a damaged file was kept and the app can show it.
+        let row = try XCTUnwrap(try store.list().first)
+        XCTAssertEqual(row.health, .ok)
+        XCTAssertTrue(row.damagedFileKept)
+        let kept = try XCTUnwrap(store.damagedFileURL(for: p.id))
+        XCTAssertEqual(try Data(contentsOf: kept), damaged)
+
+        // Acknowledging removes the marker, once.
+        XCTAssertTrue(try store.clearDamagedFile(id: p.id))
+        XCTAssertFalse(try XCTUnwrap(try store.list().first).damagedFileKept)
+        XCTAssertNil(store.damagedFileURL(for: p.id))
+        XCTAssertFalse(try store.clearDamagedFile(id: p.id))
+        XCTAssertFalse(try store.clearDamagedFile(id: UUID()))
+        XCTAssertEqual(try store.load(id: p.id).name, "v3", "the property itself is untouched")
+    }
+
+    func testRecoveryDocumentsThatTheBareLoadDropsTheStatus() throws {
+        // `load(id:)` is the convenience form; the status lives on `loadWithStatus`. This pins the
+        // difference so nobody assumes `load` tells you about a recovery.
+        var p = simple("v1")
+        try store.save(p)
+        p.name = "v2"
+        try store.save(p)
+        try garbage(p.id)
+        XCTAssertEqual(try store.load(id: p.id).name, "v1")
+        XCTAssertTrue(try store.loadWithStatus(id: p.id).recoveredFromBackup)
+    }
+
+    // MARK: List cost
+
+    func testListDecodesAPropertyOnlyWhenItsFilesChanged() throws {
+        var a = simple("A"), b = simple("B"), c = simple("C")
+        for p in [a, b, c] { try store.save(p) }
+        XCTAssertEqual(store.summaryDecodeCount, 0)
+
+        let first = try store.list()
+        XCTAssertEqual(first.count, 3)
+        XCTAssertEqual(store.summaryDecodeCount, 3)
+        XCTAssertEqual(try store.list(), first)
+        XCTAssertEqual(try store.list(), first)
+        XCTAssertEqual(store.summaryDecodeCount, 3, "an unchanged store is not decoded again")
+
+        // One save: one decode.
+        a.name = "A2"
+        try store.save(a)
+        let second = try store.list()
+        XCTAssertEqual(store.summaryDecodeCount, 4)
+        XCTAssertEqual(Set(second.map(\.name)), ["A2", "B", "C"])
+
+        // A change made behind the store's back, same length of file, is still noticed.
+        b.name = "Z"                               // "B" -> "Z": the file keeps its size
+        let before = try Data(contentsOf: file(b.id))
+        try PropertyStore.encode(b).write(to: file(b.id))
+        XCTAssertEqual(try Data(contentsOf: file(b.id)).count, before.count)
+        XCTAssertEqual(Set(try store.list().map(\.name)), ["A2", "Z", "C"])
+        XCTAssertEqual(store.summaryDecodeCount, 5)
+
+        // Damage and repair are noticed too, and a damaged file is never served from the cache.
+        try garbage(c.id)
+        XCTAssertEqual(try store.list().first { $0.id == c.id }?.health, .unreadable)
+        try PropertyStore.encode(c).write(to: file(c.id))
+        XCTAssertEqual(try store.list().first { $0.id == c.id }?.health, .ok)
+        c.name = "C2"
+        try PropertyStore.encode(c).write(to: file(c.id))
+        XCTAssertEqual(try store.list().first { $0.id == c.id }?.name, "C2")
+
+        // Deleting drops the row, and a recreated property with the same id is read afresh.
+        XCTAssertTrue(try store.delete(id: a.id))
+        XCTAssertEqual(Set(try store.list().map(\.id)), [b.id, c.id])
+        a.name = "Reborn"
+        try store.save(a)
+        XCTAssertEqual(try store.list().first { $0.id == a.id }?.name, "Reborn")
+    }
+
+    func testEveryByteOfAFileCountsForTheCacheIncludingTheLastOnes() throws {
+        let p = simple("Tail")
+        try store.save(p)
+        let good = try Data(contentsOf: file(p.id))
+        // Same length, same meaning, different only in the final bytes (the part a word-at-a-time hash handles
+        // separately), and in the first byte.
+        var seen = store.summaryDecodeCount
+        func bump(_ data: Data, _ label: String) throws {
+            try data.write(to: file(p.id))
+            _ = try store.list()
+            XCTAssertEqual(store.summaryDecodeCount, seen + 1, label)
+            seen += 1
+            _ = try store.list()
+            XCTAssertEqual(store.summaryDecodeCount, seen, "\(label): second list is cached")
+        }
+        for tail in 1...9 {
+            try bump(good + Data(repeating: 0x20, count: tail), "\(tail) spaces")
+            try bump(good + Data(repeating: 0x0A, count: tail), "\(tail) line feeds")
+        }
+        try bump(Data(" ".utf8) + good, "leading space")
+        try bump(Data("\t".utf8) + good, "leading tab")
+        XCTAssertEqual(try store.list().first?.name, "Tail")
+    }
+
+    func testCachedRecoveredEntriesFollowBothFiles() throws {
+        var p = simple("v1")
+        try store.save(p)
+        p.name = "v2"
+        try store.save(p)
+        try garbage(p.id)
+        XCTAssertEqual(try store.list().map(\.name), ["v1"])
+        XCTAssertEqual(try store.list().map(\.name), ["v1"])
+        let decodes = store.summaryDecodeCount
+        _ = try store.list()
+        XCTAssertEqual(store.summaryDecodeCount, decodes, "a recovered entry is served from the cache while both files are unchanged")
+
+        // The backup changes (somebody restores another copy): the row follows it.
+        try PropertyStore.encode(simple("restored", id: p.id)).write(to: file(p.id, "property.json.bak"))
+        XCTAssertEqual(try store.list().map(\.name), ["restored"])
+        // The primary is repaired: the row follows the primary.
+        try PropertyStore.encode(simple("fixed", id: p.id)).write(to: file(p.id))
+        let row = try XCTUnwrap(try store.list().first)
+        XCTAssertEqual(row.name, "fixed")
+        XCTAssertEqual(row.health, .ok)
+        // The backup disappearing while the primary is damaged turns the row unreadable.
+        try garbage(p.id)
+        XCTAssertEqual(try store.list().first?.health, .recoveredFromBackup)
+        try FileManager.default.removeItem(at: file(p.id, "property.json.bak"))
+        XCTAssertEqual(try store.list().first?.health, .unreadable)
+        XCTAssertEqual(try store.list().first?.health, .unreadable)
+        // An unreadable row is never cached: a backup that shows up later is found even though the damaged
+        // primary has not changed.
+        try PropertyStore.encode(simple("found", id: p.id)).write(to: file(p.id, "property.json.bak"))
+        let again = try XCTUnwrap(try store.list().first)
+        XCTAssertEqual(again.health, .recoveredFromBackup)
+        XCTAssertEqual(again.name, "found")
+    }
+
+    func testListOfManyPropertiesIsServedFromTheCacheQuickly() throws {
+        let base = DataExportTests.marina()
+        for n in 0..<60 {
+            var p = PropertyStore.cloneWithNewIDs(base)
+            p.name = "Property \(n)"
+            p.updatedAt = Date(timeIntervalSince1970: 1_700_000_000 + Double(n))
+            try store.save(p)
+        }
+        XCTAssertEqual(try store.list().count, 60)
+        XCTAssertEqual(store.summaryDecodeCount, 60)
+        let start = Date()
+        for _ in 0..<5 { XCTAssertEqual(try store.list().count, 60) }
+        XCTAssertEqual(store.summaryDecodeCount, 60)
+        // Reading and hashing 60 small files: well under what 60 full decodes cost. Generous bound, no flakiness.
+        XCTAssertLessThan(Date().timeIntervalSince(start), 5)
+    }
+
     // MARK: Errors read well
 
     func testErrorsHaveHumanReadableDescriptions() {

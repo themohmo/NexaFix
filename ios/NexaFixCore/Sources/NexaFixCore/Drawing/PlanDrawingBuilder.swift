@@ -13,37 +13,63 @@ import Foundation
 ///   may wrap past 360 (end < start).
 /// - Dimension text always reads left-to-right or bottom-to-top, never upside-down.
 /// - Output is deterministic and contains no NaN or infinity, whatever the input.
+/// - Text never overprints other text. When a plan is too small to hold every label, the less
+///   important ones are left out (opening tags and furniture names first, then wall dimensions that
+///   collide with a more important one, and the area and ceiling lines of a room label); what was
+///   left out is counted in `PlanLayoutReport`, returned by `buildDetailed`.
+/// - A door or window that two rooms both recorded in their shared wall is drawn once, and the
+///   wall bands of both rooms are open where it passes through the partition.
 public enum PlanDrawingBuilder {
 
     // MARK: Public API
 
     /// Build a plan of `rooms`, which share one coordinate frame.
     public static func build(rooms: [Room], title: String, subtitle: String, options: PlanOptions) -> PlanDrawing {
+        buildDetailed(rooms: rooms, title: title, subtitle: subtitle, options: options).drawing
+    }
+
+    /// Like `build`, and also reports what could not be drawn or printed: rooms the builder had to
+    /// skip, labels left out for lack of room, and which kinds of mark the plan uses.
+    public static func buildDetailed(rooms: [Room], title: String, subtitle: String,
+                                     options: PlanOptions) -> PlanBuildResult {
         var context = Context(options: options)
-        let geometries = rooms.compactMap { RoomGeometry(room: $0) }
+        var geometries: [RoomGeometry] = []
+        for room in rooms {
+            if var g = RoomGeometry(room: room) {
+                g.index = geometries.count
+                geometries.append(g)
+            } else {
+                context.report.undrawableRooms.append(displayName(of: room))
+            }
+        }
+        context.report.hasDrawingSourcedValues = options.markVerified && geometries.contains { hasDrawingSource($0.room) }
+        context.links = OpeningLinks(geometries)
+        context.report.sharedOpenings = context.links.sharedCount
+
+        // Decide first which text is printed, most important first, so that nothing is printed on
+        // top of anything else; then draw in painting order.
+        var angles = options.showAngles ? geometries.map { angleLayouts($0, context) } : []
+        var dimensions = options.showDimensions ? geometries.map { dimensionLayouts($0, context) } : []
+        var tags = options.showOpeningSizes ? geometries.map { openingTagLayouts($0, context) } : []
+        reserveText(angles: &angles, dimensions: &dimensions, tags: &tags, &context)
 
         if options.showFurniture {
             for g in geometries { addFurniture(g, &context) }
         }
         for g in geometries { addWalls(g, &context) }
         for g in geometries { addOpenings(g, &context) }
-        if options.showDimensions {
-            for g in geometries { addDimensions(g, &context) }
-        }
-        if options.showAngles {
-            for g in geometries { addAngles(g, &context) }
-        }
-        if options.showOpeningSizes {
-            for g in geometries { addOpeningTags(g, &context) }
-        }
+        for layouts in dimensions { emitDimensions(layouts, &context) }
+        for layouts in angles { emitAngles(layouts, &context) }
+        for layouts in tags { emitOpeningTags(layouts, &context) }
         if options.showRoomLabels {
             for g in geometries { addRoomLabel(g, &context) }
         }
 
         let primitives = context.primitives.filter { isAllFinite($0.primitive) }
         let bounds = PlanDrawingBuilder.bounds(of: primitives) ?? Bounds2(min: .zero, max: Point2(1, 1))
-        return PlanDrawing(primitives: primitives, bounds: bounds, options: options,
-                           title: title, subtitle: subtitle)
+        let drawing = PlanDrawing(primitives: primitives, bounds: bounds, options: options,
+                                  title: title, subtitle: subtitle)
+        return PlanBuildResult(drawing: drawing, report: context.report)
     }
 
     /// Build the plan of one floor. The title is the property name (the floor name when there is
@@ -57,6 +83,18 @@ public enum PlanDrawingBuilder {
     /// Build the plan of a single room: title is the room name, subtitle its kind.
     public static func build(room: Room, options: PlanOptions) -> PlanDrawing {
         build(rooms: [room], title: room.name, subtitle: room.kind.displayName, options: options)
+    }
+
+    /// `buildDetailed` for a single room.
+    public static func buildDetailed(room: Room, options: PlanOptions) -> PlanBuildResult {
+        buildDetailed(rooms: [room], title: room.name, subtitle: room.kind.displayName, options: options)
+    }
+
+    /// `buildDetailed` for one floor.
+    public static func buildDetailed(floor: Floor, property: Property?, options: PlanOptions) -> PlanBuildResult {
+        let title = property?.name ?? floor.name
+        let subtitle = property == nil ? "" : floor.name
+        return buildDetailed(rooms: floor.rooms, title: title, subtitle: subtitle, options: options)
     }
 
     /// Width in model-space metres of `text` set with the given cap height, using Helvetica metrics
@@ -118,6 +156,13 @@ public enum PlanDrawingBuilder {
         /// Scale denominator, sanitised (a plan is never built at a zero, negative or NaN scale).
         let scale: Double
         var primitives: [LayeredPrimitive] = []
+        /// Doors and windows two rooms share (see `OpeningLinks`).
+        var links = OpeningLinks()
+        /// Oriented boxes of the text that is already placed: nothing else may be printed over it.
+        var textBoxes = BoxIndex()
+        /// Everything a room label should keep clear of: text, door swings, furniture footprints.
+        var obstacles = BoxIndex()
+        var report = PlanLayoutReport()
 
         init(options: PlanOptions) {
             self.options = options
@@ -144,9 +189,70 @@ public enum PlanDrawingBuilder {
             add(layer, .text(string, at: at, height: paper(paperHeight), rotation: rotation,
                              anchor: anchor, color: color, bold: bold))
         }
+
+        // MARK: Text reservation
+
+        /// Whether `placement` would print over text that is already reserved.
+        func collides(_ placement: TextPlacement) -> Bool {
+            textBoxes.overlaps(quad: placement.corners(scale: scale))
+        }
+
+        /// Claim the space of `placement`: later text avoids it and room labels keep clear of it.
+        mutating func reserve(_ placement: TextPlacement) {
+            let corners = placement.corners(scale: scale)
+            guard let box = Bounds2(points: corners), box.width > 0, box.height > 0 else { return }
+            textBoxes.insert(box, quad: corners)
+            obstacles.insert(box)
+        }
+
+        /// Draw reserved text.
+        mutating func emit(_ placement: TextPlacement) {
+            guard !placement.string.isEmpty else { return }
+            add(placement.layer, .text(placement.string, at: placement.at, height: paper(placement.paperHeight),
+                                       rotation: placement.rotation, anchor: placement.anchor,
+                                       color: placement.color, bold: placement.bold))
+        }
+    }
+
+    /// One line of text before it is drawn: where it goes and how it looks.
+    struct TextPlacement {
+        let layer: PlanLayer
+        let string: String
+        /// Baseline anchor point.
+        let at: Point2
+        /// Cap height on paper, millimetres.
+        let paperHeight: Double
+        let rotation: Double
+        let anchor: TextAnchor
+        let color: DrawColor
+        let bold: Bool
+
+        /// The rectangle the line occupies for the purpose of keeping other text off it, plan space:
+        /// from the baseline (or the descender, when the text has letters that hang below it) to the
+        /// cap height.
+        func corners(scale: Double) -> [Point2] {
+            PlanDrawingBuilder.textCorners(string, at: at, height: paperHeight * scale / 1000, rotation: rotation,
+                                           anchor: anchor, bold: bold,
+                                           includeDescender: PlanDrawingBuilder.hasDescender(string))
+        }
     }
 
     // MARK: Room geometry
+
+    /// Whether the builder can draw `room`: three or more walls with finite corner coordinates.
+    /// The PDF renderer asks the same question to decide which rooms the plan will hold.
+    static func isDrawable(_ room: Room) -> Bool {
+        guard room.walls.count >= 3 else { return false }
+        return room.walls.allSatisfy {
+            $0.start.x.isFinite && $0.start.y.isFinite && $0.end.x.isFinite && $0.end.y.isFinite
+        }
+    }
+
+    /// The name printed for a room: its own name, or its kind when it has none.
+    static func displayName(of room: Room) -> String {
+        let name = room.name.trimmingCharacters(in: .whitespacesAndNewlines)
+        return name.isEmpty ? room.kind.displayName : name
+    }
 
     /// One wall with the vectors the drawing code needs.
     struct WallGeometry {
@@ -176,6 +282,8 @@ public enum PlanDrawingBuilder {
     /// A room prepared for drawing.
     struct RoomGeometry {
         let room: Room
+        /// Position among the rooms of one plan (the drawable ones only); set by `buildDetailed`.
+        var index = 0
         /// The outline is wound counter-clockwise (the model's contract). Kept so a clockwise
         /// outline still draws correctly, with the bands on the outside.
         let isCounterClockwise: Bool
@@ -186,10 +294,7 @@ public enum PlanDrawingBuilder {
 
         /// nil when the room has fewer than three walls or any non-finite corner.
         init?(room: Room) {
-            guard room.walls.count >= 3 else { return nil }
-            for w in room.walls {
-                guard w.start.x.isFinite, w.start.y.isFinite, w.end.x.isFinite, w.end.y.isFinite else { return nil }
-            }
+            guard PlanDrawingBuilder.isDrawable(room) else { return nil }
             self.room = room
             let ccw = Polygon.isCounterClockwise(room.outline)
             self.isCounterClockwise = ccw
@@ -286,12 +391,17 @@ public enum PlanDrawingBuilder {
 
     /// Union of the spans' extents, sorted and non-overlapping.
     static func mergedGaps(_ spans: [OpeningSpan]) -> [(Double, Double)] {
+        mergedIntervals(spans.map { ($0.s0, $0.s1) })
+    }
+
+    /// Union of intervals along a wall, sorted and non-overlapping.
+    static func mergedIntervals(_ intervals: [(Double, Double)]) -> [(Double, Double)] {
         var gaps: [(Double, Double)] = []
-        for s in spans.sorted(by: { $0.s0 < $1.s0 }) {
-            if let last = gaps.last, s.s0 <= last.1 {
-                gaps[gaps.count - 1].1 = Swift.max(last.1, s.s1)
+        for s in intervals.sorted(by: { $0.0 < $1.0 }) {
+            if let last = gaps.last, s.0 <= last.1 {
+                gaps[gaps.count - 1].1 = Swift.max(last.1, s.1)
             } else {
-                gaps.append((s.s0, s.s1))
+                gaps.append(s)
             }
         }
         return gaps
@@ -309,7 +419,13 @@ public enum PlanDrawingBuilder {
                 context.line(.wallsOpen, w.start, w.end, weight: Weight.open, color: ink, dashed: true)
                 continue
             }
-            let gaps = mergedGaps(spans(on: w, in: g.room))
+            // The openings drawn on this wall, plus the cut-outs other rooms' doors and windows
+            // make through the partition when it is also their wall.
+            let own = spans(on: w, in: g.room)
+                .filter { !context.links.suppressedSymbols.contains(OpeningRef(room: g.index, opening: $0.opening.id)) }
+                .map { ($0.s0, $0.s1) }
+            let foreign = context.links.foreignGaps[WallRef(room: g.index, wall: w.index)] ?? []
+            let gaps = mergedIntervals(own + foreign)
             var pieces: [(Double, Double)] = []
             var cursor = 0.0
             for gap in gaps {
@@ -334,23 +450,17 @@ public enum PlanDrawingBuilder {
 
     // MARK: Furniture
 
-    /// Object footprints in light grey, each with its kind name when the name fits.
+    /// Object footprints in light grey, each with its kind name when the name fits and is not in
+    /// the way of a dimension, angle or opening tag.
     static func addFurniture(_ g: RoomGeometry, _ context: inout Context) {
-        // Dimension text is drawn later, on top; keep furniture names off it.
-        let dimensionBoxes: [Bounds2] = context.options.showDimensions
-            ? dimensionLayouts(g, context).compactMap { layout in
-                guard let text = layout.text else { return nil }
-                return Bounds2(points: textCorners(text, at: layout.textAnchor,
-                                                   height: context.paper(TextSize.dimension),
-                                                   rotation: layout.textRotation, anchor: .center, bold: false))
-            }
-            : []
         for object in g.room.objects {
             guard object.center.x.isFinite, object.center.y.isFinite, object.yaw.isFinite,
                   object.width.isFinite, object.depth.isFinite, object.width > 0.01, object.depth > 0.01 else { continue }
-            context.add(.furniture, .polyline(object.footprint, closed: true,
+            let footprint = object.footprint
+            context.add(.furniture, .polyline(footprint, closed: true,
                                               stroke: StrokeStyle(weight: Weight.furniture, color: Palette.muted),
                                               fill: Palette.furnitureFill))
+            if let box = Bounds2(points: footprint) { context.obstacles.insert(box) }
 
             // Label along the longer side, kept upright; skipped when it would not fit the footprint.
             let label = object.kind.displayName
@@ -361,16 +471,16 @@ public enum PlanDrawingBuilder {
             guard labelWidth <= available * 0.92, height <= (alongWidth ? object.depth : object.width) * 0.8 else { continue }
             let axis = Point2(1, 0).rotated(by: object.yaw + (alongWidth ? 0 : Double.pi / 2))
             let rotation = uprightRotation(of: axis)
-            let at = baselineCentre(of: object.center, height: height, rotation: rotation)
-            if let box = Bounds2(points: textCorners(label, at: at, height: height, rotation: rotation,
-                                                     anchor: .center, bold: false)),
-               dimensionBoxes.contains(where: { d in
-                   box.max.x > d.min.x && box.min.x < d.max.x && box.max.y > d.min.y && box.min.y < d.max.y
-               }) {
+            let placement = TextPlacement(layer: .furniture, string: label,
+                                          at: baselineCentre(of: object.center, height: height, rotation: rotation),
+                                          paperHeight: TextSize.furniture, rotation: rotation, anchor: .center,
+                                          color: Palette.muted, bold: false)
+            if context.collides(placement) {
+                context.report.omittedFurnitureLabels += 1
                 continue
             }
-            context.text(.furniture, label, at: at, paperHeight: TextSize.furniture, rotation: rotation,
-                         anchor: .center, color: Palette.muted)
+            context.reserve(placement)
+            context.emit(placement)
         }
     }
 
@@ -398,9 +508,16 @@ public enum PlanDrawingBuilder {
         return d >= 360 ? 0 : d
     }
 
+    /// Whether `string` has glyphs that hang below the baseline. Digits, capitals and most
+    /// lower-case letters do not, so a line of those needs no room below its baseline.
+    static func hasDescender(_ string: String) -> Bool {
+        string.contains { "gjpqy,;()[]{}|/_@Q$".contains($0) }
+    }
+
     /// Corners of the rectangle a text line occupies (descender to cap height), in plan space.
+    /// Without `includeDescender` the rectangle starts at the baseline.
     static func textCorners(_ string: String, at: Point2, height: Double, rotation: Double,
-                            anchor: TextAnchor, bold: Bool) -> [Point2] {
+                            anchor: TextAnchor, bold: Bool, includeDescender: Bool = true) -> [Point2] {
         let width = textWidth(string, height: height, bold: bold)
         let fontSize = height / HelveticaMetrics.capHeight
         let left: Double
@@ -409,7 +526,7 @@ public enum PlanDrawingBuilder {
         case .center: left = -width / 2
         case .right: left = -width
         }
-        let bottom = -HelveticaMetrics.descender * fontSize
+        let bottom = includeDescender ? -HelveticaMetrics.descender * fontSize : 0
         let top = height
         let radians = rotation * Double.pi / 180
         let u = Point2(cos(radians), sin(radians))
@@ -468,5 +585,150 @@ public enum PlanDrawingBuilder {
         case let .circle(c, r, s): return ok(c) && r.isFinite && s.weight.isFinite
         case let .text(_, at, height, rotation, _, _, _): return ok(at) && height.isFinite && rotation.isFinite
         }
+    }
+}
+
+// MARK: - Layout report
+
+/// What a plan build could not draw or print, and which marks it uses. The PDF renderer turns this
+/// into the note on the plan page and the legend; the export sheet can use it to suggest a larger
+/// sheet.
+public struct PlanLayoutReport: Hashable, Sendable {
+    /// Wall dimensions left out because they would have been printed over a more important label.
+    public var omittedDimensionTexts = 0
+    /// Corner angle numbers left out for the same reason (the arc stays).
+    public var omittedAngleTexts = 0
+    /// Door, window and opening size tags left out.
+    public var omittedOpeningTags = 0
+    /// Furniture names left out.
+    public var omittedFurnitureLabels = 0
+    /// Room labels that lost their ceiling and/or area line to make room.
+    public var droppedRoomLabelLines = 0
+    /// Room labels that still touch other text after shrinking and dropping lines.
+    public var roomLabelsWithOverlap = 0
+    /// Names of the rooms the builder had to skip (fewer than three walls, or a corner that is not a number).
+    public var undrawableRooms: [String] = []
+    /// Dimension labels printed with the "chord" flag for a curved wall.
+    public var chordLabels = 0
+    /// Some printed value comes from a drawing rather than a site check (marked "d").
+    public var hasDrawingSourcedValues = false
+    /// Doors, windows and openings recorded by two rooms in the same wall and drawn once.
+    public var sharedOpenings = 0
+
+    public init() {}
+
+    /// Everything that matters was printed without overprinting and nothing important was left out.
+    public var isLegible: Bool { omittedDimensionTexts == 0 && roomLabelsWithOverlap == 0 }
+}
+
+/// A finished plan with its layout report.
+public struct PlanBuildResult: Sendable {
+    public let drawing: PlanDrawing
+    public let report: PlanLayoutReport
+}
+
+// MARK: - Spatial index
+
+/// Boxes on a one-metre grid, for "does anything already sit here?" questions that stay fast with
+/// hundreds of rooms. Text boxes are stored as their oriented rectangle so a slanted label is not
+/// treated as its much larger axis-aligned bounding box.
+struct BoxIndex {
+    private struct Cell: Hashable { let x: Int; let y: Int }
+
+    private(set) var bounds: [Bounds2] = []
+    private var quads: [[Point2]?] = []
+    private var cells: [Cell: [Int]] = [:]
+    /// Boxes too big for the grid (covering more than `maxCells` cells along an axis).
+    private var large: [Int] = []
+
+    private static let cellSize = 1.0
+    private static let maxCells = 32
+
+    private static func index(_ v: Double) -> Int {
+        Int(Swift.max(-1e9, Swift.min(1e9, (v / cellSize).rounded(.down))))
+    }
+
+    var isEmpty: Bool { bounds.isEmpty }
+
+    mutating func insert(_ box: Bounds2, quad: [Point2]? = nil) {
+        let id = bounds.count
+        bounds.append(box)
+        quads.append(quad)
+        let x0 = BoxIndex.index(box.min.x), x1 = BoxIndex.index(box.max.x)
+        let y0 = BoxIndex.index(box.min.y), y1 = BoxIndex.index(box.max.y)
+        if x1 - x0 >= BoxIndex.maxCells || y1 - y0 >= BoxIndex.maxCells {
+            large.append(id)
+            return
+        }
+        for x in x0...x1 {
+            for y in y0...y1 { cells[Cell(x: x, y: y), default: []].append(id) }
+        }
+    }
+
+    /// Ids of boxes that may touch `box` (every box that does, possibly a few more).
+    private func candidates(near box: Bounds2) -> [Int] {
+        var result: [Int] = large
+        let x0 = BoxIndex.index(box.min.x), x1 = BoxIndex.index(box.max.x)
+        let y0 = BoxIndex.index(box.min.y), y1 = BoxIndex.index(box.max.y)
+        if x1 - x0 >= BoxIndex.maxCells || y1 - y0 >= BoxIndex.maxCells {
+            return Array(0..<bounds.count)
+        }
+        var seen = Set<Int>(large)
+        for x in x0...x1 {
+            for y in y0...y1 {
+                guard let ids = cells[Cell(x: x, y: y)] else { continue }
+                for id in ids where seen.insert(id).inserted { result.append(id) }
+            }
+        }
+        return result
+    }
+
+    /// The stored boxes that touch `area`.
+    func rects(intersecting area: Bounds2) -> [Bounds2] {
+        candidates(near: area).compactMap { id in
+            let r = bounds[id]
+            if r.max.x < area.min.x || r.min.x > area.max.x || r.max.y < area.min.y || r.min.y > area.max.y { return nil }
+            return r
+        }.sorted { ($0.min.x, $0.min.y, $0.max.x, $0.max.y) < ($1.min.x, $1.min.y, $1.max.x, $1.max.y) }
+    }
+
+    /// The oriented boxes (text) whose bounding box touches `area`, with those bounding boxes.
+    func orientedBoxes(intersecting area: Bounds2) -> [(bounds: Bounds2, quad: [Point2])] {
+        candidates(near: area).sorted().compactMap { id in
+            guard let quad = quads[id] else { return nil }
+            let r = bounds[id]
+            if r.max.x < area.min.x || r.min.x > area.max.x || r.max.y < area.min.y || r.min.y > area.max.y { return nil }
+            return (r, quad)
+        }
+    }
+
+    /// Whether the convex quadrilateral `quad` overlaps (with positive area) any stored oriented box.
+    func overlaps(quad: [Point2]) -> Bool {
+        guard let box = Bounds2(points: quad) else { return false }
+        for id in candidates(near: box) {
+            guard let other = quads[id] else { continue }
+            let b = bounds[id]
+            if b.max.x <= box.min.x || b.min.x >= box.max.x || b.max.y <= box.min.y || b.min.y >= box.max.y { continue }
+            if BoxIndex.convexOverlap(quad, other) { return true }
+        }
+        return false
+    }
+
+    /// Separating-axis test for two convex polygons; touching edges do not count as overlap.
+    static func convexOverlap(_ p: [Point2], _ q: [Point2]) -> Bool {
+        for polygon in [p, q] {
+            for i in polygon.indices {
+                let edge = polygon[(i + 1) % polygon.count] - polygon[i]
+                let axis = Point2(-edge.y, edge.x)
+                guard axis.length > 1e-12 else { continue }
+                var pMin = Double.infinity, pMax = -Double.infinity
+                for v in p { let d = v.dot(axis); pMin = Swift.min(pMin, d); pMax = Swift.max(pMax, d) }
+                var qMin = Double.infinity, qMax = -Double.infinity
+                for v in q { let d = v.dot(axis); qMin = Swift.min(qMin, d); qMax = Swift.max(qMax, d) }
+                let tolerance = 1e-9 * axis.length
+                if pMax <= qMin + tolerance || qMax <= pMin + tolerance { return false }
+            }
+        }
+        return true
     }
 }

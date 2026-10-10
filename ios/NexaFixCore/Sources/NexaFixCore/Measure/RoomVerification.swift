@@ -49,12 +49,15 @@ public extension Room {
     /// Record (or, with nil, clear) a site check for a target.
     ///
     /// Returns false, and changes nothing, when the target does not exist or the value is not
-    /// usable: not finite, negative, or zero for anything but an opening sill. Geometry is never
-    /// modified; only the target's `Measured.verification` changes.
+    /// usable: not finite, negative, zero for anything but an opening sill, or outside the range a
+    /// person can measure (`UnitParser.isPlausibleLength`: from 0.1 mm to 200 m). The range is
+    /// enforced here, not only in the sheet that usually calls this, so a value from any other
+    /// route (an import, future code) cannot be stored as "verified" and preferred over the scan.
+    /// Geometry is never modified; only the target's `Measured.verification` changes.
     @discardableResult
     mutating func setVerification(_ v: Verification?, for t: MeasureTarget) -> Bool {
         if let v {
-            guard v.value.isFinite, v.value >= 0, v.value > 0 || t.allowsZeroValue else { return false }
+            guard UnitParser.isPlausibleLength(v.value, allowZero: t.allowsZeroValue) else { return false }
         }
         switch t {
         case .wallLength(let id):
@@ -128,9 +131,12 @@ public extension Room {
     }
 
     /// Which quantity of the titled thing a target is, for a subtitle: "Length", "Height",
-    /// "Width - Wall B" (a middle dot separates the two in the app), "Sill height - Wall B". nil for the ceiling (its title says it)
-    /// and for a custom measurement without a note (a note is returned when present).
-    /// Also nil when the target does not exist.
+    /// "Width \u{00B7} Wall B" or "Sill height \u{00B7} Wall B" (quantity, a middle dot U+00B7 with a
+    /// space either side, then the wall the opening is on; just the quantity when the opening has no
+    /// wall), "Length \u{00B7} open boundary" for an open-plan boundary. nil for the ceiling (its title
+    /// says it) and for a custom measurement without a note (a note is returned when present).
+    /// Also nil when the target does not exist. The middle dot is not ASCII: a consumer that writes
+    /// to DXF or CSV should use `fullTitle(for:)` instead.
     func detail(for t: MeasureTarget) -> String? {
         switch t {
         case .wallLength(let id):

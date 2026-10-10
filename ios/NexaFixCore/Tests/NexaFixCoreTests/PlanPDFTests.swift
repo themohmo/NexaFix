@@ -639,6 +639,83 @@ final class PDFWriterTests: XCTestCase {
         XCTAssertEqual(none.content, "")
     }
 
+    func testArcWithAHugeAngleFinishesAndMatchesTheReducedArc() {
+        // `while sweep < 0 { sweep += 360 }` needed ~3e14 turns for these and never came back.
+        var huge = PDFPage(width: 100, height: 100)
+        huge.arc(centerX: 10, centerY: 10, radius: 5, startDegrees: 1e17, endDegrees: 0)
+        // 1e17 is exactly representable and leaves remainder 280 on division by 360 (10^n mod 360 = 280 for n >= 3),
+        // so this is the arc from 280 to 360 degrees.
+        var reduced = PDFPage(width: 100, height: 100)
+        reduced.arc(centerX: 10, centerY: 10, radius: 5, startDegrees: 280, endDegrees: 360)
+        XCTAssertEqual(huge.content, reduced.content)
+        XCTAssertEqual(beziers(huge.content).count, 1, "an 80 degree sweep is one segment")
+
+        // Any magnitude, either sign: finishes, only finite numbers, at most a full circle of four segments.
+        for (start, end) in [(1e300, 0.0), (0.0, 1e300), (-1e300, 1e300), (1e300, -1e300), (-1e17, 0.0), (0.0, -1e17),
+                             (1e308, -1e308), (-1e308, 1e308), (1e17, 1e17), (123.0, 123.0 - 720)] {
+            var page = PDFPage(width: 100, height: 100)
+            page.arc(centerX: 10, centerY: 10, radius: 5, startDegrees: start, endDegrees: end)
+            XCTAssertFalse(page.content.contains("nan") || page.content.contains("inf"), "\(start) -> \(end)")
+            XCTAssertLessThanOrEqual(beziers(page.content).count, 4, "\(start) -> \(end)")
+        }
+        // Whole turns behave as before: a sweep of 360 or more is a full circle, a negative multiple of 360 is none.
+        var full = PDFPage(width: 100, height: 100)
+        full.arc(centerX: 0, centerY: 0, radius: 5, startDegrees: 10, endDegrees: 1e9)
+        XCTAssertEqual(beziers(full.content).count, 4)
+        var none = PDFPage(width: 100, height: 100)
+        none.arc(centerX: 0, centerY: 0, radius: 5, startDegrees: 360, endDegrees: 0)
+        XCTAssertEqual(beziers(none.content).count, 0, "a sweep of -360 degrees is empty, as it always was")
+    }
+
+    func testTruncationMatchesTheSimpleMethodAndStaysFastOnVeryLongText() {
+        // The straightforward method: drop a character at a time (and the spaces before the ellipsis) until it fits.
+        func reference(_ text: String, _ maxWidth: Double, bold: Bool, size: Double) -> String {
+            if HelveticaMetrics.width(of: text, bold: bold, fontSize: size) <= maxWidth { return text }
+            if HelveticaMetrics.width(of: "...", bold: bold, fontSize: size) > maxWidth { return "" }
+            var chars = Array(text)
+            while !chars.isEmpty {
+                chars.removeLast()
+                while let last = chars.last, last == " " { chars.removeLast() }
+                let candidate = String(chars) + "..."
+                if HelveticaMetrics.width(of: candidate, bold: bold, fontSize: size) <= maxWidth { return candidate }
+            }
+            return "..."
+        }
+        var rng = LCG(state: 5)
+        let alphabet = Array("abcdefghij KLMNOP 0123456789 .-mw")
+        for _ in 0..<300 {
+            let length = Int(rng.range(0, 40))
+            let text = String((0..<length).map { _ in alphabet[Int(rng.range(0, Double(alphabet.count)))] })
+            let width = rng.range(0, 260)
+            let bold = rng.next() < 0.5
+            XCTAssertEqual(HelveticaMetrics.truncated(text, toWidth: width, bold: bold, fontSize: 8),
+                           reference(text, width, bold: bold, size: 8), "\(text.debugDescription) in \(width)")
+        }
+        // A 20,000-character name: seconds with the old loop became minutes for several such fields.
+        let long = String(repeating: "Villa Marina Tower ", count: 1000)
+        let start = Date()
+        let cut = HelveticaMetrics.truncated(long, toWidth: 150, fontSize: 9)
+        XCTAssertLessThan(Date().timeIntervalSince(start), 1.0)
+        XCTAssertTrue(cut.hasSuffix("..."))
+        XCTAssertLessThanOrEqual(HelveticaMetrics.width(of: cut, fontSize: 9), 150)
+        XCTAssertTrue(long.hasPrefix(String(cut.dropLast(3))))
+    }
+
+    func testCharactersThePDFCannotPrintAreReported() {
+        XCTAssertEqual(WinAnsiEncoding.unencodableCharacters(in: "Maid's Room (2) \u{B0} \u{20AC} Caf\u{E9} \u{FC}"), [])
+        XCTAssertEqual(WinAnsiEncoding.unencodableCharacters(in: "e\u{0301} a\u{0301}"), [], "composes to Latin-1 letters")
+        XCTAssertEqual(WinAnsiEncoding.unencodableCharacters(in: "a\u{200B}b\u{FEFF}"), [], "dropped, nothing visible is lost")
+        XCTAssertEqual(String(WinAnsiEncoding.unencodableCharacters(in: "\u{0641}\u{064A}\u{0644}\u{0627}")), "\u{0641}\u{064A}\u{0644}\u{0627}",
+                       "Arabic letters, in order")
+        XCTAssertEqual(WinAnsiEncoding.unencodableCharacters(in: "Villa \u{4F60}\u{597D} \u{1F600} \u{3A9}").count, 4)
+        XCTAssertEqual(WinAnsiEncoding.unencodableCharacters(in: "x\u{0301}").count, 1, "a letter with an accent the encoding lacks")
+        // It agrees with `encode`: a text without a literal "?" has a "?" in its bytes exactly when something is reported.
+        for text in ["plain", "Caf\u{E9}", "\u{0627}\u{0644}", "mixed \u{0627} text", "\u{1F600}", "tab\there", "\u{2212}5"] {
+            let reported = !WinAnsiEncoding.unencodableCharacters(in: text).isEmpty
+            XCTAssertEqual(reported, WinAnsiEncoding.encode(text).contains(0x3F), text)
+        }
+    }
+
     func testCircleIsFourSegmentsAndClosed() {
         var page = PDFPage(width: 100, height: 100)
         page.circle(centerX: 50, centerY: 50, radius: 10)
@@ -1018,7 +1095,6 @@ final class PlanPDFTests: XCTestCase {
             XCTAssertTrue(shown.contains(needle), "missing \(needle)")
         }
         XCTAssertFalse(shown.contains("6210 mm"), "a verified wall never appears without its mark")
-        XCTAssertEqual(shown.filter { $0.hasSuffix(" v") && $0.hasSuffix("mm v") }.sorted(), ["2780 mm v", "6210 mm v"].filter { _ in false } + shown.filter { $0.hasSuffix("mm v") }.sorted())
         // Exactly the verified items carry a "v": wall 6210 and ceiling 2780.
         XCTAssertEqual(Set(shown.filter { $0.hasSuffix(" v") && $0 != "v = verified on site" }), ["6210 mm v", "Ceiling 2780 mm v"])
     }
@@ -1052,7 +1128,7 @@ final class PlanPDFTests: XCTestCase {
         XCTAssertFalse(schedule.contains { $0.hasSuffix(" mm") })
 
         let metres = render(PlanPDFFixture.demoProperty(), PlanPDFOptions(units: DisplayUnits(length: .metres, area: .squareMetres)))
-        XCTAssertTrue(metres.probe.shown(page: 0).contains("6.21 m v"))
+        XCTAssertTrue(metres.probe.shown(page: 0).contains("6.210 m v"), "a checked wall keeps its millimetre in metres")
         XCTAssertTrue(metres.probe.shown(page: 1).contains("21.410 m"), "schedule uses precise formatting")
     }
 
@@ -1061,22 +1137,26 @@ final class PlanPDFTests: XCTestCase {
     func testScheduleRowsAreTheRoomsInOrderWithHandCheckedFigures() {
         let r = render(PlanPDFFixture.demoProperty())
         let shown = r.probe.shown(page: 1)
-        // Living: 6.205 x 4.5 (one wall verified, averaged with the scanned opposite wall), perimeter
-        // 6.21 + 4.5 + 6.2 + 4.5 = 21.41, checks: 4 lengths + 4 heights + ceiling + (2 doors x 2)
-        // + doorless opening 2 + window 3 (width, height, sill 0.9) = 18, one verified.
-        XCTAssertTrue(contains(shown, sequence: ["Living Room", "27.92 m\u{B2}", "6205 x 4500 mm", "2800 mm", "21410 mm", "1/18"]))
+        // Living: the long walls are 6.21 (laser-verified) and 6.20 (scanned), so the length prints as the
+        // two walls, the scanned one bare and the verified one marked; the short walls are both 4.5 scanned.
+        // Area is the derived 6.205 x 4.5. Perimeter 6.21 + 4.5 + 6.2 + 4.5 = 21.41, checks: 4 lengths +
+        // 4 heights + ceiling + (2 doors x 2) + doorless opening 2 + window 3 (width, height, sill 0.9) = 18,
+        // one verified.
+        XCTAssertTrue(contains(shown, sequence: ["Living Room", "27.92 m\u{B2}", "6200 - 6210 v mm", "4500 mm", "2800 mm", "21410 mm", "1/18"]))
         // Master: 4.5 x 4.0 = 18.00, ceiling verified 2.78, perimeter 17.0, checks 8 + 1 + (2 doors x 2 + 2 windows x 3) = 19.
-        XCTAssertTrue(contains(shown, sequence: ["Master Bedroom", "18.00 m\u{B2}", "4500 x 4000 mm", "2780 mm v", "17000 mm", "1/19"]))
-        // Kitchen is an L: no length x width. Perimeter 4.2 + 2 + 1.8 + 1.5 + 2.4 + 3.5 = 15.4; checks 6 + 6 + 1 + 2 + 2 + 3 = 20.
-        XCTAssertTrue(contains(shown, sequence: ["Kitchen", "12.00 m\u{B2}", "-", "2800 mm", "15400 mm", "0/20"]))
+        XCTAssertTrue(contains(shown, sequence: ["Master Bedroom", "18.00 m\u{B2}", "4500 mm", "4000 mm", "2780 mm v", "17000 mm", "1/19"]))
+        // Kitchen is an L: no length or width. Perimeter 4.2 + 2 + 1.8 + 1.5 + 2.4 + 3.5 = 15.4; checks 6 + 6 + 1 + 2 + 2 + 3 = 20.
+        XCTAssertTrue(contains(shown, sequence: ["Kitchen", "12.00 m\u{B2}", "-", "-", "2800 mm", "15400 mm", "0/20"]))
         // Bathroom 2 x 2: 4.00 m2, perimeter 8.0, checks 4 + 4 + 1 + 2 + 3 (window sill 1.2) = 14.
-        XCTAssertTrue(contains(shown, sequence: ["Bathroom", "4.00 m\u{B2}", "2000 x 2000 mm", "2800 mm", "8000 mm", "0/14"]))
+        XCTAssertTrue(contains(shown, sequence: ["Bathroom", "4.00 m\u{B2}", "2000 mm", "2000 mm", "2800 mm", "8000 mm", "0/14"]))
         XCTAssertTrue(shown.contains("Bedroom 2"))
         // Order: rooms appear in model order.
         let order = ["Living Room", "Master Bedroom", "Kitchen", "Bathroom", "Bedroom 2"].map { n in shown.firstIndex(of: n)! }
         XCTAssertEqual(order, order.sorted())
-        // Headers.
-        XCTAssertTrue(contains(shown, sequence: ["ROOM", "AREA", "LENGTH X WIDTH", "CEILING", "PERIMETER", "VERIFIED"]))
+        // Headers: length and width have a column each.
+        XCTAssertTrue(contains(shown, sequence: ["ROOM", "AREA", "LENGTH", "WIDTH", "CEILING", "PERIMETER", "VERIFIED"]))
+        // The averaged 6205 that the old schedule printed is a number no wall measured.
+        XCTAssertFalse(shown.contains { $0.contains("6205") })
     }
 
     func testScheduleTotalsRow() {
@@ -1117,36 +1197,182 @@ final class PlanPDFTests: XCTestCase {
         XCTAssertEqual(PlanPDFRenderer.verificationCounts(of: open).total, 13)
     }
 
-    func testLengthByWidthMarksOnlyTheSidesThatAreFullyVerified() {
-        func text(_ room: Room, unit: LengthUnit = .millimetres) -> String {
-            PlanPDFRenderer.lengthByWidthText(room: room, metrics: room.metrics, unit: unit)
-        }
-        var room = Room.rectangle(name: "R", width: 4, depth: 3)
-        XCTAssertEqual(text(room), "4000 x 3000 mm")
-        room.walls[0].length.verify(4.0)
-        XCTAssertEqual(text(room), "4000 x 3000 mm", "one of two long walls verified: not marked")
-        room.walls[2].length.verify(4.0)
-        XCTAssertEqual(text(room), "4000 v x 3000 mm", "long side verified on both walls")
-        room.walls[1].length.verify(3.0); room.walls[3].length.verify(3.0)
-        XCTAssertEqual(text(room), "4000 x 3000 mm v", "both sides")
-        room.walls[0].length.clearVerification(); room.walls[2].length.clearVerification()
-        XCTAssertEqual(text(room), "4000 x 3000 mm v", "short side only")
-        XCTAssertEqual(text(Room.rectangle(name: "R", width: 4, depth: 3), unit: .metres), "4.000 x 3.000 m")
-        XCTAssertEqual(text(Room.polygon(name: "L", corners: [Point2(0, 0), Point2(6, 0), Point2(6, 2), Point2(4, 2), Point2(4, 4), Point2(0, 4)])), "-")
+    // MARK: Length and width
+
+    private func lengthAndWidth(_ room: Room, _ unit: LengthUnit = .millimetres) -> (length: String, width: String)? {
+        PlanPDFRenderer.lengthAndWidthTexts(room: room, metrics: room.metrics, unit: unit)
     }
+
+    /// A 6 x 4 m room: walls 0 and 2 are the 6 m pair (the length), walls 1 and 3 the 4 m pair.
+    private func sixByFour(verifiedLong: Bool = false, verifiedShort: Bool = false) -> Room {
+        var room = Room.rectangle(name: "R", width: 6, depth: 4)
+        if verifiedLong { room.walls[0].length.verify(6.0); room.walls[2].length.verify(6.0) }
+        if verifiedShort { room.walls[1].length.verify(4.0); room.walls[3].length.verify(4.0) }
+        return room
+    }
+
+    func testLengthAndWidthPrintTheTwoWallsNotAnAverageNobodyMeasured() {
+        // Review case: long walls laser-verified at 6.225 and 6.210, short walls verified at 4.500.
+        var room = Room.rectangle(name: "R", width: 6.2, depth: 4.5)
+        room.walls[0].length.verify(6.225); room.walls[2].length.verify(6.210)
+        room.walls[1].length.verify(4.5); room.walls[3].length.verify(4.5)
+        let t = lengthAndWidth(room)
+        XCTAssertEqual(t?.length, "6210 v - 6225 v mm", "both walls, smaller first, each marked by its own check")
+        XCTAssertEqual(t?.width, "4500 v mm", "the short walls agree, so one number")
+        // (6225 + 6210) / 2 = 6217.5: a size that no wall has.
+        let all = (t?.length ?? "") + (t?.width ?? "")
+        XCTAssertFalse(all.contains("6217") || all.contains("6218"), all)
+
+        // One side verified and the other not (the demo's Living Room): the bare number is the scanned wall.
+        var half = Room.rectangle(name: "R", width: 6.2, depth: 4.5)
+        half.walls[0].length.verify(6.21)
+        XCTAssertEqual(lengthAndWidth(half)?.length, "6200 - 6210 v mm")
+        // The same two values the other way round: still smaller first, the mark stays with its wall.
+        var other = Room.rectangle(name: "R", width: 6.2, depth: 4.5)
+        other.walls[2].length.verify(6.19)
+        XCTAssertEqual(lengthAndWidth(other)?.length, "6190 v - 6200 mm")
+    }
+
+    func testEveryCombinationOfVerifiedSidesReadsDifferently() {
+        // Nothing verified, only the short walls, only the long walls, both: four different texts, and the
+        // mark always sits on the number whose walls were checked.
+        let none = lengthAndWidth(sixByFour())
+        let shortOnly = lengthAndWidth(sixByFour(verifiedShort: true))
+        let longOnly = lengthAndWidth(sixByFour(verifiedLong: true))
+        let both = lengthAndWidth(sixByFour(verifiedLong: true, verifiedShort: true))
+        XCTAssertEqual(none?.length, "6000 mm");   XCTAssertEqual(none?.width, "4000 mm")
+        XCTAssertEqual(shortOnly?.length, "6000 mm", "the scanned 6000 is not marked just because 4000 was checked")
+        XCTAssertEqual(shortOnly?.width, "4000 v mm")
+        XCTAssertEqual(longOnly?.length, "6000 v mm"); XCTAssertEqual(longOnly?.width, "4000 mm")
+        XCTAssertEqual(both?.length, "6000 v mm");     XCTAssertEqual(both?.width, "4000 v mm")
+        let joined = [none, shortOnly, longOnly, both].map { ($0?.length ?? "") + " | " + ($0?.width ?? "") }
+        XCTAssertEqual(Set(joined).count, 4, "\(joined)")
+    }
+
+    func testOneCheckedWallOfAPairDoesNotMarkTheNumber() {
+        var room = sixByFour()
+        room.walls[0].length.verify(6.0)       // wall 2 is still LiDAR only, and reads the same
+        XCTAssertEqual(lengthAndWidth(room)?.length, "6000 mm", "half the evidence is not a verified number")
+        room.walls[2].length.verify(6.0)
+        XCTAssertEqual(lengthAndWidth(room)?.length, "6000 v mm")
+        // Two checked values that agree to the millimetre are one number.
+        var close = sixByFour()
+        close.walls[0].length.verify(6.0004); close.walls[2].length.verify(5.9996)
+        XCTAssertEqual(lengthAndWidth(close)?.length, "6000 v mm")
+        // ...but not in a unit fine enough to tell them apart: centimetres print one decimal (a millimetre).
+        XCTAssertEqual(lengthAndWidth(close, .centimetres)?.length, "600.0 v cm")
+        close.walls[2].length.verify(5.9990)
+        XCTAssertEqual(lengthAndWidth(close)?.length, "5999 v - 6000 v mm")
+    }
+
+    func testDrawingAndTapeSourcesAreMarkedForWhatTheyAre() {
+        var room = sixByFour()
+        room.walls[0].length.verify(6.0, source: .tape); room.walls[2].length.verify(6.0, source: .laser)
+        XCTAssertEqual(lengthAndWidth(room)?.length, "6000 v mm", "tape and laser are both site checks")
+        room.walls[2].length.verify(6.0, source: .drawing)
+        XCTAssertEqual(lengthAndWidth(room)?.length, "6000 d mm", "the weaker of the two sources")
+        room.walls[2].length.verify(6.01, source: .drawing)
+        XCTAssertEqual(lengthAndWidth(room)?.length, "6000 v - 6010 d mm")
+        // The schedule's ceiling cell follows the same rule.
+        var withDrawingCeiling = sixByFour()
+        withDrawingCeiling.ceilingHeight.verify(2.74, source: .drawing)
+        let p = property(rooms: [withDrawingCeiling])
+        guard case .room(let line)? = PlanPDFRenderer.scheduleRows(property: p, options: PlanPDFOptions()).first else {
+            return XCTFail("no row")
+        }
+        XCTAssertEqual(line.ceiling, "2740 mm d")
+    }
+
+    func testLengthIsTheLongerPairWhicheverWayTheRoomIsTurned() {
+        // 3 wide, 5 deep: walls 0 and 2 are the short pair; the length comes from walls 1 and 3.
+        var room = Room.rectangle(name: "R", width: 3, depth: 5)
+        XCTAssertEqual(lengthAndWidth(room)?.length, "5000 mm")
+        XCTAssertEqual(lengthAndWidth(room)?.width, "3000 mm")
+        room.walls[1].length.verify(5.0); room.walls[3].length.verify(5.0)
+        XCTAssertEqual(lengthAndWidth(room)?.length, "5000 v mm")
+        XCTAssertEqual(lengthAndWidth(room)?.width, "3000 mm")
+        // A square: the first pair is the length.
+        XCTAssertEqual(lengthAndWidth(Room.rectangle(name: "S", width: 3, depth: 3))?.length, "3000 mm")
+    }
+
+    func testLengthAndWidthInEveryUnit() {
+        let room = sixByFour(verifiedLong: true)
+        XCTAssertEqual(lengthAndWidth(room, .metres)?.length, "6.000 v m")
+        XCTAssertEqual(lengthAndWidth(room, .centimetres)?.width, "400.0 cm")
+        XCTAssertEqual(lengthAndWidth(room, .inches)?.length, "236.22 v in")        // 6 / 0.0254
+        // Feet and inches carry their own marks and no trailing unit: 236.2205 in = 19 ft 8.25 in to a sixteenth.
+        XCTAssertEqual(lengthAndWidth(room, .feetAndInches)?.length, "19' 8 1/4\" v")
+        XCTAssertEqual(lengthAndWidth(room, .feetAndInches)?.width, "13' 1 1/2\"")
+    }
+
+    func testLengthAndWidthOfStraightContinuationsAndOddShapes() {
+        // A rectangle whose north wall is two collinear walls: still four sides. The side counts as checked
+        // only when both of its walls were.
+        let corners = [Point2(0, 0), Point2(6, 0), Point2(6, 4), Point2(3, 4), Point2(0, 4)]
+        var room = Room.polygon(name: "Split", corners: corners)
+        XCTAssertEqual(room.walls.count, 5)
+        room.walls[0].length.verify(6.0)
+        room.walls[2].length.verify(3.0)
+        XCTAssertEqual(lengthAndWidth(room)?.length, "6000 mm", "north side: only one of its two walls is checked")
+        room.walls[3].length.verify(3.0)
+        XCTAssertEqual(lengthAndWidth(room)?.length, "6000 v mm", "south side checked, north side checked in two parts")
+        XCTAssertEqual(lengthAndWidth(room)?.width, "4000 mm")
+        // L-shapes, triangles and open plans have no length x width.
+        let l = Room.polygon(name: "L", corners: [Point2(0, 0), Point2(6, 0), Point2(6, 2), Point2(4, 2), Point2(4, 4), Point2(0, 4)])
+        XCTAssertNil(lengthAndWidth(l))
+        XCTAssertNil(lengthAndWidth(Room.polygon(name: "T", corners: [Point2(0, 0), Point2(4, 0), Point2(0, 3)])))
+    }
+
+    func testPrintedLengthsAreAlwaysAWallOfTheRoomAndMarksNeedEveryWallChecked() {
+        // 300 random rectangles with random scan error and random checks: whatever the combination, every
+        // number printed is the effective length of one of the two walls of its pair (to the millimetre), and
+        // a "v" follows a number only when each wall that has that length was laser-checked.
+        var rng = LCG(state: 20260610)
+        for trial in 0..<300 {
+            let width = 2 + 6 * rng.next(), depth = 2 + 6 * rng.next()
+            var room = Room.rectangle(name: "R\(trial)", width: width, depth: depth)
+            for i in 0..<4 {
+                room.walls[i].length.scanned += rng.range(-0.03, 0.03)
+                if rng.next() < 0.5 { room.walls[i].length.verify(room.walls[i].length.scanned + rng.range(-0.02, 0.02)) }
+                if rng.next() < 0.2 { room.walls[i].length.verify(room.walls[(i + 2) % 4].length.value) }
+            }
+            guard let t = lengthAndWidth(room) else { XCTFail("rectangle \(trial) has no length x width"); continue }
+            for (text, pair) in [(t.length, 0), (t.width, 1)] {
+                // Which pair is the length? The pair with the larger mean effective length.
+                let mean0 = (room.walls[0].length.value + room.walls[2].length.value) / 2
+                let mean1 = (room.walls[1].length.value + room.walls[3].length.value) / 2
+                let lengthPair = mean0 >= mean1 ? 0 : 1
+                let walls = (pair == 0 ? lengthPair : 1 - lengthPair) == 0 ? [room.walls[0], room.walls[2]] : [room.walls[1], room.walls[3]]
+                let values = walls.map { Int(($0.length.value * 1000).rounded()) }
+                let printed = text.split(whereSeparator: { !$0.isNumber }).compactMap { Int($0) }
+                XCTAssertTrue(printed.allSatisfy { values.contains($0) }, "trial \(trial): \(text) vs walls \(values)")
+                XCTAssertTrue(Set(values) == Set(printed), "trial \(trial): both walls' values appear, none other: \(text) vs \(values)")
+                // A mark follows a number only when every wall with that number is checked.
+                for wall in walls {
+                    let n = Int((wall.length.value * 1000).rounded())
+                    if text.contains("\(n) v"), !wall.length.isVerified {
+                        // Allowed only if the other wall printed the same number and is the checked one... no: an
+                        // unchecked wall behind a marked number is exactly the defect.
+                        XCTFail("trial \(trial): \(n) marked v but one of its walls is LiDAR only: \(text)")
+                    }
+                }
+            }
+        }
+    }
+
 
     func testSchedulePaginationHandComputedForSixtyRooms() {
         // A4 portrait: frame 277 mm high, title block 34 mm, so 243 mm of page body. Page 1 has
-        // 12 mm padding + 15 mm heading + 8 mm header + 11 mm footnote reserved: 197 mm = 27 rows of 7.2 mm
-        // (27 x 7.2 = 194.4; 28 would be 201.6). Later pages reserve 10 mm for the heading: 202 mm = 28 rows.
-        // 60 rooms: 27 + 28 + 5, with the 8.2 mm totals row on the last page.
+        // 12 mm padding + 19 mm heading + 8 mm header + 16 mm footnote reserved: 188 mm = 26 rows of 7.2 mm
+        // (26 x 7.2 = 187.2; 27 would be 194.4). Later pages reserve 10 mm for the heading: 197 mm = 27 rows.
+        // 60 rooms: 26 + 27 + 7, with the 8.2 mm totals row on the last page (7 x 7.2 + 8.2 = 58.6).
         let rooms = (1...60).map { rectRoom(3, 2.5, name: "Room \($0)") }
         let p = property(rooms: rooms)
         let r = render(p, PlanPDFOptions(paper: .a4, orientation: .auto, includeSchedule: true))
         XCTAssertEqual(r.probe.problems(), [])
         XCTAssertEqual(r.probe.pageCount, 4, "1 plan + 3 schedule pages")
         let counts = (1...3).map { page in r.probe.shown(page: page).filter { $0.hasPrefix("Room ") && Int($0.dropFirst(5)) != nil }.count }
-        XCTAssertEqual(counts, [27, 28, 5])
+        XCTAssertEqual(counts, [26, 27, 7])
         XCTAssertFalse(r.probe.shown(page: 1).contains { $0.hasPrefix("Total") })
         XCTAssertFalse(r.probe.shown(page: 2).contains { $0.hasPrefix("Total") })
         XCTAssertTrue(r.probe.shown(page: 3).contains("Total (60 rooms)"))
@@ -1170,17 +1396,18 @@ final class PlanPDFTests: XCTestCase {
     }
 
     func testTotalsRowNeverStandsAloneOnAPage() {
-        // 27 rooms fill page 1 (194.4 mm); the 8.2 mm totals row would overflow it, so the last room moves with it.
-        let p = property(rooms: (1...27).map { rectRoom(3, 2.5, name: "Room \($0)") })
+        // 188 mm of rows on page 1. 25 rooms are 180 mm and fit, but the 8.2 mm totals row would reach 188.2,
+        // so the last room moves to the next page with it.
+        let p = property(rooms: (1...25).map { rectRoom(3, 2.5, name: "Room \($0)") })
         let r = render(p, PlanPDFOptions(paper: .a4))
         XCTAssertEqual(r.probe.pageCount, 3, "plan + 2 schedule pages")
         let first = r.probe.shown(page: 1)
         let second = r.probe.shown(page: 2)
-        XCTAssertTrue(first.contains("Room 26")); XCTAssertFalse(first.contains("Room 27"))
-        XCTAssertTrue(second.contains("Room 27"))
-        XCTAssertTrue(second.contains("Total (27 rooms)"))
-        // 26 rooms do fit with the total on one page.
-        let fits = render(property(rooms: (1...26).map { rectRoom(3, 2.5, name: "Room \($0)") }), PlanPDFOptions(paper: .a4))
+        XCTAssertTrue(first.contains("Room 24")); XCTAssertFalse(first.contains("Room 25"))
+        XCTAssertTrue(second.contains("Room 25"))
+        XCTAssertTrue(second.contains("Total (25 rooms)"))
+        // 24 rooms (172.8 mm) do fit with the total (181 mm) on one page.
+        let fits = render(property(rooms: (1...24).map { rectRoom(3, 2.5, name: "Room \($0)") }), PlanPDFOptions(paper: .a4))
         XCTAssertEqual(fits.probe.pageCount, 2)
     }
 
@@ -1232,7 +1459,9 @@ final class PlanPDFTests: XCTestCase {
 
         let onlyBad = render(Property(name: "Bad", floors: [Floor(name: "L", rooms: [nan])]), PlanPDFOptions(includeSchedule: false))
         XCTAssertEqual(onlyBad.probe.problems(), [])
-        XCTAssertTrue(onlyBad.probe.shown(page: 0).contains("No rooms have been scanned on this floor."))
+        let message = onlyBad.probe.shown(page: 0).joined(separator: " ")
+        XCTAssertFalse(message.contains("No rooms have been scanned"), "the floor has a room; it just cannot be drawn")
+        XCTAssertTrue(message.contains("None of the 1 room on this floor could be drawn"), message)
     }
 
     func testAHugeSiteIsStillValidAndSaysWhichScaleItUsed() {
@@ -1284,6 +1513,308 @@ final class PlanPDFTests: XCTestCase {
         XCTAssertLessThan(Date().timeIntervalSince(start), 20, "a 80-room property renders in seconds even in a debug build")
     }
 
+    // MARK: Scale label
+
+    func testScaleLabelsAreExactAndNeverTrap() {
+        XCTAssertEqual(PlanPDFRenderer.scaleLabel(50), "1:50")
+        XCTAssertEqual(PlanPDFRenderer.scaleLabel(49.999), "1:50", "within half a hundredth of a whole number")
+        XCTAssertEqual(PlanPDFRenderer.scaleLabel(37.5), "1:37.5", "drawn at 1:37.5, so labelled 1:37.5")
+        XCTAssertEqual(PlanPDFRenderer.scaleLabel(62.5), "1:62.5")
+        XCTAssertEqual(PlanPDFRenderer.scaleLabel(33.33), "1:33.33")
+        XCTAssertEqual(PlanPDFRenderer.scaleLabel(0.4), "1:0.4")
+        XCTAssertEqual(PlanPDFRenderer.scaleLabel(10000), "1:10000")
+        XCTAssertEqual(PlanPDFRenderer.scaleLabel(1e19), "1:10000000000000000000", "beyond Int.max: no conversion to Int")
+        for bad in [Double.nan, .infinity, -.infinity, 0, -5] {
+            XCTAssertEqual(PlanPDFRenderer.scaleLabel(bad), "1:?", "\(bad)")
+        }
+
+        // A fixed non-standard scale is printed as it is drawn: scale bar, wall lengths and the title block agree.
+        let info = PlanPDFRenderer.pageInfos(property: PlanPDFFixture.demoProperty(), options: PlanPDFOptions(scale: .fixed(37.5)))[0]
+        XCTAssertEqual(info.scale, 37.5)
+        XCTAssertEqual(info.scaleLabel, "1:37.5")
+        let r = render(PlanPDFFixture.demoProperty(), PlanPDFOptions(scale: .fixed(37.5)))
+        XCTAssertEqual(r.probe.problems(), [])
+        XCTAssertTrue(r.probe.shown(page: 0).contains("1:37.5"))
+        XCTAssertFalse(r.probe.shown(page: 0).contains("1:38"))
+    }
+
+    func testAnAbsurdFixedScaleStillRenders() {
+        for scale in [1e19, 1e300, .infinity, .nan, -3, 0] {
+            let options = PlanPDFOptions(scale: .fixed(scale))
+            let r = render(PlanPDFFixture.demoProperty(), options)
+            XCTAssertEqual(r.probe.problems(), [], "\(scale)")
+            XCTAssertFalse(r.probe.text.contains("nan"), "\(scale)")
+            for info in PlanPDFRenderer.pageInfos(property: PlanPDFFixture.demoProperty(), options: options) {
+                XCTAssertFalse(info.scaleLabel.isEmpty)
+            }
+        }
+    }
+
+    // MARK: Schedule layout
+
+    func testNoNumberInTheScheduleIsCutShort() {
+        // Three halls of 61.3 x 41.7 m in square feet and feet-and-inches on A4: the totals used to print
+        // "82544.4 s..." and "2027' 6 11/1...".
+        let halls = (0..<3).map { Room.rectangle(name: "Hall \($0)", width: 61.3, depth: 41.7) }
+        let p = Property(name: "Big", floors: [Floor(name: "L1", rooms: halls)])
+        let imperial = PlanPDFOptions(paper: .a4, units: DisplayUnits(length: .feetAndInches, area: .squareFeet))
+        let page = render(p, imperial).probe.shown(page: 1)
+        XCTAssertFalse(page.contains { $0.contains("...") }, "\(page.filter { $0.contains("...") })")
+        guard let totalIndex = page.firstIndex(of: "Total (3 rooms)"), totalIndex + 1 < page.count else {
+            return XCTFail("no totals row: \(page)")
+        }
+        XCTAssertEqual(page[totalIndex + 1], "82544.4 sq ft", "3 x 61.3 x 41.7 = 7669.2 m2 / 0.09290304")
+        // And a villa over a thousand square metres, where the 12 % area column used to give out.
+        let villa = Property(name: "V", floors: [Floor(name: "L1", rooms: [Room.rectangle(name: "Great hall", width: 40, depth: 30)])])
+        let big = render(villa, PlanPDFOptions(paper: .a4, units: DisplayUnits(length: .feetAndInches, area: .squareFeet))).probe.shown(page: 1)
+        XCTAssertTrue(big.contains("12916.7 sq ft"), "1200 m2")
+        XCTAssertFalse(big.contains { $0.contains("...") })
+        // The helper itself: shrinks in quarter points until the text fits, and says what size it settled on.
+        let fitted = PlanPDFRenderer.fittedNumber("82544.4 sq ft", widthMM: 14, size: 8.5, bold: true)
+        XCTAssertEqual(fitted.text, "82544.4 sq ft")
+        XCTAssertLessThan(fitted.size, 8.5)
+        XCTAssertLessThanOrEqual(PlanPDFRenderer.Canvas.textWidthMM(fitted.text, size: fitted.size, bold: true), 14 + 1e-9)
+        XCTAssertGreaterThan(PlanPDFRenderer.Canvas.textWidthMM(fitted.text, size: fitted.size + 0.25, bold: true), 14,
+                             "the largest size in quarter-point steps that fits")
+        let roomy = PlanPDFRenderer.fittedNumber("12", widthMM: 30, size: 8, bold: false)
+        XCTAssertEqual(roomy.size, 8); XCTAssertEqual(roomy.text, "12")
+        // Only below 4 pt does the last resort apply.
+        let hopeless = PlanPDFRenderer.fittedNumber("123456789012345678901234567890", widthMM: 5, size: 8, bold: false)
+        XCTAssertEqual(hopeless.size, 4)
+        XCTAssertTrue(hopeless.text.hasSuffix("..."))
+    }
+
+    func testContinuationPagesRepeatTheirFloorHeader() {
+        // 3 floors x 24 rooms on A4: three schedule pages. A page that starts in the middle of a floor opens with
+        // that floor's header again, so "F2 Room 5" is never an unlabelled row.
+        let floors = (1...3).map { f in
+            Floor(name: "Level \(f)", level: f, rooms: (1...24).map { Room.rectangle(name: "F\(f) Room \($0)", width: 3, depth: 3) })
+        }
+        let p = Property(name: "Tower", floors: floors)
+        let pages = PlanPDFRenderer.schedulePages(property: p, options: PlanPDFOptions(paper: .a4, orientation: .portrait))
+        XCTAssertGreaterThanOrEqual(pages.count, 3)
+        var floorOfRow: [String] = []
+        for (index, page) in pages.enumerated() {
+            guard case .schedule(let rows, _, _, _) = page.content else { return XCTFail("not a schedule page") }
+            guard case .floorHeader(let first)? = rows.first else { return XCTFail("page \(index) does not start with a floor header: \(String(describing: rows.first))") }
+            // The header names the floor of the first room on the page.
+            guard let firstRoom = rows.compactMap({ row -> String? in if case .room(let l) = row { return l.name }; return nil }).first else { continue }
+            let floorNumber = firstRoom.dropFirst().prefix(1)
+            XCTAssertTrue(first.hasPrefix("Level \(floorNumber)"), "page \(index): \(first) for \(firstRoom)")
+            if index > 0 { XCTAssertTrue(first.hasSuffix("(cont.)") || rows.count > 1, first) }
+            floorOfRow.append(first)
+        }
+        // Every row on every page sits under a header of its own floor.
+        for page in pages {
+            guard case .schedule(let rows, _, _, _) = page.content else { continue }
+            var current = ""
+            for row in rows {
+                switch row {
+                case .floorHeader(let name): current = name
+                case .room(let line): XCTAssertTrue(current.hasPrefix("Level \(line.name.dropFirst().prefix(1))"), "\(line.name) under \(current)")
+                default: break
+                }
+            }
+        }
+        XCTAssertTrue(floorOfRow.contains { $0.hasSuffix("(cont.)") }, "a floor really did continue across a page: \(floorOfRow)")
+        // In the PDF the header is drawn in capitals.
+        let shown = render(p, PlanPDFOptions(paper: .a4, orientation: .portrait))
+        XCTAssertGreaterThanOrEqual(shown.probe.pageCount, 6, "3 plan pages and at least 3 schedule pages")
+        let schedulePages = shown.probe.pageCount > 3 ? (3..<shown.probe.pageCount).map { shown.probe.shown(page: $0) } : []
+        XCTAssertTrue(schedulePages.dropFirst().allSatisfy { page in page.contains { $0.hasPrefix("LEVEL ") } })
+        // The height of the repeated header counts against the page: nothing runs off the bottom.
+        XCTAssertEqual(shown.probe.problems(), [])
+    }
+
+    func testRoomsThatCannotBeDrawnAreSaidSoOnThePlanAndInTheSchedule() {
+        let broken = Room(name: "Broken room", walls: [Wall(start: .zero, end: Point2(2, 0), height: Measured(scanned: 2.8))],
+                          ceilingHeight: Measured(scanned: 2.8))
+        let nan = Room.polygon(name: "NaN room", corners: [Point2(0, 0), Point2(.nan, 0), Point2(1, 1)])
+        let good = Room.rectangle(name: "Good", width: 3, depth: 3)
+
+        // A floor of nothing but undrawable rooms does not claim that nothing was scanned.
+        let onlyBroken = Property(name: "P", floors: [Floor(name: "L1", rooms: [broken])])
+        let emptyPlan = render(onlyBroken, PlanPDFOptions(includeSchedule: false)).probe.shown(page: 0).joined(separator: " ")
+        XCTAssertFalse(emptyPlan.contains("No rooms have been scanned"), emptyPlan)
+        XCTAssertTrue(emptyPlan.contains("None of the 1 room on this floor could be drawn"), emptyPlan)
+        XCTAssertTrue(emptyPlan.contains("Broken room"), "the message names it")
+
+        // Mixed floor: the plan page carries a note, the page info lists the names.
+        let mixed = Property(name: "P", floors: [Floor(name: "L1", rooms: [broken, good, nan])])
+        let info = PlanPDFRenderer.pageInfos(property: mixed, options: PlanPDFOptions())[0]
+        XCTAssertEqual(info.undrawableRoomNames, ["Broken room", "NaN room"])
+        let page = render(mixed, PlanPDFOptions()).probe.shown(page: 0)
+        XCTAssertTrue(page.contains { $0.hasPrefix("2 rooms not drawn: Broken room, NaN room") }, "\(page.filter { $0.contains("drawn") })")
+        XCTAssertTrue(page.contains("Good"))
+
+        // The schedule lists them but counts nothing for them: no area, no perimeter, no checks.
+        let rows = PlanPDFRenderer.scheduleRows(property: mixed, options: PlanPDFOptions())
+        guard rows.count == 4, case .room(let brokenLine) = rows[0], case .room(let goodLine) = rows[1],
+              case .total(let total) = rows[3] else {
+            return XCTFail("unexpected rows \(rows)")
+        }
+        XCTAssertTrue(brokenLine.isNotDrawn)
+        XCTAssertEqual([brokenLine.area, brokenLine.length, brokenLine.width, brokenLine.perimeter, brokenLine.verified],
+                       ["-", "-", "-", "-", "not drawn"])
+        XCTAssertFalse(goodLine.isNotDrawn)
+        XCTAssertEqual(total.name, "Total (1 rooms)", "only the room that is on the plan")
+        XCTAssertEqual(total.area, "9.00 m\u{B2}")
+        XCTAssertEqual(total.perimeter, "12000 mm", "the good room's 4 x 3 m only; the broken room's 2 m is not added")
+        XCTAssertEqual(total.totalCount, goodLine.totalCount)
+        let schedule = render(mixed, PlanPDFOptions()).probe.shown(page: 1)
+        XCTAssertTrue(schedule.contains("not drawn"))
+        XCTAssertTrue(schedule.contains { $0.hasPrefix("Not drawn: the scan has fewer than three walls") }, "footnote")
+    }
+
+    func testCurvedWallsAreFlaggedOnThePlanAndInTheSchedule() {
+        var bay = Room.rectangle(name: "Bay Lounge", kind: .livingRoom, width: 6, depth: 4)
+        bay.walls[0].isCurved = true
+        let p = property(rooms: [bay, Room.rectangle(name: "Plain", width: 3, depth: 3)])
+        let r = render(p)
+        let plan = r.probe.shown(page: 0)
+        XCTAssertTrue(plan.contains("6000 mm chord"), "the straight length is called what it is")
+        XCTAssertTrue(plan.contains("chord = curved wall"), "and the legend explains it")
+        let schedule = r.probe.shown(page: 1)
+        XCTAssertTrue(schedule.contains("Bay Lounge*"), "starred in the schedule")
+        XCTAssertTrue(schedule.contains("Plain"), "an ordinary room is not")
+        XCTAssertTrue(schedule.contains { $0.hasPrefix("* Has a curved wall, measured as a straight chord") })
+        // Without a curved wall, neither the flag nor the legend entry appears.
+        let flat = render(property(rooms: [Room.rectangle(name: "Plain", width: 3, depth: 3)]))
+        XCTAssertFalse(flat.probe.shown(page: 0).contains("chord = curved wall"))
+        XCTAssertFalse(flat.probe.shown(page: 1).contains { $0.hasPrefix("* Has a curved wall") })
+    }
+
+    func testTheLegendExplainsDOnlyWhereTheSheetUsesIt() {
+        var room = Room.rectangle(name: "R", width: 6, depth: 4)
+        let plain = render(property(rooms: [room])).probe
+        XCTAssertTrue(plain.shown(page: 0).contains("v = verified on site"))
+        XCTAssertFalse(plain.shown(page: 0).contains("d = from drawing"))
+        room.walls[0].length.verify(6.02, source: .drawing)
+        let withDrawing = render(property(rooms: [room])).probe
+        XCTAssertTrue(withDrawing.shown(page: 0).contains("d = from drawing"))
+        XCTAssertTrue(withDrawing.shown(page: 0).contains("6020 mm d"))
+        XCTAssertTrue(withDrawing.shown(page: 1).contains("d = from drawing"), "the schedule page legend too")
+        XCTAssertFalse(withDrawing.shown(page: 0).contains("6020 mm v"), "a drawing is not a site check")
+        // The schedule heading spells out all three states.
+        let heading = withDrawing.shown(page: 1).joined(separator: " ")
+        XCTAssertTrue(heading.contains("v = verified on site (laser or tape)"))
+        XCTAssertTrue(heading.contains("d = taken from an approved drawing, not measured on site"))
+        XCTAssertTrue(heading.contains("A number with no mark is LiDAR only"))
+        // Everything fits in the legend row, whatever it holds (it shrinks, never wraps to a third line).
+        let all = render(property(rooms: [room]), PlanPDFOptions(paper: .a4, orientation: .portrait)).probe
+        XCTAssertEqual(all.problems(), [])
+    }
+
+    func testPageInfoSaysWhenASheetIsTooSmallForItsRooms() {
+        // 20 bedrooms of 4.0 x 3.5 m: on A4 the plan lands at 1:150 where the dimensions cannot all be printed;
+        // on A3 it is 1:75 or larger and everything fits. ExportEngine can use isLegible to prefer A3.
+        var rooms: [Room] = []
+        for row in 0..<4 {
+            for col in 0..<5 {
+                rooms.append(Room.rectangle(name: "R\(row)\(col)", kind: .bedroom,
+                                            origin: Point2(Double(col) * 4.15, Double(row) * 3.65), width: 4.0, depth: 3.5,
+                                            openings: [.door(wall: 0, offset: 0.5)]))
+            }
+        }
+        let p = property(rooms: rooms)
+        let a4 = PlanPDFRenderer.pageInfos(property: p, options: PlanPDFOptions(paper: .a4, includeSchedule: false))[0]
+        XCTAssertEqual(a4.scale, 150)
+        XCTAssertGreaterThan(a4.omittedDimensionCount, 0)
+        XCTAssertFalse(a4.isLegible)
+        let a3 = PlanPDFRenderer.pageInfos(property: p, options: PlanPDFOptions(paper: .a3, includeSchedule: false))[0]
+        XCTAssertLessThanOrEqual(a3.scale ?? 999, 100)
+        XCTAssertEqual(a3.omittedDimensionCount, 0)
+        XCTAssertTrue(a3.isLegible)
+        // The A4 sheet says so on its face and in the warnings.
+        let result = PlanPDFRenderer.renderWithReport(property: p, options: PlanPDFOptions(paper: .a4, includeSchedule: false), now: PlanPDFFixture.now)
+        XCTAssertTrue(result.warnings.contains { $0.contains("wall dimensions were left out") && $0.contains("1:150") && $0.contains("A4") }, "\(result.warnings)")
+        let page = PDFProbe(result.data).shown(page: 0)
+        XCTAssertTrue(page.contains { $0.contains("dimensions left out: too small for 1:150 on A4") }, "\(page.filter { $0.contains("left out") })")
+        XCTAssertTrue(PlanPDFRenderer.renderWithReport(property: p, options: PlanPDFOptions(paper: .a3, includeSchedule: false), now: PlanPDFFixture.now).warnings.isEmpty)
+    }
+
+    func testTextThePDFCannotPrintIsReportedNotSilentlyReplaced() {
+        // Arabic names print as ? with the standard fonts; the export needs to be able to say so.
+        let room = Room.rectangle(name: "\u{063A}\u{0631}\u{0641}\u{0629} \u{0627}\u{0644}\u{062E}\u{0627}\u{062F}\u{0645}\u{0629}", kind: .maidsRoom, width: 3, depth: 3)
+        let p = Property(name: "\u{0641}\u{064A}\u{0644}\u{0627} \u{0627}\u{0644}\u{0646}\u{062E}\u{064A}\u{0644} (Palm Villa)",
+                         client: "\u{0627}\u{0644}\u{0633}\u{064A}\u{062F} \u{0623}\u{062D}\u{0645}\u{062F}", address: "Dubai", reference: "NF-1",
+                         floors: [Floor(name: "Ground", rooms: [room])])
+        let result = PlanPDFRenderer.renderWithReport(property: p, options: PlanPDFOptions(), now: PlanPDFFixture.now)
+        guard result.warnings.count == 1, let warning = result.warnings.first else {
+            return XCTFail("expected exactly one warning, got \(result.warnings)")
+        }
+        XCTAssertTrue(warning.hasPrefix("3 text values contain characters this PDF cannot print"), warning)
+        XCTAssertTrue(warning.contains("property name") && warning.contains("client") && warning.contains("room name"), warning)
+        XCTAssertTrue(warning.contains("\u{0641}\u{064A}\u{0644}\u{0627}"), "it quotes the text so the person can find it")
+        // `render` is the same document.
+        XCTAssertEqual(PlanPDFRenderer.render(property: p, options: PlanPDFOptions(), now: PlanPDFFixture.now), result.data)
+        XCTAssertEqual(PDFProbe(result.data).problems(), [])
+        // The PDF's own metadata keeps the real characters.
+        XCTAssertTrue(PDFProbe(result.data).text.contains("<FEFF"), "the Info title is UTF-16")
+        // Names the fonts do cover, accents included, raise nothing; neither does a property with no problems at all.
+        let fine = Property(name: "Caf\u{E9} Residence \u{2013} Unit 5\u{B2}", client: "M\u{FC}ller", address: "Dubai", reference: "NF-1",
+                            floors: [Floor(name: "Ground", rooms: [Room.rectangle(name: "Salon", width: 4, depth: 4)])])
+        XCTAssertTrue(PlanPDFRenderer.renderWithReport(property: fine, options: PlanPDFOptions(), now: PlanPDFFixture.now).warnings.isEmpty)
+        // Singular wording.
+        let one = Property(name: "\u{0641}\u{064A}\u{0644}\u{0627}", floors: [Floor(name: "G", rooms: [Room.rectangle(name: "R", width: 3, depth: 3)])])
+        XCTAssertEqual(PlanPDFRenderer.renderWithReport(property: one, options: PlanPDFOptions(), now: PlanPDFFixture.now)
+            .warnings.first?.hasPrefix("1 text value contains"), true)
+    }
+
+    func testEnormousNamesDoNotStallTheRenderer() {
+        // 18,000-character names in every field made the old quadratic truncation run for minutes.
+        let long = String(repeating: "Marina Gate Tower ", count: 1000)
+        let room = Room.rectangle(name: long, width: 4, depth: 3)
+        let p = Property(name: long, client: long, address: long, reference: long, floors: [Floor(name: long, rooms: [room])])
+        let start = Date()
+        let r = render(p)
+        XCTAssertLessThan(Date().timeIntervalSince(start), 20)
+        XCTAssertEqual(r.probe.problems(), [])
+        XCTAssertFalse(r.probe.pageCount == 0)
+        // The room label is cut to fit the room, the schedule name to its column.
+        let plan = r.probe.shown(page: 0)
+        XCTAssertTrue(plan.allSatisfy { $0.count < 2000 }, "no 18,000-character line in the content stream")
+    }
+
+    func testAThreeHundredRoomFloorRendersInSeconds() {
+        var rooms: [Room] = []
+        for row in 0..<15 {
+            for col in 0..<20 {
+                rooms.append(Room.rectangle(name: "R\(row)-\(col)", kind: .bedroom,
+                                            origin: Point2(Double(col) * 4.15, Double(row) * 3.65), width: 4.0, depth: 3.5,
+                                            openings: [.door(wall: 0, offset: 0.5), .window(wall: 2, offset: 1, width: 1.5)]))
+            }
+        }
+        let start = Date()
+        let r = render(property(rooms: rooms))
+        let seconds = Date().timeIntervalSince(start)
+        XCTAssertEqual(r.probe.problems(), [])
+        XCTAssertLessThan(seconds, 40, "300 rooms took \(seconds) s in a debug build")
+    }
+
+    func testVerificationCountsAgreeWithTheOnSiteChecklist() {
+        // The schedule's x/y is the checklist's own count, for every kind of room the app can hold.
+        var rooms = PlanPDFFixture.demoRooms() + DemoProperty.make().allRooms
+        var open = Room.rectangle(name: "Open", width: 4, depth: 3, openings: [.door(wall: 0, offset: 0.5), .window(wall: 2, offset: 1, width: 1.5)])
+        open.walls[1].kind = .virtual
+        open.walls[0].length.verify(4); open.ceilingHeight.verify(2.8)
+        open.openings[1].sillHeight.verify(0.9); open.openings[0].sillHeight.verify(0)
+        open.customMeasurements = [CustomMeasurement(label: "Run", a: Point3(0, 0, 0), b: Point3(2, 0, 0))]
+        rooms.append(open)
+        rooms.append(Room(name: "Empty", walls: [], ceilingHeight: Measured(scanned: 2.8)))
+        for room in rooms {
+            let checklist = VerificationChecklist(room: room)
+            let counts = PlanPDFRenderer.verificationCounts(of: room)
+            XCTAssertEqual(counts.total, checklist.totalCount, room.name)
+            XCTAssertEqual(counts.verified, checklist.verifiedCount, room.name)
+        }
+        let property = Property(name: "P", floors: [Floor(name: "L", rooms: rooms.filter { PlanDrawingBuilder.isDrawable($0) })])
+        let rows = PlanPDFRenderer.scheduleRows(property: property, options: PlanPDFOptions())
+        guard case .total(let total)? = rows.last else { return XCTFail("no total") }
+        let progress = VerificationChecklist.roomsProgress(property.allRooms)
+        XCTAssertEqual(total.verified, "\(progress.verified)/\(progress.total)")
+    }
+
     /// Throwaway: writes PDFs for inspection with pypdf and pdftoppm when NEXAFIX_PDF_OUT is set.
     func testWriteValidationPDFs() throws {
         guard let dir = ProcessInfo.processInfo.environment["NEXAFIX_PDF_OUT"] else { return }
@@ -1300,6 +1831,46 @@ final class PlanPDFTests: XCTestCase {
             paper: .a3, scale: .fixed(50), units: DisplayUnits(length: .feetAndInches, area: .squareFeet)))
         let rooms = (1...60).map { rectRoom(3, 2.5, name: "Room \($0)") }
         try write("schedule_60.pdf", property(rooms: rooms), PlanPDFOptions(paper: .a4))
+
+        try write("demo_property_a3.pdf", Property(name: "Demo flat", client: "NexaFix", address: "Dubai", reference: "DEMO",
+                                                    floors: [Floor(name: "Level 1", rooms: DemoProperty.make().allRooms)]), PlanPDFOptions(paper: .a3))
+        try write("demo_property_a4.pdf", Property(name: "Demo flat", client: "NexaFix", address: "Dubai", reference: "DEMO",
+                                                    floors: [Floor(name: "Level 1", rooms: DemoProperty.make().allRooms)]), PlanPDFOptions(paper: .a4))
+        var grid: [Room] = []
+        for row in 0..<4 {
+            for col in 0..<5 {
+                grid.append(Room.rectangle(name: "Bedroom \(row * 5 + col + 1)", kind: .bedroom,
+                                           origin: Point2(Double(col) * 4.15, Double(row) * 3.65), width: 4.0, depth: 3.5,
+                                           openings: [.door(wall: 0, offset: 0.5), .window(wall: 2, offset: 1, width: 1.5)]))
+            }
+        }
+        try write("twenty_a4.pdf", property(rooms: grid), PlanPDFOptions(paper: .a4))
+        try write("twenty_a3.pdf", property(rooms: grid), PlanPDFOptions(paper: .a3))
+
+        var special = Room.rectangle(name: "Bay Lounge", kind: .livingRoom, width: 6.2, depth: 4.5, openings: [.door(wall: 1, offset: 1)])
+        special.walls[0].isCurved = true
+        special.walls[2].length.verify(6.31, source: .drawing, note: "architect drawing rev B")
+        special.walls[1].length.verify(4.52, source: .tape)
+        special.walls[3].length.verify(4.5, source: .laser)
+        special.ceilingHeight.verify(2.74, source: .drawing)
+        var unequal = Room.rectangle(name: "Study", kind: .office, origin: Point2(6.4, 0), width: 6.2, depth: 4.5, openings: [.door(wall: 3, offset: 1.0)])
+        unequal.walls[0].length.verify(6.225); unequal.walls[2].length.verify(6.210)
+        unequal.walls[1].length.verify(4.5); unequal.walls[3].length.verify(4.5)
+        let broken = Room(name: "Broken room", walls: [Wall(start: .zero, end: Point2(1, 0), height: Measured(scanned: 2.8))],
+                          ceilingHeight: Measured(scanned: 2.8))
+        try write("marks.pdf", Property(name: "\u{0641}\u{064A}\u{0644}\u{0627} Palm Villa", client: "Client", address: "Dubai", reference: "R",
+                                        floors: [Floor(name: "Ground", rooms: [special, unequal, broken])]), PlanPDFOptions(paper: .a3))
+
+        let floors = (1...3).map { f in
+            Floor(name: "Level \(f)", level: f, rooms: (1...24).map { Room.rectangle(name: "F\(f) Room \($0)", width: 3, depth: 3) })
+        }
+        try write("continuation.pdf", Property(name: "Tower", floors: floors), PlanPDFOptions(paper: .a4, orientation: .portrait))
+        let halls = (0..<3).map { Room.rectangle(name: "Hall \($0)", width: 61.3, depth: 41.7) }
+        try write("imperial_halls.pdf", Property(name: "Big", floors: [Floor(name: "L1", rooms: halls)]),
+                  PlanPDFOptions(paper: .a4, units: DisplayUnits(length: .feetAndInches, area: .squareFeet)))
+        let a = Room.rectangle(name: "Bedroom", kind: .bedroom, width: 4, depth: 3, openings: [.door(wall: 1, offset: 1.0), .window(wall: 0, offset: 1, width: 1.5)])
+        let b = Room.rectangle(name: "Corridor", kind: .corridor, origin: Point2(4.15, 0), width: 3, depth: 3, openings: [.door(wall: 3, offset: 1.02)])
+        try write("partition.pdf", property(rooms: [a, b]), PlanPDFOptions(paper: .a3, scale: .fixed(25)))
     }
 }
 

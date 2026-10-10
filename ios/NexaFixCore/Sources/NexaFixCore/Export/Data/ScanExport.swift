@@ -10,6 +10,10 @@ import Foundation
 //  - Every dimension is a "measured object" that carries BOTH the LiDAR number and the site
 //    check, so a merely-scanned value can never be mistaken for a verified one. `valueM` is the
 //    number to use (the verified one when there is one).
+//  - Numbers DERIVED from several dimensions (a rectangle's length and width, perimeters, the
+//    effective floor area) carry provenance too: the scanned-only figure and a flag that says
+//    whether every dimension that went into them was verified. A figure that blends verified and
+//    scanned walls matches neither measurement, and its flag is false.
 //  - Output is deterministic: sorted keys, model order for floors, rooms, walls and openings
 //    (openings are ordered by wall, then position along the wall).
 
@@ -174,6 +178,62 @@ enum DataMeasureList {
 
     static func counts(for property: Property) -> Counts {
         property.allRooms.reduce(Counts()) { $0 + counts(for: $1) }
+    }
+}
+
+/// Where the numbers `RoomMetrics` derives from wall lengths come from: the LiDAR-only figure and whether
+/// every wall that went into the figure was verified. Mirrors `RoomMetrics` exactly (its rectangle rule is
+/// `length = max(a, b)` with `a`, `b` the means of opposite sides), so `value` and `scanned` differ only by
+/// what verification changed.
+struct DataDerived {
+    /// Sum of LiDAR wall lengths, all walls / solid walls only.
+    let perimeterScanned: Double
+    let wallPerimeterScanned: Double
+    /// Every wall (every solid wall) has a site check. False with no walls.
+    let perimeterVerified: Bool
+    let wallPerimeterVerified: Bool
+
+    /// Rectangles only: the side pair behind `RoomMetrics.length` / `width`, scanned figure and flag.
+    let lengthScanned: Double?
+    let widthScanned: Double?
+    let lengthVerified: Bool?
+    let widthVerified: Bool?
+
+    /// What `RoomMetrics.effectiveFloorArea` would be with no site checks, and whether it rests on
+    /// verified dimensions. The area of a non-rectangular room comes from the scanned corner
+    /// coordinates, which verification never moves, so it is never verified.
+    let effectiveAreaScanned: Double
+    let effectiveAreaVerified: Bool
+
+    init(room: Room, metrics m: RoomMetrics) {
+        perimeterScanned = room.walls.reduce(0) { $0 + $1.length.scanned }
+        let solid = room.walls.filter { $0.kind == .solid }
+        wallPerimeterScanned = solid.reduce(0) { $0 + $1.length.scanned }
+        perimeterVerified = !room.walls.isEmpty && room.walls.allSatisfy { $0.length.isVerified }
+        wallPerimeterVerified = !solid.isEmpty && solid.allSatisfy { $0.length.isVerified }
+
+        if m.isRectangular, m.sides.count == 4 {
+            let s = m.sides
+            let a = (s[0].length + s[2].length) / 2, b = (s[1].length + s[3].length) / 2
+            let aScanned = (s[0].scannedLength + s[2].scannedLength) / 2
+            let bScanned = (s[1].scannedLength + s[3].scannedLength) / 2
+            let aVerified = s[0].isVerified && s[2].isVerified
+            let bVerified = s[1].isVerified && s[3].isVerified
+            let aIsLength = a >= b                      // RoomMetrics: length = max(a, b)
+            lengthScanned = aIsLength ? aScanned : bScanned
+            widthScanned = aIsLength ? bScanned : aScanned
+            lengthVerified = aIsLength ? aVerified : bVerified
+            widthVerified = aIsLength ? bVerified : aVerified
+            effectiveAreaScanned = aScanned * bScanned
+            effectiveAreaVerified = aVerified && bVerified
+        } else {
+            lengthScanned = nil
+            widthScanned = nil
+            lengthVerified = nil
+            widthVerified = nil
+            effectiveAreaScanned = m.floorArea
+            effectiveAreaVerified = false
+        }
     }
 }
 
@@ -435,16 +495,35 @@ public struct ScanFile: Codable, Hashable, Sendable {
         /// Area to use: length x width from the effective side lengths for a rectangle, the
         /// outline area otherwise.
         public var effectiveFloorAreaM2: Double
+        /// `effectiveFloorAreaM2` computed from LiDAR lengths only (the outline area for a non-rectangle).
+        public var effectiveFloorAreaScannedM2: Double
+        /// True only for a rectangle whose four sides were all verified. Always false for any other
+        /// shape: its area comes from scanned corner coordinates, which verification does not move.
+        public var effectiveFloorAreaVerified: Bool
         /// Sum of effective wall lengths, open-plan boundaries included.
         public var perimeterM: Double
+        /// `perimeterM` from LiDAR lengths only.
+        public var perimeterScannedM: Double
+        /// Every wall's length was verified.
+        public var perimeterVerified: Bool
         /// The same for solid walls only.
         public var wallPerimeterM: Double
+        public var wallPerimeterScannedM: Double
+        /// Every solid wall's length was verified.
+        public var wallPerimeterVerified: Bool
         public var ceilingHeight: MeasuredValue
         public var isRectangular: Bool
-        /// Longer side (effective); null unless rectangular.
+        /// Longer side (effective); null unless rectangular. When `lengthVerified` is false this is
+        /// either the scanned figure or an average of verified and scanned walls: do not cut from it.
         public var lengthM: Double?
+        /// The same two opposite sides measured by LiDAR only; null unless rectangular.
+        public var lengthScannedM: Double?
+        /// Every wall of both opposite sides behind `lengthM` was verified; null unless rectangular.
+        public var lengthVerified: Bool?
         /// Shorter side (effective); null unless rectangular.
         public var widthM: Double?
+        public var widthScannedM: Double?
+        public var widthVerified: Bool?
         public var volumeM3: Double
         public var grossWallAreaM2: Double
         public var openingAreaM2: Double
@@ -463,8 +542,10 @@ public struct ScanFile: Codable, Hashable, Sendable {
         public var notes: String
 
         enum CodingKeys: String, CodingKey {
-            case id, name, kind, floorAreaM2, effectiveFloorAreaM2, perimeterM, wallPerimeterM, ceilingHeight
-            case isRectangular, lengthM, widthM, volumeM3, grossWallAreaM2, openingAreaM2, netWallAreaM2
+            case id, name, kind, floorAreaM2, effectiveFloorAreaM2, effectiveFloorAreaScannedM2, effectiveFloorAreaVerified
+            case perimeterM, perimeterScannedM, perimeterVerified, wallPerimeterM, wallPerimeterScannedM, wallPerimeterVerified
+            case ceilingHeight, isRectangular, lengthM, lengthScannedM, lengthVerified, widthM, widthScannedM, widthVerified
+            case volumeM3, grossWallAreaM2, openingAreaM2, netWallAreaM2
             case corners, walls, openings, objects, customMeasurements, verification
             case scannedAt, floorElevationM, capturedRoomFile, notes
         }
@@ -476,12 +557,22 @@ public struct ScanFile: Codable, Hashable, Sendable {
             try c.encode(kind, forKey: .kind)
             try c.encode(floorAreaM2, forKey: .floorAreaM2)
             try c.encode(effectiveFloorAreaM2, forKey: .effectiveFloorAreaM2)
+            try c.encode(effectiveFloorAreaScannedM2, forKey: .effectiveFloorAreaScannedM2)
+            try c.encode(effectiveFloorAreaVerified, forKey: .effectiveFloorAreaVerified)
             try c.encode(perimeterM, forKey: .perimeterM)
+            try c.encode(perimeterScannedM, forKey: .perimeterScannedM)
+            try c.encode(perimeterVerified, forKey: .perimeterVerified)
             try c.encode(wallPerimeterM, forKey: .wallPerimeterM)
+            try c.encode(wallPerimeterScannedM, forKey: .wallPerimeterScannedM)
+            try c.encode(wallPerimeterVerified, forKey: .wallPerimeterVerified)
             try c.encode(ceilingHeight, forKey: .ceilingHeight)
             try c.encode(isRectangular, forKey: .isRectangular)
             try c.encode(lengthM, forKey: .lengthM)
+            try c.encode(lengthScannedM, forKey: .lengthScannedM)
+            try c.encode(lengthVerified, forKey: .lengthVerified)
             try c.encode(widthM, forKey: .widthM)
+            try c.encode(widthScannedM, forKey: .widthScannedM)
+            try c.encode(widthVerified, forKey: .widthVerified)
             try c.encode(volumeM3, forKey: .volumeM3)
             try c.encode(grossWallAreaM2, forKey: .grossWallAreaM2)
             try c.encode(openingAreaM2, forKey: .openingAreaM2)
@@ -597,9 +688,11 @@ public enum ScanExport {
             let o = ref.opening
             let wall = ref.wallIndex.map { room.walls[$0] }
             let fromEnd = wall.map { r4($0.geometricLength - o.offsetFromWallStart - o.width.scanned) }
+            // A wall id that is not one of this room's walls is a dangling reference: it matches nothing,
+            // so it is written as null like an opening that never had a wall.
             return ScanFile.OpeningEntry(
                 id: o.id.uuidString, kind: o.kind.rawValue, label: ref.label,
-                wallId: o.wallID?.uuidString, wallIndex: ref.wallIndex,
+                wallId: wall?.id.uuidString, wallIndex: ref.wallIndex,
                 offsetFromStartM: r4(o.offsetFromWallStart), offsetFromEndM: fromEnd,
                 width: ScanFile.MeasuredValue(o.width), height: ScanFile.MeasuredValue(o.height),
                 sillHeight: ScanFile.MeasuredValue(o.sillHeight))
@@ -624,15 +717,21 @@ public enum ScanExport {
         }
 
         let counts = DataMeasureList.counts(for: room)
+        let d = DataDerived(room: room, metrics: m)
 
         return ScanFile.RoomEntry(
             id: room.id.uuidString, name: room.name, kind: room.kind.rawValue,
             floorAreaM2: r4(m.floorArea), effectiveFloorAreaM2: r4(m.effectiveFloorArea),
-            perimeterM: r4(m.perimeter), wallPerimeterM: r4(m.wallPerimeter),
+            effectiveFloorAreaScannedM2: r4(d.effectiveAreaScanned), effectiveFloorAreaVerified: d.effectiveAreaVerified,
+            perimeterM: r4(m.perimeter), perimeterScannedM: r4(d.perimeterScanned), perimeterVerified: d.perimeterVerified,
+            wallPerimeterM: r4(m.wallPerimeter), wallPerimeterScannedM: r4(d.wallPerimeterScanned),
+            wallPerimeterVerified: d.wallPerimeterVerified,
             ceilingHeight: ScanFile.MeasuredValue(room.ceilingHeight),
             isRectangular: m.isRectangular,
             lengthM: m.isRectangular ? m.length.map(r4) : nil,
+            lengthScannedM: d.lengthScanned.map(r4), lengthVerified: d.lengthVerified,
             widthM: m.isRectangular ? m.width.map(r4) : nil,
+            widthScannedM: d.widthScanned.map(r4), widthVerified: d.widthVerified,
             volumeM3: r4(m.volume), grossWallAreaM2: r4(m.grossWallArea),
             openingAreaM2: r4(m.openingArea), netWallAreaM2: r4(m.netWallArea),
             corners: corners, walls: walls, openings: openings, objects: objects,

@@ -19,8 +19,14 @@ import Foundation
 //    caller passes a date to stamp it with.
 //  - Dates survive a round trip bit for bit (fractional-second ISO 8601); unknown JSON keys are
 //    ignored on read; schema changes go through `Migration`s.
+//  - Damaged bytes never crash the app: the file is checked with a strict parser before Foundation's
+//    JSONDecoder sees it (see `requireStrictJSON`), so a bad object key is damage like any other.
+//  - Recovery stays visible: a damaged file that was set aside is kept as property.json.corrupt and
+//    reported by `PropertySummary.damagedFileKept` until `clearDamagedFile(id:)` is called, even after
+//    later saves have made the property healthy again.
 //  - Asset paths are checked against path traversal (`..`, absolute paths, symlinks that leave the
-//    property folder).
+//    property folder). Paths are split on Unicode scalars, never on Characters: "/" followed by a
+//    combining mark is one Character but still a path separator to the file system.
 //  - Thread safety: one store serialises its own operations with a lock. Share one instance per
 //    root folder; several instances on one folder never see a torn file, but can interleave.
 
@@ -89,9 +95,14 @@ public struct PropertySummary: Codable, Hashable, Identifiable, Sendable {
     public var health: Health
     /// A sentence for the user when `health` is not `.ok`.
     public var problem: String?
+    /// A damaged property.json was set aside as property.json.corrupt by an earlier save and has not been
+    /// cleared yet. Unlike `health`, this stays true after the next successful save, so the app can keep
+    /// telling the user that changes may have been lost. See `PropertyStore.clearDamagedFile(id:)`.
+    public var damagedFileKept: Bool
 
     public init(id: UUID, name: String, client: String, kind: PropertyKind, roomCount: Int, floorAreaM2: Double,
-                updatedAt: Date, verifiedFraction: Double, health: Health = .ok, problem: String? = nil) {
+                updatedAt: Date, verifiedFraction: Double, health: Health = .ok, problem: String? = nil,
+                damagedFileKept: Bool = false) {
         self.id = id
         self.name = name
         self.client = client
@@ -102,6 +113,7 @@ public struct PropertySummary: Codable, Hashable, Identifiable, Sendable {
         self.verifiedFraction = verifiedFraction
         self.health = health
         self.problem = problem
+        self.damagedFileKept = damagedFileKept
     }
 }
 
@@ -195,11 +207,18 @@ public final class PropertyStore: @unchecked Sendable {
     /// Every property on disk, newest `updatedAt` first (ties by name, then id). Properties whose
     /// files cannot be read are listed too, as `.unreadable`, so a damaged survey never silently
     /// disappears from the list. Folders that are not property folders are ignored.
+    ///
+    /// Cost: every property.json is read and fingerprinted, but only files whose bytes changed since the
+    /// last call (or that this store instance has not seen yet) are decoded. A list of 100 unchanged
+    /// 40 KB properties is a few milliseconds; the first call, or one after many outside edits, costs a
+    /// full decode of each changed file. The call blocks while it holds the store's lock, so run it off
+    /// the main actor when the list is large.
     public func list() throws -> [PropertySummary] {
         try locked {
             guard fileManager.fileExists(atPath: rootURL.path) else { return [] }
             let names = try fileManager.contentsOfDirectory(atPath: rootURL.path)
             var out: [PropertySummary] = []
+            var seen: Set<UUID> = []
             for name in names {
                 guard let id = UUID(uuidString: name) else { continue }
                 var isDirectory: ObjCBool = false
@@ -208,16 +227,13 @@ public final class PropertyStore: @unchecked Sendable {
                 let hasData = fileManager.fileExists(atPath: propertyFileURL(id).path)
                     || fileManager.fileExists(atPath: backupFileURL(id).path)
                 guard hasData else { continue }   // e.g. assets written before the first save
-                do {
-                    let loaded = try loadLocked(id: id)
-                    out.append(Self.summary(of: loaded))
-                } catch {
-                    out.append(PropertySummary(
-                        id: id, name: "Unreadable property", client: "", kind: .other, roomCount: 0,
-                        floorAreaM2: 0, updatedAt: .distantPast, verifiedFraction: 0, health: .unreadable,
-                        problem: (error as? LocalizedError)?.errorDescription ?? "\(error)"))
-                }
+                seen.insert(id)
+                var row = summaryLocked(id: id)
+                row.damagedFileKept = fileManager.fileExists(atPath: corruptFileURL(id).path)
+                out.append(row)
             }
+            // Forget properties that are gone, so the cache cannot outgrow the store.
+            for id in summaryCache.keys where !seen.contains(id) { summaryCache[id] = nil }
             out.sort { a, b in
                 if a.updatedAt != b.updatedAt { return a.updatedAt > b.updatedAt }
                 let an = a.name.lowercased(), bn = b.name.lowercased()
@@ -225,6 +241,71 @@ public final class PropertyStore: @unchecked Sendable {
                 return a.id.uuidString < b.id.uuidString
             }
             return out
+        }
+    }
+
+    /// What the cache remembers about one property: the bytes it was computed from and the result.
+    /// `backup` is set only for a summary that came from property.json.bak.
+    private struct CachedSummary {
+        var primary: Fingerprint?
+        var backup: Fingerprint?
+        var summary: PropertySummary
+    }
+
+    /// Length and a 64-bit hash over every byte, eight bytes at a time (a 1.5 MB file takes well under a
+    /// millisecond in a release build). Not cryptographic: it only has to notice that a file changed, and
+    /// a change is a different length or a different multiply-xorshift chain over all of its bytes.
+    /// (`Data.hashValue` is not used: some Foundation versions hash only the first bytes of a Data.)
+    private struct Fingerprint: Equatable {
+        let count: Int
+        let hash: UInt64
+
+        init(_ data: Data) {
+            var h: UInt64 = 0xCBF2_9CE4_8422_2325
+            data.withUnsafeBytes { buffer in
+                let words = buffer.count / 8
+                for i in 0..<words {
+                    h = (h ^ buffer.loadUnaligned(fromByteOffset: i * 8, as: UInt64.self)) &* 0x9E37_79B9_7F4A_7C15
+                    h ^= h >> 29
+                }
+                for i in (words * 8)..<buffer.count {
+                    h = (h ^ UInt64(buffer[i])) &* 0x0000_0100_0000_01B3
+                }
+            }
+            count = data.count
+            hash = h
+        }
+    }
+
+    private var summaryCache: [UUID: CachedSummary] = [:]
+    private var fullSummaryDecodes = 0
+
+    /// How many times `list()` had to decode a property file. Tests use it to prove the cache works.
+    var summaryDecodeCount: Int { locked { fullSummaryDecodes } }
+
+    /// The list row for one property, from the cache when the files are byte-identical to the ones the
+    /// cached row was computed from, otherwise from a full read. Unreadable rows are never cached.
+    private func summaryLocked(id: UUID) -> PropertySummary {
+        let primaryBytes = try? Data(contentsOf: propertyFileURL(id))
+        let primaryPrint = primaryBytes.map(Fingerprint.init)
+        if let cached = summaryCache[id], cached.primary == primaryPrint {
+            guard let wanted = cached.backup else { return cached.summary }          // decided by the primary alone
+            if let backupBytes = try? Data(contentsOf: backupFileURL(id)), Fingerprint(backupBytes) == wanted {
+                return cached.summary
+            }
+        }
+        fullSummaryDecodes += 1
+        do {
+            let read = try loadDetailed(id: id, primaryBytes: primaryBytes)
+            let row = Self.summary(of: read.loaded)
+            summaryCache[id] = CachedSummary(primary: primaryPrint, backup: read.backupBytes.map(Fingerprint.init), summary: row)
+            return row
+        } catch {
+            summaryCache[id] = nil
+            return PropertySummary(
+                id: id, name: "Unreadable property", client: "", kind: .other, roomCount: 0,
+                floorAreaM2: 0, updatedAt: .distantPast, verifiedFraction: 0, health: .unreadable,
+                problem: (error as? LocalizedError)?.errorDescription ?? "\(error)")
         }
     }
 
@@ -244,8 +325,9 @@ public final class PropertyStore: @unchecked Sendable {
 
     // MARK: Load
 
-    /// Load a property. Falls back to the backup when property.json is damaged; use
-    /// `loadWithStatus(id:)` to find out whether that happened.
+    /// Load a property. Falls back to the backup when property.json is damaged, and **does not tell you
+    /// so**: use `loadWithStatus(id:)` wherever the user should hear about it. (`list()` reports it per
+    /// row, and `PropertySummary.damagedFileKept` keeps reporting it after the next save.)
     public func load(id: UUID) throws -> Property {
         try loadWithStatus(id: id).property
     }
@@ -255,15 +337,33 @@ public final class PropertyStore: @unchecked Sendable {
     }
 
     private func loadLocked(id: UUID) throws -> LoadedProperty {
+        try loadDetailed(id: id, primaryBytes: nil).loaded
+    }
+
+    /// A load together with the exact bytes it was decoded from. `primaryBytes` may carry the bytes of
+    /// property.json when the caller has already read them.
+    private struct DetailedLoad {
+        var loaded: LoadedProperty
+        /// The bytes of property.json when it was present and readable (decoded or not).
+        var primaryBytes: Data?
+        /// The bytes of property.json.bak when the result came from it.
+        var backupBytes: Data?
+    }
+
+    private func loadDetailed(id: UUID, primaryBytes preread: Data?) throws -> DetailedLoad {
         let primary = propertyFileURL(id), backup = backupFileURL(id)
-        let hasPrimary = fileManager.fileExists(atPath: primary.path)
+        let hasPrimary = preread != nil || fileManager.fileExists(atPath: primary.path)
         let hasBackup = fileManager.fileExists(atPath: backup.path)
         guard hasPrimary || hasBackup else { throw PropertyStoreError.notFound(id) }
 
         var primaryReason = "property.json is missing"
+        var primaryBytes = preread
         if hasPrimary {
             do {
-                return try readLocked(primary, expecting: id, recovered: false, reason: nil)
+                let data = try preread ?? Data(contentsOf: primary)
+                primaryBytes = data
+                let loaded = try read(data, expecting: id, recovered: false, reason: nil)
+                return DetailedLoad(loaded: loaded, primaryBytes: data, backupBytes: nil)
             } catch let e as PropertyStoreError {
                 switch e {
                 case .unsupportedSchemaVersion, .missingMigration:
@@ -277,7 +377,9 @@ public final class PropertyStore: @unchecked Sendable {
         }
         guard hasBackup else { throw PropertyStoreError.corrupt(id, reason: primaryReason) }
         do {
-            return try readLocked(backup, expecting: id, recovered: true, reason: primaryReason)
+            let data = try Data(contentsOf: backup)
+            let loaded = try read(data, expecting: id, recovered: true, reason: primaryReason)
+            return DetailedLoad(loaded: loaded, primaryBytes: primaryBytes, backupBytes: data)
         } catch let e as PropertyStoreError {
             switch e {
             case .unsupportedSchemaVersion, .missingMigration: throw e
@@ -288,8 +390,7 @@ public final class PropertyStore: @unchecked Sendable {
         }
     }
 
-    private func readLocked(_ url: URL, expecting id: UUID, recovered: Bool, reason: String?) throws -> LoadedProperty {
-        let data = try Data(contentsOf: url)
+    private func read(_ data: Data, expecting id: UUID, recovered: Bool, reason: String?) throws -> LoadedProperty {
         let decoded = try decodeFile(data)
         guard decoded.property.id == id else {
             throw PropertyStoreError.corrupt(id, reason: "the file holds property \(decoded.property.id.uuidString)")
@@ -310,6 +411,28 @@ public final class PropertyStore: @unchecked Sendable {
             }
         }
         return (error as NSError).localizedDescription
+    }
+
+    // MARK: Set-aside files
+
+    /// The damaged property.json that a save set aside as property.json.corrupt, if one is kept.
+    public func damagedFileURL(for id: UUID) -> URL? {
+        locked {
+            let url = corruptFileURL(id)
+            return fileManager.fileExists(atPath: url.path) ? url : nil
+        }
+    }
+
+    /// Delete the kept damaged file once the user has been told about it (or it has been inspected).
+    /// Returns false when there was none. The property itself is not touched.
+    @discardableResult
+    public func clearDamagedFile(id: UUID) throws -> Bool {
+        try locked {
+            let url = corruptFileURL(id)
+            guard fileManager.fileExists(atPath: url.path) else { return false }
+            try fileManager.removeItem(at: url)
+            return true
+        }
     }
 
     // MARK: Save
@@ -377,6 +500,9 @@ public final class PropertyStore: @unchecked Sendable {
     // MARK: Duplicate
 
     /// Copy a property (data and asset files) under brand-new ids and save it.
+    ///
+    /// Blocking: the asset files (USDZ models, world maps) are copied while the store's lock is held, so
+    /// call this off the main actor.
     ///
     /// Every id in the tree is new: property, floors, rooms, walls, openings, objects and custom
     /// measurements; openings keep pointing at the copies of their walls. File references stay
@@ -476,11 +602,11 @@ public final class PropertyStore: @unchecked Sendable {
 
     public static func resolve(relativePath: String, in folder: URL, fileManager: FileManager = .default) throws -> URL {
         let bad = PropertyStoreError.unsafePath(relativePath)
-        guard !relativePath.isEmpty, !relativePath.hasPrefix("/"), !relativePath.hasPrefix("~"),
-              !relativePath.contains("\\") else { throw bad }
-        for scalar in relativePath.unicodeScalars where scalar.value < 0x20 || scalar.value == 0x7F { throw bad }
+        let scalars = relativePath.unicodeScalars
+        guard let first = scalars.first, first != "/", first != "~", !scalars.contains("\\") else { throw bad }
+        for scalar in scalars where scalar.value < 0x20 || scalar.value == 0x7F { throw bad }
 
-        let components = relativePath.split(separator: "/", omittingEmptySubsequences: true).map(String.init)
+        let components = pathComponents(relativePath)
         guard !components.isEmpty, !components.contains("."), !components.contains("..") else { throw bad }
 
         let base = folder.standardizedFileURL.path
@@ -489,8 +615,26 @@ public final class PropertyStore: @unchecked Sendable {
         // Follow symlinks on the part that exists, so a link inside the folder cannot lead out of it.
         guard let realBase = realPath(base, fileManager), let realTarget = realPath(lexical, fileManager) else { throw bad }
         let prefix = realBase.hasSuffix("/") ? realBase : realBase + "/"
-        guard realTarget.hasPrefix(prefix) else { throw bad }
+        guard realTarget.unicodeScalars.starts(with: prefix.unicodeScalars) else { throw bad }
         return URL(fileURLWithPath: lexical)
+    }
+
+    /// The non-empty pieces of a path, split on the "/" **scalar**. `String.split(separator: "/")` works on
+    /// Characters, and "/" followed by a combining mark (U+0301), a zero width joiner (U+200D) or a variation
+    /// selector forms ONE Character that is not "/": "../\u{301}x" would then look like a single harmless
+    /// name while the file system reads ".." and "\u{301}x". Every path check in this file goes through here.
+    static func pathComponents(_ path: String) -> [String] {
+        var parts: [String] = []
+        var current = String.UnicodeScalarView()
+        for scalar in path.unicodeScalars {
+            if scalar == "/" {
+                if !current.isEmpty { parts.append(String(current)); current = String.UnicodeScalarView() }
+            } else {
+                current.append(scalar)
+            }
+        }
+        if !current.isEmpty { parts.append(String(current)) }
+        return parts
     }
 
     /// The absolute path with every symbolic link followed, including links that dangle (point at
@@ -498,7 +642,7 @@ public final class PropertyStore: @unchecked Sendable {
     /// of the path that do not exist are kept as they are. nil after 40 link hops (a loop).
     private static func realPath(_ path: String, _ fileManager: FileManager) -> String? {
         var resolved: [String] = []                      // components of the real path so far
-        var pending = path.split(separator: "/", omittingEmptySubsequences: true).map(String.init).reversed().map { $0 }
+        var pending: [String] = Array(pathComponents(path).reversed())
         var hops = 0
         while let component = pending.popLast() {
             if component == "." { continue }
@@ -507,9 +651,8 @@ public final class PropertyStore: @unchecked Sendable {
             if let destination = try? fileManager.destinationOfSymbolicLink(atPath: candidate) {
                 hops += 1
                 if hops > 40 { return nil }
-                if destination.hasPrefix("/") { resolved = [] }          // absolute link: start again from the root
-                pending.append(contentsOf: destination.split(separator: "/", omittingEmptySubsequences: true)
-                    .map(String.init).reversed())
+                if destination.unicodeScalars.first == "/" { resolved = [] }          // absolute link: start again from the root
+                pending.append(contentsOf: pathComponents(destination).reversed())
                 continue
             }
             resolved.append(component)
@@ -518,12 +661,13 @@ public final class PropertyStore: @unchecked Sendable {
     }
 
     /// Write a file into a property's folder (atomically, creating folders as needed).
-    /// The path is checked with `resolve`, and the store's own files cannot be overwritten.
+    /// The path is checked with `resolve`, and the store's own files cannot be overwritten or turned into
+    /// folders (the first path component may not be property.json, property.json.bak or property.json.corrupt).
     public func writeAsset(_ data: Data, relativePath: String, for id: UUID) throws {
         let url = try resolve(relativePath: relativePath, in: id)
-        let first = relativePath.split(separator: "/", omittingEmptySubsequences: true).map(String.init)
-        let reserved = [Self.propertyFileName, Self.backupFileName, Self.corruptFileName].map { $0.lowercased() }
-        if first.count == 1, reserved.contains(first[0].lowercased()) {
+        // The FIRST component decides: "property.json/x.bin" would make a folder where the store keeps
+        // its file, and every later save would fail.
+        if let first = Self.pathComponents(relativePath).first, Self.reservedNames.contains(Self.reservedKey(first)) {
             throw PropertyStoreError.reservedPath(relativePath)
         }
         try locked {
@@ -540,7 +684,18 @@ public final class PropertyStore: @unchecked Sendable {
         }
     }
 
-    /// Read a file from a property's folder; the path gets the same checks as `writeAsset`.
+    private static let reservedNames: Set<String> = Set([propertyFileName, backupFileName, corruptFileName].map(reservedKey))
+
+    /// Case-insensitive (default macOS and iOS volumes are) and blind to invisible format characters
+    /// (zero width joiner and the like), which some file systems ignore when comparing names.
+    private static func reservedKey(_ name: String) -> String {
+        var out = String.UnicodeScalarView()
+        for scalar in name.lowercased().unicodeScalars where scalar.properties.generalCategory != .format { out.append(scalar) }
+        return String(out)
+    }
+
+    /// Read a file from a property's folder; the path gets the same checks as `writeAsset`. Blocking, like
+    /// `writeAsset`: assets can be large, so call it off the main actor.
     public func readAsset(relativePath: String, for id: UUID) throws -> Data {
         let url = try resolve(relativePath: relativePath, in: id)
         return try locked { try Data(contentsOf: url) }
@@ -611,8 +766,23 @@ public final class PropertyStore: @unchecked Sendable {
         try Self.decodeDocument(data, migrations: migrations)
     }
 
+    /// Foundation's JSONDecoder does not throw on every malformed file: on some toolchains it hits a
+    /// `try!` and kills the whole process (an uncatchable trap) when an OBJECT KEY has invalid UTF-8, a raw
+    /// control character, a bad escape or a lone surrogate escape. The same damage inside a string VALUE is
+    /// thrown normally. `JSONSerialization` is a strict parser that throws for all of these, so every file
+    /// goes through it first; whatever it accepts is well-formed JSON with well-formed keys, which the
+    /// decoder handles. This also costs one extra parse per read, which is small next to the decode.
+    private static func requireStrictJSON(_ data: Data) throws {
+        do {
+            _ = try JSONSerialization.jsonObject(with: data, options: [.fragmentsAllowed])
+        } catch {
+            throw UnreadableFile(reason: "not valid JSON")
+        }
+    }
+
     private static func decodeDocument(_ data: Data, migrations: [Int: Migration])
         throws -> (property: Property, version: Int, migrated: Bool) {
+        try requireStrictJSON(data)
         let decoder = makeDecoder()
         let header = try decoder.decode(Header.self, from: data)
         let version = header.schemaVersion ?? (header.hasProperty ? currentSchemaVersion : 0)

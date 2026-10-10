@@ -201,11 +201,26 @@ final class PlanDrawingTests: XCTestCase {
         XCTAssertTrue(d.items(.doors).isEmpty)
     }
 
-    func testCurvedWallIsDrawnAsItsChord() {
+    func testCurvedWallIsDrawnAsItsChordAndSaysSo() {
+        // The model stores only the chord, so the geometry is the straight wall...
         var curved = Room.rectangle(name: "C", width: 4, depth: 3)
         curved.walls[0].isCurved = true
         let straight = Room.rectangle(name: "C", width: 4, depth: 3)
-        XCTAssertEqual(plan(curved).primitives, plan(straight).primitives)
+        XCTAssertEqual(plan(curved).items(.walls), plan(straight).items(.walls), "the band is the chord")
+        XCTAssertEqual(plan(curved).lines(.dimensions).count, plan(straight).lines(.dimensions).count)
+        // ...but the printed plan must not pass it off as a straight 4000 mm run.
+        let curvedTexts = plan(curved).texts(.dimensions).map(\.string)
+        XCTAssertEqual(curvedTexts.first, "4000 mm chord", "straight length of a curved wall, flagged")
+        XCTAssertEqual(plan(straight).texts(.dimensions).first?.string, "4000 mm")
+        XCTAssertEqual(curvedTexts.filter { $0.contains("chord") }.count, 1, "only the curved wall is flagged")
+        XCTAssertEqual(plan(curved).texts(.dimensions)[0].color, PlanDrawingBuilder.Palette.bronze)
+        let detailed = PlanDrawingBuilder.buildDetailed(room: curved, options: PlanOptions())
+        XCTAssertEqual(detailed.report.chordLabels, 1, "the report tells the legend to explain the flag")
+        XCTAssertEqual(PlanDrawingBuilder.buildDetailed(room: straight, options: PlanOptions()).report.chordLabels, 0)
+        // A checked chord keeps its mark and the flag: "4045 mm v chord".
+        curved.walls[0].length.verify(4.045)
+        XCTAssertEqual(plan(curved).texts(.dimensions)[0].string, "4045 mm v chord")
+        XCTAssertEqual(plan(curved).texts(.dimensions)[0].color, PlanDrawingBuilder.Palette.verified)
     }
 
     func testClockwiseWindingStillPutsBandsOutsideAndDimensionsInside() {
@@ -274,29 +289,31 @@ final class PlanDrawingTests: XCTestCase {
     }
 
     func testWideDoorIsAPairOfLeavesHingedAtBothEdges() {
-        // 2.4 m wide on the south wall of a 5 x 4 room, from x = 0.5 to 2.9.
-        let room = Room.rectangle(name: "R", width: 5, depth: 4, openings: [.door(wall: 0, offset: 0.5, width: 2.4, height: 2.2)])
+        // 1.6 m wide on the south wall of a 5 x 4 room, from x = 0.5 to 2.1.
+        let room = Room.rectangle(name: "R", width: 5, depth: 4, openings: [.door(wall: 0, offset: 0.5, width: 1.6, height: 2.2)])
         let d = plan(room, wallsOnly)
         let leaves = d.lines(.doors)
         guard leaves.count == 2 else { return XCTFail("two leaves, got \(leaves.count)") }
-        assertPoint(leaves[0].a, 0.5, 0); assertPoint(leaves[0].b, 0.5, 1.2)
-        assertPoint(leaves[1].a, 2.9, 0); assertPoint(leaves[1].b, 2.9, 1.2)
+        assertPoint(leaves[0].a, 0.5, 0); assertPoint(leaves[0].b, 0.5, 0.8)
+        assertPoint(leaves[1].a, 2.1, 0); assertPoint(leaves[1].b, 2.1, 0.8)
         let arcs = d.arcs(.doors)
         guard arcs.count == 2 else { return XCTFail("two swings, got \(arcs.count)") }
         assertPoint(arcs[0].center, 0.5, 0)
-        XCTAssertEqual(arcs[0].radius, 1.2, accuracy: 1e-12)
+        XCTAssertEqual(arcs[0].radius, 0.8, accuracy: 1e-12)
         XCTAssertEqual(arcs[0].start, 0, accuracy: 1e-9); XCTAssertEqual(arcs[0].end, 90, accuracy: 1e-9)
         // The second leaf swings from the far edge back towards the middle: 90 -> 180 degrees.
-        assertPoint(arcs[1].center, 2.9, 0)
+        assertPoint(arcs[1].center, 2.1, 0)
         XCTAssertEqual(arcs[1].start, 90, accuracy: 1e-9); XCTAssertEqual(arcs[1].end, 180, accuracy: 1e-9)
-        // Both quarter circles meet in the middle of the opening (x = 1.7) on the wall line.
-        XCTAssertEqual(arcs[0].center.x + arcs[0].radius, 1.7, accuracy: 1e-9)
-        XCTAssertEqual(arcs[1].center.x - arcs[1].radius, 1.7, accuracy: 1e-9)
+        // Both quarter circles meet in the middle of the opening (x = 1.3) on the wall line.
+        XCTAssertEqual(arcs[0].center.x + arcs[0].radius, 1.3, accuracy: 1e-9)
+        XCTAssertEqual(arcs[1].center.x - arcs[1].radius, 1.3, accuracy: 1e-9)
         // 1.3 m and narrower stay a single leaf.
         let single = Room.rectangle(name: "R", width: 5, depth: 4, openings: [.door(wall: 0, offset: 0.5, width: 1.3)])
         XCTAssertEqual(plan(single, wallsOnly).lines(.doors).count, 1)
-        // A pair of leaves also swings into the room on a wall that runs the other way (north wall, runs west).
+        // A pair of leaves also swings into the room on a wall that runs the other way (north wall, runs west),
+        // and a 2.0 m door is still a pair of leaves: only wider than that is a slider.
         let north = Room.rectangle(name: "R", width: 5, depth: 4, openings: [.door(wall: 2, offset: 0.5, width: 2.0)])
+        XCTAssertEqual(plan(north, wallsOnly).arcs(.doors).count, 2)
         for a in plan(north, wallsOnly).arcs(.doors) {
             var sweep = a.end - a.start
             if sweep < 0 { sweep += 360 }
@@ -304,6 +321,35 @@ final class PlanDrawingTests: XCTestCase {
             let mid = (a.start + 45) * Double.pi / 180
             XCTAssertTrue(Polygon.contains(north.outline, a.center + Point2(cos(mid), sin(mid)) * (a.radius * 0.8)))
         }
+    }
+
+    func testADoorWiderThanTwoMetresIsASlidingDoorNotASwing() {
+        // The 2.4 m balcony door of the demo flat: two panels in two tracks, no leaf and no swing.
+        let room = Room.rectangle(name: "Balcony", width: 5, depth: 3,
+                                  openings: [.door(wall: 0, offset: 1.0, width: 2.4, height: 2.2)])
+        let d = plan(room, wallsOnly)
+        XCTAssertTrue(d.lines(.doors).isEmpty, "no leaf")
+        XCTAssertTrue(d.arcs(.doors).isEmpty, "no swing arc")
+        let panels = d.polylines(.doors)
+        guard panels.count == 2 else { return XCTFail("two panels, got \(panels.count)") }
+        for panel in panels {
+            XCTAssertTrue(panel.closed)
+            XCTAssertEqual(panel.points.count, 4)
+        }
+        // Along the wall the panels cover 55 % of the 2.4 m each (1.32 m), from the two ends, overlapping by 0.24 m
+        // in the middle: x from 1.0 to 2.32 and from 2.08 to 3.4.
+        func xRange(_ p: [Point2]) -> (Double, Double) { (p.map(\.x).min()!, p.map(\.x).max()!) }
+        XCTAssertEqual(xRange(panels[0].points).0, 1.0, accuracy: 1e-9)
+        XCTAssertEqual(xRange(panels[0].points).1, 2.32, accuracy: 1e-9)
+        XCTAssertEqual(xRange(panels[1].points).0, 2.08, accuracy: 1e-9)
+        XCTAssertEqual(xRange(panels[1].points).1, 3.4, accuracy: 1e-9)
+        // In two different tracks inside the 0.12 m wall: 0.036 and 0.084 m out from the inner face.
+        let y0 = panels[0].points.map(\.y).reduce(0, +) / 4, y1 = panels[1].points.map(\.y).reduce(0, +) / 4
+        XCTAssertEqual(y0, -0.036, accuracy: 1e-9)
+        XCTAssertEqual(y1, -0.084, accuracy: 1e-9)
+        // The doorway is still cut through the wall band, and it still gets its size tag.
+        XCTAssertEqual(d.polylines(.walls).count, 5, "south wall in two pieces, plus three more walls")
+        XCTAssertEqual(plan(room).texts(.doors).map(\.string), ["D 2400x2200"])
     }
 
     func testEveryDoorSwingFallsInsideTheRoomForAllWallDirections() {
@@ -558,11 +604,12 @@ final class PlanDrawingTests: XCTestCase {
             var o = PlanOptions(); o.units = DisplayUnits(length: length, area: .squareMetres)
             return plan(room, o).texts(.dimensions)[0].string
         }
+        // Every unit prints a checked value to at least a millimetre (feet and inches: a sixteenth of an inch).
         XCTAssertEqual(first(.millimetres), "4000 mm v")
-        XCTAssertEqual(first(.centimetres), "400 cm v")
-        XCTAssertEqual(first(.metres), "4.00 m v")           // compact precision
-        XCTAssertEqual(first(.inches), "157.5 in v")         // 4 / 0.0254 = 157.48
-        XCTAssertEqual(first(.feetAndInches), "13' 1 1/2\" v")   // 157.48 in = 13 ft 1.48 in, nearest half inch
+        XCTAssertEqual(first(.centimetres), "400.0 cm v")
+        XCTAssertEqual(first(.metres), "4.000 m v")
+        XCTAssertEqual(first(.inches), "157.48 in v")        // 4 / 0.0254 = 157.4803
+        XCTAssertEqual(first(.feetAndInches), "13' 1 1/2\" v")   // 157.4803 in = 13 ft 1.4803 in = 1 1/2 in to a sixteenth
     }
 
     func testWallsShorterThanFortyCentimetresGetNoDimensionLine() {
@@ -745,7 +792,7 @@ final class PlanDrawingTests: XCTestCase {
         let labels = plan(room, o).texts(.roomLabels)
         // Effective area 4.04 x 3.00 = 12.12 m2 = 130.5 sq ft (12.12 / 0.09290304 = 130.46).
         XCTAssertEqual(labels[1].string, "130 sq ft")
-        XCTAssertEqual(labels[2].string, "Ceiling 2.75 m v")
+        XCTAssertEqual(labels[2].string, "Ceiling 2.750 m v")
         XCTAssertEqual(labels[2].color, PlanDrawingBuilder.Palette.verified)
     }
 
@@ -842,8 +889,8 @@ final class PlanDrawingTests: XCTestCase {
         XCTAssertEqual(tags(.millimetres), ["D 900x2100", "W 1500x1400 H900", "O 1200x2400"])
         XCTAssertEqual(tags(.centimetres), ["D 90x210 cm", "W 150x140 H90 cm", "O 120x240 cm"])
         XCTAssertEqual(tags(.metres), ["D 0.9x2.1 m", "W 1.5x1.4 H0.9 m", "O 1.2x2.4 m"])
-        // 0.9 m = 35.43 in, 2.1 m = 82.68 in: one decimal in tags.
-        XCTAssertEqual(tags(.inches), ["D 35.4x82.7 in", "W 59.1x55.1 H35.4 in", "O 47.2x94.5 in"])
+        // 0.9 m = 35.433 in, 2.1 m = 82.677 in: two decimals in tags, so a checked size is good to 0.13 mm.
+        XCTAssertEqual(tags(.inches), ["D 35.43x82.68 in", "W 59.06x55.12 H35.43 in", "O 47.24x94.49 in"])
         XCTAssertEqual(tags(.feetAndInches), tags(.inches), "feet-and-inches fall back to decimal inches in tags")
     }
 
@@ -951,15 +998,46 @@ final class PlanDrawingTests: XCTestCase {
         }
     }
 
-    func testBoundsGrowToHoldATextLabelWiderThanTheRoom() {
-        // A 0.8 m wide room with a long name: the label cannot fit, so the bounds must stretch to hold it.
+    func testBoundsGrowToHoldTextWiderThanItsWall() {
+        // At 1:100 a 2 mm dimension is 0.2 m tall and "450 mm" is 1.1 m long, far wider than the 0.45 m end
+        // wall it belongs to, so the bounds must stretch well past the wall band to hold it.
+        let room = Room.rectangle(name: "Slot", width: 3, depth: 0.45)
+        let d = plan(room, PlanOptions(scale: 100, showAngles: false, showFurniture: false, showRoomLabels: false,
+                                       showOpeningSizes: false))
+        let texts = d.texts(.dimensions)
+        guard let end = texts.first(where: { $0.string == "450 mm" }) else {
+            return XCTFail("no 450 mm dimension: \(texts.map(\.string))")
+        }
+        XCTAssertGreaterThan(PlanDrawingBuilder.textWidth(end.string, height: end.height), 0.45 + 0.5)
+        var overhang = 0.0
+        for t in texts {
+            for c in PlanDrawingBuilder.textCorners(t.string, at: t.at, height: t.height, rotation: t.rotation,
+                                                    anchor: t.anchor, bold: t.bold) {
+                XCTAssertGreaterThanOrEqual(c.x, d.bounds.min.x - 1e-9); XCTAssertLessThanOrEqual(c.x, d.bounds.max.x + 1e-9)
+                XCTAssertGreaterThanOrEqual(c.y, d.bounds.min.y - 1e-9); XCTAssertLessThanOrEqual(c.y, d.bounds.max.y + 1e-9)
+                overhang = max(overhang, -0.12 - c.y, c.y - 0.57)
+            }
+        }
+        XCTAssertGreaterThan(overhang, 0.15, "some text reaches well past the wall bands")
+        // Hand check: cap 0.2 m gives a 0.2786 m font; "450 mm" is 3.612 em = 1.0062 m, +2 % = 1.0263 m, centred
+        // on the wall's middle (y = 0.225): its lower end is at 0.225 - 0.5132 = -0.2881.
+        XCTAssertEqual(d.bounds.min.y, 0.225 - 0.5132, accuracy: 1e-3)
+    }
+
+    func testALabelWiderThanTheRoomIsCutShortInsteadOfSpillingAcrossTheNeighbours() {
+        // A 0.8 m wide room with a long name: at the smallest size the name still does not fit, so it is
+        // shortened with an ellipsis and stays inside the room.
         let room = Room.rectangle(name: "An Extremely Long Room Name", width: 0.8, depth: 3)
         let d = plan(room)
-        XCTAssertGreaterThan(d.bounds.width, 0.8 + 0.24 + 0.2)
         let name = d.texts(.roomLabels)[0]
+        XCTAssertTrue(name.string.hasSuffix("..."), name.string)
+        XCTAssertTrue(name.string.count < "An Extremely Long Room Name".count)
+        XCTAssertTrue("An Extremely Long Room Name".hasPrefix(String(name.string.dropLast(3))))
         let w = PlanDrawingBuilder.textWidth(name.string, height: name.height, bold: true)
-        XCTAssertLessThanOrEqual(d.bounds.min.x, name.at.x - w / 2 + 1e-9)
-        XCTAssertGreaterThanOrEqual(d.bounds.max.x, name.at.x + w / 2 - 1e-9)
+        XCTAssertGreaterThanOrEqual(name.at.x - w / 2, 0, "inside the room's west wall")
+        XCTAssertLessThanOrEqual(name.at.x + w / 2, 0.8, "inside the room's east wall")
+        // A name that fits is left alone.
+        XCTAssertEqual(plan(Room.rectangle(name: "Kitchen", width: 4, depth: 3)).texts(.roomLabels)[0].string, "Kitchen")
     }
 
     func testBuildIsDeterministic() {
@@ -1110,5 +1188,643 @@ final class PlanDrawingTests: XCTestCase {
         XCTAssertFalse(nearTip.isEmpty)
         for p in nearTip { XCTAssertLessThanOrEqual(p.distance(to: .zero), 0.36 + 1e-9, "no spike: \(p)") }
         XCTAssertTrue(nearTip.contains { abs($0.distance(to: .zero) - 0.36) < 1e-9 }, "the limit is actually applied")
+    }
+}
+
+// MARK: - Text that must not overprint other text
+
+/// The rectangle each text primitive really occupies, worked out here from the AFM widths and the
+/// cap height (not from the builder's own estimate): baseline to cap height, and down to the
+/// descender only when the string has letters that hang below the baseline.
+private func trueTextBoxes(_ d: PlanDrawing) -> [(string: String, corners: [Point2])] {
+    d.primitives.compactMap { item -> (String, [Point2])? in
+        guard case let .text(string, at, height, rotation, anchor, _, bold) = item.primitive else { return nil }
+        let fontSize = height / 0.718
+        let width = HelveticaMetrics.width(of: string, bold: bold, fontSize: fontSize)
+        let left: Double
+        switch anchor {
+        case .left: left = 0
+        case .center: left = -width / 2
+        case .right: left = -width
+        }
+        let hangs = string.contains { "gjpqy,;()[]{}|/_@Q$".contains($0) }
+        let bottom = hangs ? -0.207 * fontSize : 0
+        let r = rotation * Double.pi / 180
+        let u = Point2(cos(r), sin(r)), v = Point2(-sin(r), cos(r))
+        func p(_ x: Double, _ y: Double) -> Point2 { at + u * x + v * y }
+        return (string, [p(left, bottom), p(left + width, bottom), p(left + width, height), p(left, height)])
+    }
+}
+
+/// Pairs of text lines whose rectangles overlap with positive area (separating-axis test).
+private func overprintedPairs(_ d: PlanDrawing) -> [(String, String)] {
+    let boxes = trueTextBoxes(d)
+    func overlap(_ p: [Point2], _ q: [Point2]) -> Bool {
+        for poly in [p, q] {
+            for i in 0..<poly.count {
+                let e = poly[(i + 1) % poly.count] - poly[i]
+                let n = Point2(-e.y, e.x)
+                let pr = p.map { $0.dot(n) }, qr = q.map { $0.dot(n) }
+                if pr.max()! <= qr.min()! + 1e-9 || qr.max()! <= pr.min()! + 1e-9 { return false }
+            }
+        }
+        return true
+    }
+    var pairs: [(String, String)] = []
+    for i in boxes.indices {
+        for j in boxes.indices where j > i && overlap(boxes[i].corners, boxes[j].corners) {
+            pairs.append((boxes[i].string, boxes[j].string))
+        }
+    }
+    return pairs
+}
+
+private func describe(_ pairs: [(String, String)]) -> String { pairs.map { "\($0.0) / \($0.1)" }.joined(separator: "; ") }
+
+/// A grid of identical rooms 0.15 m apart.
+private func roomGrid(columns: Int, rows: Int, width: Double = 4.0, depth: Double = 3.5, kind: RoomKind = .bedroom,
+                      withDoor: Bool = true) -> [Room] {
+    var rooms: [Room] = []
+    for row in 0..<rows {
+        for col in 0..<columns {
+            rooms.append(Room.rectangle(name: "R\(row)\(col)", kind: kind,
+                                        origin: Point2(Double(col) * (width + 0.15), Double(row) * (depth + 0.15)),
+                                        width: width, depth: depth,
+                                        openings: withDoor ? [.door(wall: 0, offset: 0.5)] : []))
+        }
+    }
+    return rooms
+}
+
+/// The spatial index behind overprint checks and label placement.
+final class BoxIndexTests: XCTestCase {
+
+    private func box(_ x: Double, _ y: Double, _ w: Double, _ h: Double) -> (Bounds2, [Point2]) {
+        (Bounds2(min: Point2(x, y), max: Point2(x + w, y + h)),
+         [Point2(x, y), Point2(x + w, y), Point2(x + w, y + h), Point2(x, y + h)])
+    }
+
+    /// A w x h rectangle centred on (cx, cy), turned by `degrees`.
+    private func turned(_ cx: Double, _ cy: Double, _ w: Double, _ h: Double, degrees: Double) -> [Point2] {
+        let r = degrees * Double.pi / 180
+        let u = Point2(cos(r), sin(r)), v = Point2(-sin(r), cos(r))
+        let c = Point2(cx, cy)
+        return [c - u * (w / 2) - v * (h / 2), c + u * (w / 2) - v * (h / 2), c + u * (w / 2) + v * (h / 2), c - u * (w / 2) + v * (h / 2)]
+    }
+
+    func testSeparatingAxisTestCountsOverlapButNotTouching() {
+        let a = box(0, 0, 2, 1).1
+        XCTAssertTrue(BoxIndex.convexOverlap(a, box(1.9, 0.5, 2, 1).1), "a corner of overlap")
+        XCTAssertFalse(BoxIndex.convexOverlap(a, box(2, 0, 2, 1).1), "edges that only touch")
+        XCTAssertFalse(BoxIndex.convexOverlap(a, box(2.001, 0, 2, 1).1), "a hair apart")
+        XCTAssertTrue(BoxIndex.convexOverlap(a, box(0.5, 0.25, 0.5, 0.5).1), "one inside the other")
+        XCTAssertTrue(BoxIndex.convexOverlap(box(0.5, 0.25, 0.5, 0.5).1, a), "and the other way round")
+        // Turned boxes: a long thin box at 45 degrees whose bounding box overlaps a neighbour that it clears.
+        let diagonal = turned(0, 0, 4, 0.2, degrees: 45)
+        XCTAssertFalse(BoxIndex.convexOverlap(diagonal, box(1.0, -1.6, 0.5, 0.5).1),
+                       "the bounding boxes overlap but the rotated rectangle does not reach")
+        XCTAssertTrue(BoxIndex.convexOverlap(diagonal, box(1.0, 0.8, 0.5, 0.5).1), "this one sits on the diagonal")
+        XCTAssertTrue(BoxIndex.convexOverlap(diagonal, turned(0, 0, 4, 0.2, degrees: -45)), "a cross")
+        XCTAssertFalse(BoxIndex.convexOverlap(turned(0, 0, 4, 0.2, degrees: 45), turned(0, 0.8, 4, 0.2, degrees: 45)), "parallel, 0.8 m apart")
+    }
+
+    func testIndexFindsOverlapsAmongManyBoxesAndOnlyThose() {
+        var index = BoxIndex()
+        // A 30 x 30 lattice of 0.6 x 0.3 boxes on a 1 m pitch, inserted far from the origin and across cell borders.
+        for i in 0..<30 {
+            for j in 0..<30 {
+                let b = box(Double(i) - 10.3, Double(j) - 10.2, 0.6, 0.3)
+                index.insert(b.0, quad: b.1)
+            }
+        }
+        XCTAssertEqual(index.bounds.count, 900)
+        XCTAssertTrue(index.overlaps(quad: box(-10.1, -10.1, 0.2, 0.2).1), "inside the first box")
+        XCTAssertTrue(index.overlaps(quad: box(5.8, 5.0, 0.2, 0.2).1), "inside the box at x 5.7-6.3, y 4.8-5.1")
+        XCTAssertFalse(index.overlaps(quad: box(-9.6, -10.1, 0.2, 0.2).1), "in the gap between two boxes")
+        XCTAssertFalse(index.overlaps(quad: box(100, 100, 1, 1).1), "far away")
+        XCTAssertFalse(index.overlaps(quad: box(-10.3 + 0.6, -10.2, 0.4, 0.3).1), "touching the first box's edge only")
+        // Brute force agrees on 400 random probes.
+        var rng = LCG(state: 11)
+        for _ in 0..<400 {
+            let p = box(rng.range(-12, 20), rng.range(-12, 20), rng.range(0.05, 1.5), rng.range(0.05, 1.5))
+            var expected = false
+            for i in 0..<30 { for j in 0..<30 where BoxIndex.convexOverlap(p.1, box(Double(i) - 10.3, Double(j) - 10.2, 0.6, 0.3).1) { expected = true } }
+            XCTAssertEqual(index.overlaps(quad: p.1), expected)
+        }
+    }
+
+    func testBoxesTooBigForTheGridAreStillFoundAndRectsComeBackInAStableOrder() {
+        var index = BoxIndex()
+        let huge = box(-1000, -1000, 2000, 2000)
+        index.insert(huge.0, quad: huge.1)
+        for i in 0..<5 { let b = box(Double(i) * 3, 0, 1, 1); index.insert(b.0, quad: b.1) }
+        XCTAssertTrue(index.overlaps(quad: box(500, 500, 1, 1).1), "inside the huge box, a long way from the others")
+        XCTAssertEqual(index.rects(intersecting: Bounds2(min: Point2(2.5, -1), max: Point2(7.5, 2))).count, 3, "huge, and the boxes at 3 and 6")
+        let first = index.rects(intersecting: Bounds2(min: Point2(-5, -5), max: Point2(20, 5)))
+        let second = index.rects(intersecting: Bounds2(min: Point2(-5, -5), max: Point2(20, 5)))
+        XCTAssertEqual(first, second)
+        XCTAssertEqual(first.map(\.min.x), first.map(\.min.x).sorted(), "sorted, so results never depend on insertion or hashing order")
+        // Absurd coordinates must not trap the cell arithmetic.
+        let far = box(1e30, -1e30, 1e25, 1e25)
+        index.insert(far.0, quad: far.1)
+        XCTAssertTrue(index.overlaps(quad: far.1))
+        XCTAssertFalse(BoxIndex().overlaps(quad: far.1), "an empty index overlaps nothing")
+        let absurd = box(1e300, -1e300, 1e290, 1e290)
+        index.insert(absurd.0, quad: absurd.1)
+        _ = index.overlaps(quad: absurd.1)      // the products overflow to infinity: no answer worth having, but no trap
+    }
+}
+
+final class PlanLayoutTests: XCTestCase {
+
+    private func build(_ rooms: [Room], scale: Double = 50, _ tweak: (inout PlanOptions) -> Void = { _ in }) -> PlanBuildResult {
+        var o = PlanOptions(scale: scale)
+        tweak(&o)
+        return PlanDrawingBuilder.buildDetailed(rooms: rooms, title: "", subtitle: "", options: o)
+    }
+
+    // MARK: Overprinting
+
+    func testSmallRoomsDoNotOverprintTheirOwnDimensionsAtTheCommonScales() {
+        // A 2.4 x 1.6 m bathroom is where vanities are cut. Its label used to land on its own dimensions.
+        let bath = Room.rectangle(name: "Bathroom", kind: .bathroom, width: 2.4, depth: 1.6,
+                                  openings: [.door(wall: 0, offset: 0.4, width: 0.8)])
+        for scale in [50.0, 75, 100, 150] {
+            let r = build([bath], scale: scale)
+            XCTAssertTrue(overprintedPairs(r.drawing).isEmpty, "1:\(Int(scale)): \(describe(overprintedPairs(r.drawing)))")
+            XCTAssertTrue(r.drawing.allTexts().contains { $0.string == "Bathroom" }, "the name is never dropped (1:\(Int(scale)))")
+        }
+        // At 1:50 nothing needs to give way: the full label is there.
+        let full = build([bath], scale: 50)
+        XCTAssertEqual(full.drawing.texts(.roomLabels).count, 3)
+        XCTAssertEqual(full.report.droppedRoomLabelLines, 0)
+        XCTAssertEqual(full.report.omittedDimensionTexts, 0)
+        XCTAssertTrue(full.report.isLegible)
+    }
+
+    func testTheDemoFlatNeverOverprintsTextAtAnyScale() {
+        // The review counted 2 / 14 / 42 overlapping pairs at 1:75 / 1:100 / 1:150 on the demo flat.
+        let rooms = PlanPDFFixture.demoRooms()
+        for scale in [20.0, 25, 50, 75, 100, 150, 200] {
+            let r = build(rooms, scale: scale)
+            XCTAssertTrue(overprintedPairs(r.drawing).isEmpty, "1:\(Int(scale)): \(describe(overprintedPairs(r.drawing)))")
+        }
+        XCTAssertTrue(build(rooms, scale: 50).report.isLegible, "everything is printed at 1:50")
+    }
+
+    func testTwentyRoomsAtOneToOneFiftyAreDenseButNeverOverprinted() {
+        let rooms = roomGrid(columns: 5, rows: 4)
+        for scale in [50.0, 100, 150, 200] {
+            let r = build(rooms, scale: scale)
+            XCTAssertTrue(overprintedPairs(r.drawing).isEmpty, "1:\(Int(scale)): \(describe(overprintedPairs(r.drawing)))")
+            XCTAssertEqual(r.drawing.allTexts().filter { $0.string.hasPrefix("R") }.count, 20, "every room keeps its name at 1:\(Int(scale))")
+        }
+        // 4.0 x 3.5 m rooms: all printed at 1:100; at 1:150 and 1:200 the dimensions give way and the report says so.
+        XCTAssertTrue(build(rooms, scale: 100).report.isLegible)
+        XCTAssertGreaterThan(build(rooms, scale: 150).report.omittedDimensionTexts, 0)
+        XCTAssertGreaterThan(build(rooms, scale: 200).report.omittedDimensionTexts,
+                             build(rooms, scale: 150).report.omittedDimensionTexts)
+    }
+
+    func testTheOutOfSquareAngleIsNeverCoveredByAnotherLabel() {
+        // Bedroom 2 of the demo flat has a 92.5 degree corner. At 1:75 its number sat under the room name.
+        for scale in [50.0, 75, 100, 150, 200] {
+            let r = build(PlanPDFFixture.demoRooms(), scale: scale)
+            let red = r.drawing.texts(.angles).filter { $0.color == PlanDrawingBuilder.Palette.warning }
+            XCTAssertEqual(red.map(\.string), ["92.5\u{B0}"], "1:\(Int(scale))")
+            let boxes = trueTextBoxes(r.drawing)
+            let others = overprintedPairs(r.drawing).filter { $0.0 == "92.5\u{B0}" || $0.1 == "92.5\u{B0}" }
+            XCTAssertTrue(others.isEmpty && boxes.count > 1, "1:\(Int(scale)): \(describe(others))")
+        }
+    }
+
+    func testWhenTwoDimensionsCollideTheCheckedOneIsKept() {
+        // 4 x 1.5 m at 1:150: the texts of the two long walls are 0.3 m tall and sit exactly on top of
+        // each other. Scanned walls: the first wall's text wins. If the north wall is laser-checked, it wins.
+        var room = Room.rectangle(name: "Strip", width: 4, depth: 1.5)
+        let plain = build([room], scale: 150) { $0.showRoomLabels = false; $0.showAngles = false }
+        XCTAssertEqual(plain.drawing.texts(.dimensions).filter { $0.string == "4000 mm" }.count, 1, "one of the two is left out")
+        // A dimension left out takes its line and ticks with it: every dimension line has its number.
+        let longLines = plain.drawing.lines(.dimensions).filter { $0.a.distance(to: $0.b) > 0.5 }
+        XCTAssertEqual(longLines.count, plain.drawing.texts(.dimensions).count, "no bare dimension lines")
+        XCTAssertEqual(plain.drawing.lines(.dimensions).count, 3 * plain.drawing.texts(.dimensions).count, "a line and two ticks each")
+        XCTAssertGreaterThanOrEqual(plain.report.omittedDimensionTexts, 1)
+        room.walls[2].length.verify(4.001)
+        let checked = build([room], scale: 150) { $0.showRoomLabels = false; $0.showAngles = false }
+        let strings = checked.drawing.texts(.dimensions).map(\.string)
+        XCTAssertTrue(strings.contains("4001 mm v"), "\(strings)")
+        XCTAssertFalse(strings.contains("4000 mm"), "the scanned wall gives way: \(strings)")
+        XCTAssertTrue(overprintedPairs(checked.drawing).isEmpty)
+    }
+
+    func testRoomLabelsShedLinesBeforeTheyTouchTextAndKeepTheName() {
+        // At 1:75 a 2.4 x 1.6 m bathroom is 32 x 21 mm on paper: name, area and ceiling cannot all sit clear
+        // of its four dimensions, so the ceiling line goes. The dimensions themselves all print.
+        let bath = Room.rectangle(name: "Bathroom", kind: .bathroom, width: 2.4, depth: 1.6)
+        let r = build([bath], scale: 75)
+        XCTAssertEqual(r.drawing.texts(.roomLabels).map(\.string), ["Bathroom", "3.8 m\u{B2}"])
+        XCTAssertEqual(r.report.droppedRoomLabelLines, 1)
+        XCTAssertEqual(r.report.roomLabelsWithOverlap, 0)
+        XCTAssertEqual(r.report.omittedDimensionTexts, 0)
+        XCTAssertTrue(overprintedPairs(r.drawing).isEmpty)
+        // A roomy kitchen keeps all three lines at the same scale.
+        let kitchen = Room.rectangle(name: "Kitchen", kind: .kitchen, width: 5, depth: 4)
+        XCTAssertEqual(build([kitchen], scale: 75).drawing.texts(.roomLabels).count, 3)
+        // Whatever the scale, the name is the last thing to go and the label never touches text.
+        for scale in [50.0, 75, 100, 125, 150] {
+            let lines = build([bath], scale: scale).drawing.texts(.roomLabels).map(\.string)
+            XCTAssertEqual(lines.first, "Bathroom", "1:\(Int(scale))")
+        }
+    }
+
+    func testOpeningTagsAndFurnitureNamesGiveWayToMoreImportantText() {
+        // Two doors 1.2 m apart on one wall. At 1:150 a tag is 1.7 m long, so the two overlap and the second is
+        // left out; at 1:50 (0.6 m long) both print.
+        let hall = Room.rectangle(name: "Hall", width: 8, depth: 4,
+                                  openings: [.door(wall: 0, offset: 1.0), .door(wall: 0, offset: 2.2)])
+        let far = build([hall], scale: 150) { $0.showRoomLabels = false }
+        XCTAssertEqual(far.drawing.texts(.doors).count, 1)
+        XCTAssertEqual(far.report.omittedOpeningTags, 1)
+        XCTAssertTrue(overprintedPairs(far.drawing).isEmpty, describe(overprintedPairs(far.drawing)))
+        let near = build([hall], scale: 50) { $0.showRoomLabels = false }
+        XCTAssertEqual(near.drawing.texts(.doors).count, 2)
+        XCTAssertEqual(near.report.omittedOpeningTags, 0)
+
+        // A table whose name would land on the dimension text of the south wall at 1:150 loses its name (the
+        // footprint stays); at 1:50 the text is 0.6 m away and the name prints.
+        var room = Room.rectangle(name: "R", width: 4, depth: 3)
+        room.objects = [RoomObject(kind: .table, center: Point2(2.0, 0.95), yaw: 0, width: 1.5, depth: 0.4, height: 0.75)]
+        let crowded = build([room], scale: 150) { $0.showRoomLabels = false }
+        XCTAssertEqual(crowded.drawing.polylines(.furniture).count, 1)
+        XCTAssertTrue(crowded.drawing.texts(.furniture).isEmpty)
+        XCTAssertEqual(crowded.report.omittedFurnitureLabels, 1)
+        let roomy = build([room], scale: 50) { $0.showRoomLabels = false }
+        XCTAssertEqual(roomy.drawing.texts(.furniture).map(\.string), ["Table"])
+        XCTAssertEqual(roomy.report.omittedFurnitureLabels, 0)
+    }
+
+    func testLayoutIsLinearEnoughForABigFloor() {
+        // The label placement used to scan every primitive for every room (quadratic): 500 rooms took
+        // 22.8 s in a debug build. 500 rooms must now take a small fraction of that.
+        let rooms = roomGrid(columns: 25, rows: 20)
+        XCTAssertEqual(rooms.count, 500)
+        let start = Date()
+        let r = build(rooms, scale: 100)
+        let seconds = Date().timeIntervalSince(start)
+        XCTAssertEqual(r.drawing.texts(.roomLabels).filter { $0.bold }.count, 500)
+        XCTAssertLessThan(seconds, 12, "500 rooms took \(seconds) s")
+    }
+
+    func testAnOutlineOfTwoThousandEdgesIsLaidOutQuickly() {
+        // A round room of 2000 short walls: the largest-inscribed-rectangle search tests every grid cell against
+        // every edge, which took 8 s in a debug build before the grid was thinned for outlines like this.
+        let corners = (0..<2000).map { i -> Point2 in
+            let angle = Double(i) / 2000 * 2 * Double.pi
+            return Point2(15 * cos(angle), 15 * sin(angle))
+        }
+        let round = Room.polygon(name: "Rotunda", corners: corners)
+        let start = Date()
+        let r = build([round])
+        XCTAssertLessThan(Date().timeIntervalSince(start), 4)
+        guard let name = r.drawing.texts(.roomLabels).first else { return XCTFail("no label") }
+        XCTAssertEqual(name.string, "Rotunda")
+        XCTAssertTrue(Polygon.contains(round.outline, name.at), "the label is inside the circle")
+        // The rectangle found is inside the circle and a fair share of its inscribed square (side 15 x sqrt 2 = 21.2 m).
+        let rect = PlanDrawingBuilder.largestInscribedRectangle(of: round.outline)
+        XCTAssertNotNil(rect)
+        XCTAssertGreaterThan((rect?.width ?? 0) * (rect?.height ?? 0), 0.7 * 2 * 15 * 15, "the best rectangle in a circle of radius 15 is 450 m2")
+        XCTAssertLessThanOrEqual((rect?.width ?? 99) * (rect?.height ?? 99), 450.0 + 1e-6)
+    }
+
+    func testTheReportListsRoomsThatCouldNotBeDrawn() {
+        let lone = Room(name: "Broken room", walls: [Wall(start: .zero, end: Point2(1, 0), height: Measured(scanned: 2.8))],
+                        ceilingHeight: Measured(scanned: 2.8))
+        let nan = Room.polygon(name: "", kind: .storage, corners: [Point2(0, 0), Point2(.nan, 0), Point2(1, 1)])
+        let good = Room.rectangle(name: "Good", width: 3, depth: 3)
+        let r = build([lone, good, nan])
+        XCTAssertEqual(r.report.undrawableRooms, ["Broken room", "Storage"], "in order, unnamed rooms by their kind")
+        XCTAssertEqual(r.drawing.texts(.roomLabels).first?.string, "Good")
+        XCTAssertTrue(build([good]).report.undrawableRooms.isEmpty)
+    }
+
+    func testHugeFiniteCoordinatesDoNotTrap() {
+        // 1e30 m used to overflow an Int conversion in the label placement.
+        let huge = Room.rectangle(name: "Huge", width: 1e30, depth: 1e30)
+        let d = PlanDrawingBuilder.build(room: huge, options: PlanOptions())
+        XCTAssertTrue(d.primitives.allSatisfy { numbers(of: $0.primitive).allSatisfy(\.isFinite) })
+        XCTAssertNotNil(PlanDrawingBuilder.largestInscribedRectangle(of: huge.outline))
+        // Two huge neighbours go through the shared-wall search as well.
+        let twin = Room.rectangle(name: "Twin", origin: Point2(1e30 + 1, 0), width: 1e30, depth: 1e30,
+                                  openings: [.door(wall: 3, offset: 1)])
+        let pair = PlanDrawingBuilder.build(rooms: [Room.rectangle(name: "A", width: 1e30, depth: 1e30,
+                                                                    openings: [.door(wall: 1, offset: 1)]), twin],
+                                            title: "", subtitle: "", options: PlanOptions())
+        XCTAssertTrue(pair.primitives.allSatisfy { numbers(of: $0.primitive).allSatisfy(\.isFinite) })
+        let far = Room.rectangle(name: "Far", origin: Point2(1e300, -1e300), width: 4, depth: 3)
+        XCTAssertTrue(PlanDrawingBuilder.build(room: far, options: PlanOptions()).primitives
+            .allSatisfy { numbers(of: $0.primitive).allSatisfy(\.isFinite) })
+    }
+
+    // MARK: Provenance marks
+
+    func testSiteChecksAreVAndDrawingsAreDAndScansAreUnmarked() {
+        var room = Room.rectangle(name: "R", width: 6, depth: 4, openings: [
+            .door(wall: 0, offset: 0.5), .window(wall: 2, offset: 1, width: 1.5, height: 1.4, sill: 0.9)])
+        room.walls[0].length.verify(6.02, source: .laser)
+        room.walls[1].length.verify(4.01, source: .tape)
+        room.walls[2].length.verify(6.03, source: .drawing, note: "architect drawing rev B")
+        room.ceilingHeight.verify(2.75, source: .drawing)
+        let d = PlanDrawingBuilder.build(room: room, options: PlanOptions())
+        let dims = d.texts(.dimensions)
+        XCTAssertEqual(dims.map(\.string), ["6020 mm v", "4010 mm v", "6030 mm d", "4000 mm"])
+        let p = PlanDrawingBuilder.Palette.self
+        XCTAssertEqual(dims.map(\.color), [p.verified, p.verified, p.ink, p.ink], "green only for site checks")
+        XCTAssertEqual(d.texts(.roomLabels).last?.string, "Ceiling 2750 mm d")
+        XCTAssertNotEqual(d.texts(.roomLabels).last?.color, PlanDrawingBuilder.Palette.verified, "not green: not checked on site")
+        // The report tells the renderer to explain the "d" in the legend.
+        XCTAssertTrue(PlanDrawingBuilder.buildDetailed(room: room, options: PlanOptions()).report.hasDrawingSourcedValues)
+        var plainRoom = room
+        plainRoom.walls[2].length.clearVerification(); plainRoom.ceilingHeight.clearVerification()
+        XCTAssertFalse(PlanDrawingBuilder.buildDetailed(room: plainRoom, options: PlanOptions()).report.hasDrawingSourcedValues)
+        // With the marks switched off nothing is marked, whatever its source.
+        var off = PlanOptions(); off.markVerified = false
+        XCTAssertEqual(PlanDrawingBuilder.build(room: room, options: off).texts(.dimensions).map(\.string),
+                       ["6020 mm", "4010 mm", "6030 mm", "4000 mm"])
+        XCTAssertFalse(PlanDrawingBuilder.buildDetailed(room: room, options: off).report.hasDrawingSourcedValues)
+    }
+
+    func testOpeningTagsMarkEachNumberWithItsOwnSource() {
+        var room = Room.rectangle(name: "R", width: 5, depth: 4, openings: [.door(wall: 0, offset: 0.5), .door(wall: 2, offset: 0.5)])
+        room.openings[0].width.verify(0.91, source: .laser)
+        room.openings[0].height.verify(2.12, source: .drawing)
+        room.openings[1].width.verify(0.9, source: .drawing)
+        room.openings[1].height.verify(2.1, source: .drawing)
+        let tags = Set(PlanDrawingBuilder.build(room: room, options: PlanOptions()).texts(.doors).map(\.string))
+        XCTAssertEqual(tags, ["D 910v x 2120d", "D 900x2100 d"])
+    }
+
+    func testEveryUnitPrintsACheckedLengthToAtLeastAMillimetre() {
+        // For 60 random checked lengths and every unit, read the printed number back and compare it with the
+        // value that was checked: it must be within a millimetre.
+        func metres(from text: String, unit: LengthUnit) -> Double? {
+            let body = text.hasSuffix(" v") ? String(text.dropLast(2)) : text
+            switch unit {
+            case .millimetres: return Double(body.dropLast(3)).map { $0 / 1000 }
+            case .centimetres: return Double(body.dropLast(3)).map { $0 / 100 }
+            case .metres: return Double(body.dropLast(2))
+            case .inches: return Double(body.dropLast(3)).map { $0 * 0.0254 }
+            case .feetAndInches:
+                // 13' 1 1/2"
+                var rest = Substring(body)
+                var inches = 0.0
+                if let tick = rest.firstIndex(of: "'") {
+                    guard let feet = Double(rest[rest.startIndex..<tick]) else { return nil }
+                    inches += feet * 12
+                    rest = rest[rest.index(after: tick)...].drop(while: { $0 == " " })
+                }
+                rest = rest.dropLast()      // the closing "
+                for part in rest.split(separator: " ") {
+                    if let slash = part.firstIndex(of: "/") {
+                        guard let n = Double(part[part.startIndex..<slash]), let d = Double(part[part.index(after: slash)...]) else { return nil }
+                        inches += n / d
+                    } else {
+                        guard let whole = Double(part) else { return nil }
+                        inches += whole
+                    }
+                }
+                return inches * 0.0254
+            }
+        }
+        var rng = LCG(state: 77)
+        for _ in 0..<60 {
+            let value = (1000 * rng.range(0.6, 9.5)).rounded() / 1000 + rng.range(-0.0004, 0.0004)
+            var room = Room.rectangle(name: "R", width: 6, depth: 4)
+            room.walls[0].length.verify(value)
+            for unit in LengthUnit.allCases {
+                var o = PlanOptions(); o.units = DisplayUnits(length: unit, area: .squareMetres)
+                let text = PlanDrawingBuilder.build(room: room, options: o).texts(.dimensions)[0].string
+                XCTAssertTrue(text.hasSuffix(" v"), text)
+                guard let back = metres(from: text, unit: unit) else { XCTFail("cannot read \(text)"); continue }
+                XCTAssertEqual(back, value, accuracy: 0.001, "\(unit): \(text) for \(value) m")
+            }
+        }
+        // The case from the review: 6204.4 mm in centimetres used to print 620 cm (a 4 mm loss under a "v").
+        var room = Room.rectangle(name: "R", width: 6.2, depth: 4.5)
+        room.walls[0].length.verify(6.2044)
+        var o = PlanOptions(); o.units = DisplayUnits(length: .centimetres, area: .squareMetres)
+        XCTAssertEqual(PlanDrawingBuilder.build(room: room, options: o).texts(.dimensions)[0].string, "620.4 cm v")
+        o.units = DisplayUnits(length: .metres, area: .squareMetres)
+        XCTAssertEqual(PlanDrawingBuilder.build(room: room, options: o).texts(.dimensions)[0].string, "6.204 m v")
+    }
+
+    // MARK: Shared walls
+
+    /// Two rooms side by side with a 0.15 m partition. The door is 0.9 m wide, y from 1.0 to 1.9.
+    private func neighbours(a: Room? = nil, b: Room? = nil, gap: Double = 0.15) -> [Room] {
+        let first = a ?? Room.rectangle(name: "A", kind: .bedroom, width: 4, depth: 3, openings: [.door(wall: 1, offset: 1.0)])
+        let second = b ?? Room.rectangle(name: "B", kind: .livingRoom, origin: Point2(4 + gap, 0), width: 3, depth: 3)
+        return [first, second]
+    }
+
+    private func isInked(_ d: PlanDrawing, _ p: Point2) -> Bool {
+        d.polylines(.walls).contains { Polygon.contains($0.points, p) }
+    }
+
+    func testADoorIsOpenThroughTheWholePartitionNotJustThroughItsOwnRoomsBand() {
+        // A's door in its east wall. B (0.15 m further east) did not record it, so B's west wall band used to
+        // fill the doorway: only 0.03 m of the 0.15 m partition read as open.
+        let d = PlanDrawingBuilder.build(rooms: neighbours(), title: "", subtitle: "", options: wallsOnly)
+        for x in [4.01, 4.04, 4.07, 4.10, 4.13] {
+            XCTAssertFalse(isInked(d, Point2(x, 1.45)), "the doorway at x = \(x) is open")
+            XCTAssertFalse(isInked(d, Point2(x, 1.02)), "just inside the near edge of the span (x = \(x))")
+            XCTAssertFalse(isInked(d, Point2(x, 1.88)), "just inside the far edge (x = \(x))")
+        }
+        // Beside the door the partition is solid: both bands overlap there.
+        for x in [4.01, 4.07, 4.13] {
+            XCTAssertTrue(isInked(d, Point2(x, 0.97)), "solid just before the door (x = \(x))")
+            XCTAssertTrue(isInked(d, Point2(x, 1.93)), "solid just after the door (x = \(x))")
+            XCTAssertTrue(isInked(d, Point2(x, 0.5)))
+            XCTAssertTrue(isInked(d, Point2(x, 2.5)))
+        }
+        // B's west wall (y runs 3 -> 0) is cut at exactly the door's span: pieces cover y 1.9 ... 3 and 0 ... 1.
+        let west = d.polylines(.walls).filter { $0.points.allSatisfy { $0.x > 4.0 && $0.x < 4.3 } && $0.points.contains { abs($0.x - 4.15) < 1e-9 } }
+        let spans = west.map { piece in (piece.points.map(\.y).min()!, piece.points.map(\.y).max()!) }.sorted { $0.0 < $1.0 }
+        guard spans.count == 2 else { return XCTFail("B's west wall should be cut into two pieces: \(spans)") }
+        XCTAssertEqual(spans[0].0, 0, accuracy: 0.2); XCTAssertEqual(spans[0].1, 1.0, accuracy: 1e-9)
+        XCTAssertEqual(spans[1].0, 1.9, accuracy: 1e-9)
+    }
+
+    func testAWindowOfOneRoomIsAlsoOpenThroughTheNeighbouringBand() {
+        let a = Room.rectangle(name: "A", width: 4, depth: 3, openings: [.window(wall: 1, offset: 1.0, width: 1.5, height: 1.2, sill: 1.0)])
+        let d = PlanDrawingBuilder.build(rooms: neighbours(a: a), title: "", subtitle: "", options: wallsOnly)
+        XCTAssertFalse(isInked(d, Point2(4.09, 1.75)))
+        XCTAssertTrue(isInked(d, Point2(4.09, 0.9)))
+        XCTAssertTrue(isInked(d, Point2(4.09, 2.6)))
+    }
+
+    func testAFacingWallFurtherThanAPartitionIsLeftAlone() {
+        // 0.6 m apart is a corridor, not a partition: the door cuts only its own room's band.
+        let d = PlanDrawingBuilder.build(rooms: neighbours(gap: 0.6), title: "", subtitle: "", options: wallsOnly)
+        XCTAssertFalse(isInked(d, Point2(4.06, 1.45)), "A's own band is cut")
+        XCTAssertTrue(isInked(d, Point2(4.6 - 0.06, 1.45)), "B's band is whole")
+        // And just inside the limit it is cut (0.4 m).
+        let near = PlanDrawingBuilder.build(rooms: neighbours(gap: 0.4), title: "", subtitle: "", options: wallsOnly)
+        XCTAssertFalse(isInked(near, Point2(4.4 - 0.06, 1.45)))
+    }
+
+    func testADoorRecordedByBothRoomsIsDrawnOnceFromTheRoomItOpensInto() {
+        // B recorded the same door 8 cm lower in its own wall (y from 1.08 ... wall 3 runs 3 -> 0, so its
+        // offset from the wall start is 3 - 1.98 = 1.02).
+        let a = Room.rectangle(name: "A", kind: .bedroom, width: 4, depth: 3, openings: [.door(wall: 1, offset: 1.0)])
+        let b = Room.rectangle(name: "Corridor", kind: .corridor, origin: Point2(4.15, 0), width: 3, depth: 3,
+                               openings: [.door(wall: 3, offset: 1.02)])
+        let r = PlanDrawingBuilder.buildDetailed(rooms: [a, b], title: "", subtitle: "", options: PlanOptions())
+        let d = r.drawing
+        XCTAssertEqual(r.report.sharedOpenings, 1)
+        XCTAssertEqual(d.arcs(.doors).count, 1, "one swing for one door")
+        XCTAssertEqual(d.lines(.doors).count, 1, "one leaf")
+        // The bedroom takes the swing (a door opens into the room, not into the corridor): hinge on A's east
+        // wall at (4, 1.0), leaf into A, i.e. towards -x.
+        let leaf = d.lines(.doors)[0]
+        assertPoint(leaf.a, 4.0, 1.0)
+        XCTAssertLessThan(leaf.b.x, leaf.a.x)
+        XCTAssertEqual(d.texts(.doors).map(\.string), ["D 900x2100"], "one tag")
+        // The doorway in both bands is the drawn door's span, 1.0 ... 1.9, not the narrower overlap of the two records.
+        var o = wallsOnly; o.showOpeningSizes = false
+        let bands = PlanDrawingBuilder.build(rooms: [a, b], title: "", subtitle: "", options: o)
+        for y in [1.01, 1.45, 1.89] { XCTAssertFalse(isInked(bands, Point2(4.07, y)), "y = \(y)") }
+        for y in [0.99, 1.91] { XCTAssertTrue(isInked(bands, Point2(4.07, y)), "y = \(y)") }
+    }
+
+    func testTheSwingGoesToTheRoomTheDoorOpensInto() {
+        func leafX(_ a: Room, _ b: Room) -> (hinge: Double, tip: Double)? {
+            let d = PlanDrawingBuilder.build(rooms: [a, b], title: "", subtitle: "", options: wallsOnly)
+            guard let leaf = d.lines(.doors).first, d.lines(.doors).count == 1 else { return nil }
+            return (leaf.a.x, leaf.b.x)
+        }
+        func pair(_ kindA: RoomKind, _ widthA: Double, _ kindB: RoomKind, _ widthB: Double) -> (Room, Room) {
+            (Room.rectangle(name: "A", kind: kindA, width: widthA, depth: 3, openings: [.door(wall: 1, offset: 1.0)]),
+             Room.rectangle(name: "B", kind: kindB, origin: Point2(widthA + 0.15, 0), width: widthB, depth: 3,
+                            openings: [.door(wall: 3, offset: 1.0)]))
+        }
+        // Corridor on either side never takes the swing, however small it is.
+        var (a, b) = pair(.corridor, 2, .bedroom, 6)
+        var x = leafX(a, b)
+        XCTAssertEqual(x?.hinge ?? 0, 2.15, accuracy: 1e-9, "hinge on B's west wall (the bedroom)"); XCTAssertGreaterThan(x?.tip ?? 0, 2.15)
+        (a, b) = pair(.bedroom, 6, .corridor, 2)
+        x = leafX(a, b)
+        XCTAssertEqual(x?.hinge ?? 0, 6, accuracy: 1e-9, "hinge on A's east wall (the bedroom)"); XCTAssertLessThan(x?.tip ?? 9, 6)
+        // Entrance behaves like a corridor.
+        (a, b) = pair(.entrance, 3, .livingRoom, 5)
+        x = leafX(a, b)
+        XCTAssertEqual(x?.hinge ?? 0, 3.15, accuracy: 1e-9)
+        // Otherwise the smaller room takes it: a bathroom off a big living room.
+        (a, b) = pair(.livingRoom, 6, .bathroom, 2)
+        x = leafX(a, b)
+        XCTAssertEqual(x?.hinge ?? 0, 6.15, accuracy: 1e-9, "B (bathroom) is smaller"); XCTAssertGreaterThan(x?.tip ?? 0, 6.15)
+        (a, b) = pair(.bathroom, 2, .livingRoom, 6)
+        x = leafX(a, b)
+        XCTAssertEqual(x?.hinge ?? 0, 2, accuracy: 1e-9, "A (bathroom) is smaller"); XCTAssertLessThan(x?.tip ?? 9, 2)
+        // Two rooms of the same kind and size: the first takes it.
+        (a, b) = pair(.bedroom, 4, .bedroom, 4)
+        x = leafX(a, b)
+        XCTAssertEqual(x?.hinge ?? 0, 4, accuracy: 1e-9)
+    }
+
+    func testTheTagKeepsTheLaserCheckedSizeEvenWhenTheOtherRoomDrawsTheSwing() {
+        // Both rooms recorded the door. The bedroom (scanned) draws the swing, but the corridor's record is
+        // the one a laser was used on, so its size is the one printed: a checked number is never hidden.
+        let a = Room.rectangle(name: "A", kind: .bedroom, width: 4, depth: 3, openings: [.door(wall: 1, offset: 1.0)])
+        var b = Room.rectangle(name: "C", kind: .corridor, origin: Point2(4.15, 0), width: 3, depth: 3,
+                               openings: [.door(wall: 3, offset: 1.0)])
+        b.openings[0].width.verify(0.915)
+        b.openings[0].height.verify(2.11)
+        let d = PlanDrawingBuilder.build(rooms: [a, b], title: "", subtitle: "", options: PlanOptions())
+        XCTAssertEqual(d.arcs(.doors).count, 1)
+        XCTAssertEqual(d.texts(.doors).map(\.string), ["D 915x2110 v"])
+        XCTAssertEqual(d.texts(.doors)[0].color, PlanDrawingBuilder.Palette.verified)
+        // The tag sits on the corridor side (its own wall), x > 4.15.
+        XCTAssertGreaterThan(d.texts(.doors)[0].at.x, 4.15)
+    }
+
+    func testOpeningsThatMerelyLookAlikeAreNotMerged() {
+        func swings(_ a: Room, _ b: Room) -> Int {
+            PlanDrawingBuilder.build(rooms: [a, b], title: "", subtitle: "", options: PlanOptions()).arcs(.doors).count
+        }
+        let a = Room.rectangle(name: "A", kind: .bedroom, width: 4, depth: 3, openings: [.door(wall: 1, offset: 1.0)])
+        // Different place along the wall: no overlap.
+        let far = Room.rectangle(name: "B", origin: Point2(4.15, 0), width: 3, depth: 3, openings: [.door(wall: 3, offset: 0.2)])
+        XCTAssertEqual(swings(a, far), 2)
+        // A wide opening against a narrow door (0.9 m vs 2.0 m): not the same opening.
+        // (A's door is one swing; B's 1.5 m door is a pair of leaves: three swings in all.)
+        let wide = Room.rectangle(name: "B", origin: Point2(4.15, 0), width: 3, depth: 3, openings: [.door(wall: 3, offset: 0.5, width: 1.5)])
+        XCTAssertEqual(swings(a, wide), 3)
+        // A window against a door.
+        let window = Room.rectangle(name: "B", origin: Point2(4.15, 0), width: 3, depth: 3,
+                                    openings: [.window(wall: 3, offset: 1.1, width: 0.9, height: 1.2, sill: 0.9)])
+        let r = PlanDrawingBuilder.buildDetailed(rooms: [a, window], title: "", subtitle: "", options: PlanOptions())
+        XCTAssertEqual(r.report.sharedOpenings, 0)
+        XCTAssertEqual(r.drawing.arcs(.doors).count, 1)
+        XCTAssertEqual(r.drawing.lines(.windows).count, 3)
+        // Two walls 0.6 m apart are not one partition.
+        let distant = Room.rectangle(name: "B", origin: Point2(4.6, 0), width: 3, depth: 3, openings: [.door(wall: 3, offset: 1.0)])
+        XCTAssertEqual(swings(a, distant), 2)
+        // The same door in the same place is one door.
+        let same = Room.rectangle(name: "B", origin: Point2(4.15, 0), width: 3, depth: 3, openings: [.door(wall: 3, offset: 1.1)])
+        XCTAssertEqual(swings(a, same), 1)
+    }
+
+    func testASharedWindowIsDrawnOnce() {
+        let a = Room.rectangle(name: "A", width: 4, depth: 3, openings: [.window(wall: 1, offset: 1.0, width: 1.5, height: 1.2, sill: 1.0)])
+        let b = Room.rectangle(name: "B", origin: Point2(4.15, 0), width: 3, depth: 3,
+                               openings: [.window(wall: 3, offset: 0.5, width: 1.5, height: 1.2, sill: 1.0)])
+        let d = PlanDrawingBuilder.build(rooms: [a, b], title: "", subtitle: "", options: PlanOptions())
+        XCTAssertEqual(d.lines(.windows).count, 3, "one set of glazing lines")
+        XCTAssertEqual(d.texts(.windows).count, 1)
+    }
+
+    func testSharedOpeningsHaveNoEffectWhenOnlyOneRoomIsDrawn() {
+        let a = Room.rectangle(name: "A", width: 4, depth: 3, openings: [.door(wall: 1, offset: 1.0)])
+        let d = PlanDrawingBuilder.build(room: a, options: PlanOptions())
+        XCTAssertEqual(d.arcs(.doors).count, 1)
+        XCTAssertEqual(d.texts(.doors).count, 1)
+    }
+
+    func testTheFiveRoomFlatDrawsEachPhysicalOpeningOnce() {
+        // The fixture flat has 15 recorded openings. Four of them are the far side of one recorded by the next room,
+        // worked out by hand from the coordinates in `PlanPDFFixture`:
+        //  - Living Room east door (y 0.5-1.4) = Master Bedroom west door;
+        //  - Living Room north doorless opening (x 1.8-3.0) = Kitchen south opening;
+        //  - Master Bedroom north door (x 7.5-8.4) = Bedroom 2 south door;
+        //  - Kitchen east door (y 5.3-6.1) = Bathroom west door.
+        let rooms = PlanPDFFixture.demoRooms()
+        XCTAssertEqual(rooms.reduce(0) { $0 + $1.openings.count }, 15)
+        let r = PlanDrawingBuilder.buildDetailed(rooms: rooms, title: "", subtitle: "", options: PlanOptions())
+        XCTAssertEqual(r.report.sharedOpenings, 4)
+        XCTAssertEqual(r.report.omittedOpeningTags, 0)
+        XCTAssertEqual(r.drawing.texts(.doors).count, 4, "7 recorded doors, 3 of them seen from both rooms")
+        XCTAssertEqual(r.drawing.texts(.windows).count, 6, "six windows, none of them shared")
+        XCTAssertEqual(r.drawing.texts(.openings).count, 1, "the doorless opening between the living room and the kitchen")
+        // One swing per swung door: 4 doors, none of them wider than 1.3 m.
+        XCTAssertEqual(r.drawing.arcs(.doors).count, 4)
+        XCTAssertTrue(overprintedPairs(r.drawing).isEmpty, describe(overprintedPairs(r.drawing)))
+        // Hand check on one pair: the Living Room east door (x = 6.2) and the Master Bedroom west door (x = 6.4) are 0.2 m
+        // apart; the doorway is open at x = 6.3, y = 0.95, and the partition is solid either side of it.
+        let bands = PlanDrawingBuilder.build(rooms: rooms, title: "", subtitle: "", options: wallsOnly)
+        XCTAssertFalse(isInked(bands, Point2(6.3, 0.95)))
+        XCTAssertTrue(isInked(bands, Point2(6.3, 0.3)))
+        XCTAssertTrue(isInked(bands, Point2(6.3, 2.5)))
+    }
+
+    func testTheDemoPropertyDrawsEachDoorOnceWhateverItsExactLayout() {
+        // `DemoProperty` is shared with other modules and may be re-laid-out; only invariants are asserted here.
+        let rooms = DemoProperty.make().allRooms
+        let recorded = rooms.reduce(0) { $0 + $1.openings.count }
+        let r = PlanDrawingBuilder.buildDetailed(rooms: rooms, title: "", subtitle: "", options: PlanOptions())
+        XCTAssertGreaterThan(r.report.sharedOpenings, 0, "rooms recorded the doors between them from both sides")
+        XCTAssertEqual(r.report.omittedOpeningTags, 0)
+        let tags = r.drawing.texts(.doors).count + r.drawing.texts(.windows).count + r.drawing.texts(.openings).count
+        XCTAssertEqual(tags, recorded - r.report.sharedOpenings, "one tag per physical opening")
+        XCTAssertTrue(overprintedPairs(r.drawing).isEmpty, describe(overprintedPairs(r.drawing)))
     }
 }

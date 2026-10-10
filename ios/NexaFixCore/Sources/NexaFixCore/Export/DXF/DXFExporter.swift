@@ -4,7 +4,9 @@ import Foundation
 //
 // Format: DXF release 2000 (AC1015), ASCII. R2000 was chosen over R12 (AC1009) because it carries
 // lightweight polylines, per-entity lineweights, handles and layouts that CAD users expect, and
-// every current CAD program reads it. The file follows the structure AutoCAD itself writes:
+// every current CAD program reads it. The one exception is `DXFColorMode.trueColor`, which needs group
+// 420 (24-bit colour) and therefore declares release 2004 (AC1018), where that group is defined; the rest
+// of the file is identical. The file follows the structure AutoCAD itself writes:
 // HEADER, CLASSES, TABLES (VPORT, LTYPE, LAYER, STYLE, VIEW, UCS, APPID, DIMSTYLE, BLOCK_RECORD),
 // BLOCKS (model and paper space), ENTITIES, OBJECTS (named object dictionary, layouts, plot style
 // placeholder), EOF. Every record has a unique handle and an owner; every entity has the AcDb
@@ -12,10 +14,15 @@ import Foundation
 //
 // Units: model space is the plan in millimetres (default) or metres. Plan y is up the page, the
 // same as DXF y, so no flip is applied. Angles are degrees counter-clockwise.
+//
+// Provenance: the drawn geometry is the LiDAR scan, while labels carry the laser-verified value where there is
+// one. The file therefore ends with a short note on NF-NOTES that says so (see `Options.includeProvenanceNote`).
 
 /// Drawing unit of the exported file (`$INSUNITS`).
 public enum DXFUnits: String, Codable, CaseIterable, Sendable {
+    /// Millimetres (`$INSUNITS` 4): the default, the unit joinery drawings are normally dimensioned in.
     case millimetres
+    /// Metres (`$INSUNITS` 6): plan space as it is.
     case metres
 
     /// Value of the `$INSUNITS` header variable: 4 millimetres, 6 metres.
@@ -27,25 +34,31 @@ public enum DXFUnits: String, Codable, CaseIterable, Sendable {
 
 /// How entity colours are written.
 public enum DXFColorMode: String, Codable, CaseIterable, Sendable {
-    /// No colour on strokes and text: they follow their layer (NF-WALLS ...), so CAD users restyle by layer.
+    /// Strokes and text follow their layer (NF-WALLS ...), so CAD users restyle by layer. The two colours that
+    /// carry meaning in the plan, laser-verified green and out-of-square red, are still written on the entity.
     case byLayer
-    /// Each stroke and text carries the nearest AutoCAD Color Index number (group 62).
+    /// Each stroke and text carries the nearest AutoCAD Color Index number (group 62); the plan's laser-verified
+    /// green and out-of-square red are always ACI 94 and ACI 1.
     case nearestACI
-    /// As `nearestACI`, plus the exact 24-bit colour (group 420) for programs that read it.
+    /// As `nearestACI`, plus the exact 24-bit colour (group 420). Group 420 exists from release 2004, so this
+    /// mode declares AC1018; the other modes write AC1015 and never write group 420.
     case trueColor
 }
 
+/// Writes a `PlanDrawing` as an ASCII DXF file. Pure and deterministic.
 public enum DXFExporter {
 
     /// What the file contains. The defaults suit a CAD hand-off.
     public struct Options: Codable, Hashable, Sendable {
         /// Drawing unit: millimetres (default) or metres.
         public var units: DXFUnits
-        /// Write TEXT entities (dimension values, angles, room labels, notes). Switch off to get geometry only,
-        /// for example when the file goes into a modelling program where annotation text is clutter.
+        /// Write the plan's TEXT entities (dimension values, angles, room labels, notes). Switch off to get
+        /// geometry only, for example when the file goes into a modelling program where annotation text is clutter.
+        /// The provenance note is controlled separately by `includeProvenanceNote`.
         public var includeTextLayers: Bool
         /// Write filled polylines as solid HATCH entities. Fills always carry an explicit colour (group 62 and,
-        /// for exact tints, group 420) because a fill that followed its layer colour would hide the strokes on top.
+        /// in `trueColor` mode, group 420) because a fill that followed its layer colour would hide the strokes
+        /// on top.
         public var includeFills: Bool
         /// Colour policy for strokes and text; see `DXFColorMode`.
         public var colorMode: DXFColorMode
@@ -54,22 +67,51 @@ public enum DXFExporter {
         public var entityLineweights: Bool
         /// Use CRLF line endings (what AutoCAD writes on Windows) instead of LF. Every reader accepts both.
         public var windowsLineEndings: Bool
+        /// Write the provenance note: a few lines of TEXT on NF-NOTES under the plan saying that the geometry is
+        /// the LiDAR scan, that text marked v is laser-verified and takes precedence, and the joinery disclaimer
+        /// (`ScanAccuracy.joineryDisclaimer`), preceded by the drawing's title and subtitle. The note is written
+        /// even when `includeTextLayers` is off, because geometry on its own does not say where its numbers come
+        /// from. Nothing is written for a drawing with no entities.
+        public var includeProvenanceNote: Bool
 
         public init(units: DXFUnits = .millimetres, includeTextLayers: Bool = true, includeFills: Bool = true,
                     colorMode: DXFColorMode = .byLayer, entityLineweights: Bool = true,
-                    windowsLineEndings: Bool = false) {
+                    windowsLineEndings: Bool = false, includeProvenanceNote: Bool = true) {
             self.units = units
             self.includeTextLayers = includeTextLayers
             self.includeFills = includeFills
             self.colorMode = colorMode
             self.entityLineweights = entityLineweights
             self.windowsLineEndings = windowsLineEndings
+            self.includeProvenanceNote = includeProvenanceNote
+        }
+
+        private enum CodingKeys: String, CodingKey {
+            case units, includeTextLayers, includeFills, colorMode, entityLineweights, windowsLineEndings,
+                 includeProvenanceNote
+        }
+
+        /// Any key that is missing takes its default, so options stored by an older version still decode.
+        public init(from decoder: Decoder) throws {
+            let container = try decoder.container(keyedBy: CodingKeys.self)
+            let defaults = Options()
+            units = try container.decodeIfPresent(DXFUnits.self, forKey: .units) ?? defaults.units
+            includeTextLayers = try container.decodeIfPresent(Bool.self, forKey: .includeTextLayers)
+                ?? defaults.includeTextLayers
+            includeFills = try container.decodeIfPresent(Bool.self, forKey: .includeFills) ?? defaults.includeFills
+            colorMode = try container.decodeIfPresent(DXFColorMode.self, forKey: .colorMode) ?? defaults.colorMode
+            entityLineweights = try container.decodeIfPresent(Bool.self, forKey: .entityLineweights)
+                ?? defaults.entityLineweights
+            windowsLineEndings = try container.decodeIfPresent(Bool.self, forKey: .windowsLineEndings)
+                ?? defaults.windowsLineEndings
+            includeProvenanceNote = try container.decodeIfPresent(Bool.self, forKey: .includeProvenanceNote)
+                ?? defaults.includeProvenanceNote
         }
     }
 
     /// The DXF text for a drawing. Pure ASCII, deterministic (no dates, no random ids): the same drawing and
     /// options always give the same bytes. Entities that cannot be drawn (non-finite or absurd coordinates,
-    /// zero-length lines, empty text, zero radius) are skipped.
+    /// zero-length lines, empty text, a radius or text height that rounds to zero, a fill with no area) are skipped.
     public static func export(_ drawing: PlanDrawing, options: Options = Options()) -> String {
         DXFDocument(drawing: drawing, options: options).build()
     }
@@ -82,7 +124,9 @@ public enum DXFExporter {
 
 // MARK: - Layer table
 
-/// How a plan layer looks in CAD: distinct ACI colour and a lineweight in hundredths of a millimetre.
+/// How a plan layer looks in CAD: a distinct ACI colour and a lineweight in hundredths of a millimetre (grouped by
+/// role: walls heaviest, annotation lightest). No layer uses green or red: the plan reserves those for laser-verified
+/// numbers and out-of-square corners, and a layer colour that matched would hide that cue from CAD users.
 struct DXFLayerStyle {
     let layer: PlanLayer
     let aci: Int
@@ -95,8 +139,8 @@ struct DXFLayerStyle {
         DXFLayerStyle(layer: .windows, aci: 4, lineweight: 25),      // cyan
         DXFLayerStyle(layer: .openings, aci: 6, lineweight: 25),     // magenta
         DXFLayerStyle(layer: .furniture, aci: 8, lineweight: 13),    // grey
-        DXFLayerStyle(layer: .dimensions, aci: 3, lineweight: 13),   // green
-        DXFLayerStyle(layer: .angles, aci: 1, lineweight: 13),       // red
+        DXFLayerStyle(layer: .dimensions, aci: 190, lineweight: 13), // violet (green means verified in the plan)
+        DXFLayerStyle(layer: .angles, aci: 42, lineweight: 13),      // gold (red means out of square in the plan)
         DXFLayerStyle(layer: .roomLabels, aci: 5, lineweight: 18),   // blue
         DXFLayerStyle(layer: .notes, aci: 32, lineweight: 18),       // brown
     ]
@@ -179,6 +223,9 @@ private struct DXFDocument {
     /// Plan scale denominator (50 for 1:50), sanitised.
     let plotScale: Double
 
+    /// Release the file declares: R2000, or R2004 when exact colours (group 420) are written.
+    var dxfVersion: String { options.colorMode == .trueColor ? "AC1018" : "AC1015" }
+
     init(drawing: PlanDrawing, options: DXFExporter.Options) {
         self.drawing = drawing
         self.options = options
@@ -188,16 +235,8 @@ private struct DXFDocument {
         plotScale = scale.isFinite && scale > 0 ? Swift.min(Swift.max(scale, 1), 10_000) : 50
     }
 
-    func build() -> String {
-        var allocator = DXFHandleAllocator(first: 1)
-        let handles = DXFHandles(&allocator)
-
-        var entities = DXFEntityWriter(options: options, unitsPerMetre: unitsPerMetre,
-                                       owner: handles.blockRecordModel, allocator: allocator)
-        for item in drawing.primitives { entities.add(item) }
-        let handleSeed = entities.allocator.seed
-
-        // Extents: what was actually written, widened by the drawing's own bounds (which also cover text).
+    /// Extents: what was actually written, widened by the drawing's own bounds (which also cover text).
+    private func extentsIncludingBounds(of entities: DXFEntityWriter) -> DXFExtents {
         var extents = entities.extents
         if entities.entityCount > 0 {
             let b = drawing.bounds
@@ -212,6 +251,25 @@ private struct DXFDocument {
                 }
             }
         }
+        return extents
+    }
+
+    func build() -> String {
+        var allocator = DXFHandleAllocator(first: 1)
+        let handles = DXFHandles(&allocator)
+
+        var entities = DXFEntityWriter(options: options, unitsPerMetre: unitsPerMetre,
+                                       owner: handles.blockRecordModel, allocator: allocator)
+        for item in drawing.primitives { entities.add(item) }
+
+        // The provenance note goes under everything the plan drew, after its last entity.
+        if options.includeProvenanceNote, entities.entityCount > 0 {
+            let paragraphs = DXFProvenanceNote.paragraphs(for: drawing, drawnTexts: entities.drawnTexts)
+            entities.addProvenanceNote(paragraphs, below: extentsIncludingBounds(of: entities),
+                                       textHeight: 0.0025 * plotScale)
+        }
+        let handleSeed = entities.allocator.seed
+        let extents = extentsIncludingBounds(of: entities)
 
         var w = DXFWriter(windowsLineEndings: options.windowsLineEndings)
         writeHeader(&w, extents: extents, handleSeed: handleSeed)
@@ -234,7 +292,7 @@ private struct DXFDocument {
         let isMM = options.units == .millimetres
 
         w.beginSection("HEADER")
-        w.tag(9, "$ACADVER"); w.tag(1, "AC1015")
+        w.tag(9, "$ACADVER"); w.tag(1, dxfVersion)
         w.tag(9, "$ACADMAINTVER"); w.tag(70, 6)
         w.tag(9, "$DWGCODEPAGE"); w.tag(3, "ANSI_1252")
         w.tag(9, "$INSBASE"); w.point(0, 0, 0)
@@ -589,6 +647,8 @@ private struct DXFEntityWriter {
     var writer: DXFWriter
     var extents = DXFExtents()
     var entityCount = 0
+    /// The plan's own TEXT strings (trimmed), so the provenance note does not repeat a title that is already drawn.
+    private(set) var drawnTexts: Set<String> = []
 
     /// Lines shorter than this (metres) are not drawn.
     private let minimumLength = 1e-9
@@ -614,6 +674,7 @@ private struct DXFEntityWriter {
             addCircle(center, radius, stroke, layer)
         case let .text(string, at, height, rotation, anchor, color, bold):
             guard options.includeTextLayers else { return }
+            drawnTexts.insert(string.trimmingCharacters(in: .whitespacesAndNewlines))
             addText(string, at: at, height: height, rotation: rotation, anchor: anchor, color: color, bold: bold,
                     layer: layer)
         }
@@ -630,15 +691,22 @@ private struct DXFEntityWriter {
         return (x, y)
     }
 
+    /// A radius or text height in drawing units; nil when it is not a number, not positive, or so small that it
+    /// would be written as `0.0` (CAD programs reject a zero radius and draw nothing for zero-height text).
     private func convertLength(_ metres: Double) -> Double? {
         let v = metres * unitsPerMetre
-        guard v.isFinite, v > 0, v <= DXFFormat.maxCoordinate else { return nil }
+        guard v.isFinite, v > 0, v <= DXFFormat.maxCoordinate, DXFFormat.isPositiveWhenWritten(v) else { return nil }
         return v
     }
 
     // MARK: common entity header
 
     /// Entity type, handle, owner, layer and the optional linetype / colour / lineweight overrides.
+    ///
+    /// Colour is written (group 62, see `DXFColor.aci(for:)`) when the entity must not follow its layer: always for fills, in
+    /// the `nearestACI` and `trueColor` modes for everything, and in every mode for the plan's two status colours
+    /// (laser-verified green, out-of-square red), so that cue survives a BYLAYER export. Group 420 is written only
+    /// in `trueColor` mode, which declares a release that defines it.
     private mutating func begin(_ type: String, layer: PlanLayer, stroke: StrokeStyle?, color: DrawColor?,
                                 explicitColor: Bool = false) {
         writer.tag(0, type)
@@ -647,11 +715,10 @@ private struct DXFEntityWriter {
         writer.tag(100, "AcDbEntity")
         writer.tag(8, layer.rawValue)
         if let stroke = stroke, stroke.dashed { writer.tag(6, "DASHED") }
-        if let color = color {
-            if explicitColor || options.colorMode != .byLayer {
-                writer.tag(62, DXFColor.nearestACI(color))
-                if explicitColor || options.colorMode == .trueColor { writer.tag(420, DXFColor.trueColor(color)) }
-            }
+        if let color = color,
+           explicitColor || options.colorMode != .byLayer || DXFColor.isPlanStatusColor(color) {
+            writer.tag(62, DXFColor.aci(for: color))
+            if options.colorMode == .trueColor { writer.tag(420, DXFColor.trueColor(color)) }
         }
         if options.entityLineweights, let stroke = stroke,
            let lineweight = DXFLineweight.nearest(toMillimetres: stroke.weight),
@@ -724,7 +791,7 @@ private struct DXFEntityWriter {
            abs(first.x - last.x) <= tolerance, abs(first.y - last.y) <= tolerance {
             verts.removeLast()
         }
-        guard verts.count >= 3 else { return }
+        guard verts.count >= 3, DXFEntityWriter.hasArea(verts) else { return }
         begin("HATCH", layer: layer, stroke: nil, color: fill, explicitColor: true)
         writer.tag(100, "AcDbHatch")
         writer.point(0, 0, 0)               // elevation point
@@ -738,6 +805,20 @@ private struct DXFEntityWriter {
             extents.include(v.x, v.y)
         }
         writer.tags([(97, 0), (75, 0), (76, 1), (98, 0)])
+    }
+
+    /// False for a boundary with no area to fill (collinear points, or an area lost in rounding). The shoelace sum
+    /// is taken relative to the first vertex so a drawing far from the origin does not drown in cancellation, and
+    /// the threshold scales with the perimeter so it is the same test in millimetres and metres.
+    static func hasArea(_ verts: [(x: Double, y: Double)]) -> Bool {
+        guard let origin = verts.first, verts.count >= 3 else { return false }
+        var twiceArea = 0.0, perimeter = 0.0
+        for i in verts.indices {
+            let a = verts[i], b = verts[(i + 1) % verts.count]
+            twiceArea += (a.x - origin.x) * (b.y - origin.y) - (b.x - origin.x) * (a.y - origin.y)
+            perimeter += ((b.x - a.x) * (b.x - a.x) + (b.y - a.y) * (b.y - a.y)).squareRoot()
+        }
+        return abs(twiceArea) / 2 > Swift.max(1e-9, 1e-12 * perimeter * perimeter)
     }
 
     // MARK: ARC and CIRCLE
@@ -809,5 +890,100 @@ private struct DXFEntityWriter {
         writer.tag(100, "AcDbText")
         writer.tag(73, 0)
         extents.include(p.x, p.y)
+    }
+
+    // MARK: provenance note
+
+    /// Writes the note as left-aligned TEXT on NF-NOTES under `box`: the first baseline is 2.5 text heights below
+    /// it (1.5 heights of clear space under the first line's capitals), lines are 1.8 heights apart, and they are
+    /// wrapped to the width of the drawing, at least 40 text heights. `textHeight` is in plan metres. The extents
+    /// grow to cover the note, so the header and the initial view frame it.
+    mutating func addProvenanceNote(_ paragraphs: [DXFProvenanceNote.Line], below box: DXFExtents, textHeight: Double) {
+        guard !box.isEmpty, textHeight.isFinite, textHeight > 0 else { return }
+        let left = box.minX / unitsPerMetre
+        let width = Swift.max((box.maxX - box.minX) / unitsPerMetre, 40 * textHeight)
+        var baseline = box.minY / unitsPerMetre - 2.5 * textHeight
+        for line in DXFProvenanceNote.wrap(paragraphs, maxWidth: width, height: textHeight) {
+            let before = entityCount
+            addText(line.text, at: Point2(left, baseline), height: textHeight, rotation: 0, anchor: .left,
+                    color: PlanDrawingBuilder.Palette.ink, bold: line.bold, layer: .notes)
+            if entityCount > before {
+                let right = left + PlanDrawingBuilder.textWidth(line.text, height: textHeight, bold: line.bold)
+                extents.include(right * unitsPerMetre, (baseline + textHeight) * unitsPerMetre)
+            }
+            baseline -= 1.8 * textHeight
+        }
+    }
+}
+
+// MARK: - Provenance note
+
+/// The note under the plan: where the numbers in the file come from and which to cut from.
+private enum DXFProvenanceNote {
+    struct Line {
+        var text: String
+        var bold: Bool
+    }
+
+    /// The paragraphs, before wrapping. `drawnTexts` holds the strings the plan already wrote: a title that is
+    /// already there (the CAD export captions its plan with the property and level) is not repeated.
+    static func paragraphs(for drawing: PlanDrawing, drawnTexts: Set<String>) -> [Line] {
+        var result: [Line] = []
+        let title = [drawing.title, drawing.subtitle]
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty }
+            .joined(separator: " - ")
+        if !title.isEmpty, !drawnTexts.contains(title) { result.append(Line(text: title, bold: true)) }
+        result.append(Line(text: "Geometry in this file is the LiDAR scan. Do not take cutting dimensions from "
+                           + "distances measured on the drawing.", bold: true))
+        if drawing.options.markVerified {
+            result.append(Line(text: "Text values marked v are laser-verified and take precedence over the drawn "
+                               + "geometry: cut joinery from the labelled values.", bold: false))
+        } else {
+            result.append(Line(text: "Laser-verified values are not marked in this file: check them against the "
+                               + "NexaFix data export before cutting.", bold: false))
+        }
+        result.append(Line(text: ScanAccuracy.joineryDisclaimer, bold: false))
+        return result
+    }
+
+    /// Greedy word wrap with the Helvetica width estimate the renderers use for `PlanDrawing.bounds`. A word wider
+    /// than `maxWidth` keeps a line to itself.
+    static func wrap(_ paragraphs: [Line], maxWidth: Double, height: Double) -> [Line] {
+        var lines: [Line] = []
+        for paragraph in paragraphs {
+            var current = ""
+            for word in paragraph.text.split(whereSeparator: { $0.isWhitespace }) {
+                let candidate = current.isEmpty ? String(word) : current + " " + word
+                if current.isEmpty
+                    || PlanDrawingBuilder.textWidth(candidate, height: height, bold: paragraph.bold) <= maxWidth {
+                    current = candidate
+                } else {
+                    lines.append(Line(text: current, bold: paragraph.bold))
+                    current = String(word)
+                }
+            }
+            if !current.isEmpty { lines.append(Line(text: current, bold: paragraph.bold)) }
+        }
+        return lines
+    }
+}
+
+extension DXFColor {
+    /// True for the two colours the plan uses to carry meaning rather than decoration: laser-verified numbers
+    /// (green) and out-of-square corners (red). Compared as written to the file, to the nearest 1/255.
+    static func isPlanStatusColor(_ color: DrawColor) -> Bool {
+        let c = bytes(color)
+        return c == bytes(PlanDrawingBuilder.Palette.verified) || c == bytes(PlanDrawingBuilder.Palette.warning)
+    }
+
+    /// The ACI number written for a plan colour. The two status colours get a fixed, unmistakable green (ACI 94)
+    /// and red (ACI 1), because the nearest entry to the plan's muted red is an orange-red and to its green a
+    /// greyish green; everything else gets the nearest entry.
+    static func aci(for color: DrawColor) -> Int {
+        if isPlanStatusColor(color) {
+            return bytes(color) == bytes(PlanDrawingBuilder.Palette.verified) ? 94 : 1
+        }
+        return nearestACI(color)
     }
 }

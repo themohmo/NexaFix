@@ -590,9 +590,16 @@ final class DataExportTests: XCTestCase {
         XCTAssertEqual(openings.count, 2)
         // Openings without a matching wall sort last, in array order.
         XCTAssertTrue(openings.allSatisfy { $0["wallIndex"] is NSNull && $0["offsetFromEndM"] is NSNull })
+        // Both are "not matched to a wall": the second points at a wall id the room does not have, which
+        // matches nothing, so it is null too (the docs promise null for every unmatched opening).
         XCTAssertTrue(openings[0]["wallId"] is NSNull)
-        XCTAssertTrue(openings[1]["wallId"] is String)
+        XCTAssertTrue(openings[1]["wallId"] is NSNull)
         XCTAssertEqual(openings.map { $0["label"] as? String }, ["Door 1", "Window 1"])
+        // The CSV agrees: empty wall_id and wall columns for both.
+        let csv = try XCTUnwrap(CSVExport.files(for: p, units: .default).first { $0.name == "openings.csv" })
+        let rows = Self.table(csv.content)
+        XCTAssertEqual(rows.count, 2)
+        XCTAssertTrue(rows.allSatisfy { $0["wall_id"] == "" && $0["wall"] == "" && $0["offset_from_end_mm"] == "" })
     }
 
     func testObjectsAndCustomMeasurements() throws {
@@ -868,11 +875,13 @@ final class DataExportTests: XCTestCase {
             let header = Self.parseCSV(file.content).first ?? []
             for col in header where col.hasSuffix("_verified") {
                 let base = String(col.dropLast("_verified".count))
-                XCTAssertTrue(header.contains(base + "_mm"), "\(file.name): \(col) without \(base)_mm")
-                XCTAssertTrue(header.contains(base + "_scanned_mm"), "\(file.name): \(col) without scanned column")
+                // Lengths are millimetres by default, areas square metres (the derived floor area).
+                let unit = header.contains(base + "_mm") ? "mm" : "m2"
+                XCTAssertTrue(header.contains(base + "_" + unit), "\(file.name): \(col) without \(base)_\(unit)")
+                XCTAssertTrue(header.contains(base + "_scanned_" + unit), "\(file.name): \(col) without scanned column")
                 // value, scanned, verified sit next to each other, in that order.
-                if let i = header.firstIndex(of: base + "_mm") {
-                    XCTAssertEqual(Array(header[i...].prefix(3)), [base + "_mm", base + "_scanned_mm", base + "_verified"])
+                if let i = header.firstIndex(of: base + "_" + unit) {
+                    XCTAssertEqual(Array(header[i...].prefix(3)), [base + "_" + unit, base + "_scanned_" + unit, base + "_verified"])
                 }
             }
         }
@@ -1305,7 +1314,7 @@ final class DataExportTests: XCTestCase {
         XCTAssertEqual(spec.rooms.map(\.name), ["Real"])
         XCTAssertEqual(spec.scanInfo.notes.filter { $0.contains("no usable floor outline") }.count, 2)
         // The unusable rooms' unverified dimensions are still counted: nothing is hidden.
-        XCTAssertTrue(spec.scanInfo.unverifiedJoinery.contains { $0.room == "Speck" })
+        XCTAssertTrue(spec.scanInfo.unverifiedJoinery.contains { $0.room == "Speck (not costed)" && $0.floor == "F" })
         XCTAssertNoThrow(try CostingSpecExport.json(property: p))
         // No rooms at all.
         let empty = CostingSpecExport.make(property: Property(name: "E"))
@@ -1395,9 +1404,10 @@ final class DataExportTests: XCTestCase {
                                      "measurement_count", "joinery_verified_count", "joinery_measurement_count", "rooms",
                                      "unverified_joinery", "warning", "notes"])
         let room = try XCTUnwrap((x["rooms"] as? [[String: Any]])?.first)
-        XCTAssertEqual(Set(room.keys), ["name", "floor", "kind", "verified", "total", "joinery_verified", "joinery_total"])
+        XCTAssertEqual(Set(room.keys), ["name", "floor", "kind", "verified", "total", "joinery_verified", "joinery_total",
+                                        "area_verified", "perimeter_verified", "height_verified"])
         let item = try XCTUnwrap((x["unverified_joinery"] as? [[String: Any]])?.first)
-        XCTAssertEqual(Set(item.keys), ["room", "item", "scanned_m", "typical_tolerance_m"])
+        XCTAssertEqual(Set(item.keys), ["room", "floor", "item", "scanned_m", "typical_tolerance_m"])
     }
 
     func testCostingSpecIsDeterministicAndDecodesBack() throws {
@@ -1469,6 +1479,355 @@ final class DataExportTests: XCTestCase {
         XCTAssertEqual(walls.count, 1 + 120 * 16)
         let openings = Self.parseCSV(try XCTUnwrap(csv.first { $0.name == "openings.csv" }).content)
         XCTAssertEqual(openings.count, 1 + 120 * 6)
+    }
+
+    // MARK: - Provenance of derived figures (length, width, perimeter, effective area)
+
+    /// Shorthand: a rectangle with some wall lengths verified.
+    private static func verifiedRect(width: Double, depth: Double, verify: [Int: Double], kind: RoomKind = .other,
+                                     name: String = "R") -> Room {
+        var r = Room.rectangle(name: name, kind: kind, width: width, depth: depth)
+        for (wall, value) in verify { r.walls[wall].length.verify(value, source: .laser, date: Self.verifiedAt) }
+        return r
+    }
+
+    private static func scanRoom(_ room: Room) -> ScanFile.RoomEntry {
+        ScanExport.make(property: Property(name: "P", floors: [Floor(name: "F", rooms: [room])]),
+                        generatedAt: Self.generatedAt).floors[0].rooms[0]
+    }
+
+    func testABlendOfOneVerifiedAndOneScannedWallIsFlaggedAsNeitherMeasurement() throws {
+        // 6.20 x 4.50, only the south wall checked: 6.30. Length = mean(6.30, 6.20) = 6.25, which is neither
+        // number; area = 6.25 x 4.5 = 28.125 against the scanned 6.2 x 4.5 = 27.9.
+        let e = Self.scanRoom(Self.verifiedRect(width: 6.2, depth: 4.5, verify: [0: 6.30]))
+        XCTAssertEqual(try XCTUnwrap(e.lengthM), 6.25, accuracy: 1e-9)
+        XCTAssertEqual(try XCTUnwrap(e.lengthScannedM), 6.2, accuracy: 1e-9)
+        XCTAssertEqual(e.lengthVerified, false)
+        XCTAssertEqual(try XCTUnwrap(e.widthM), 4.5, accuracy: 1e-9)
+        XCTAssertEqual(try XCTUnwrap(e.widthScannedM), 4.5, accuracy: 1e-9)
+        XCTAssertEqual(e.widthVerified, false)
+        XCTAssertEqual(e.effectiveFloorAreaM2, 28.125, accuracy: 1e-9)
+        XCTAssertEqual(e.effectiveFloorAreaScannedM2, 27.9, accuracy: 1e-9)
+        XCTAssertEqual(e.effectiveFloorAreaVerified, false)
+        // Perimeter 6.30 + 4.5 + 6.2 + 4.5 = 21.5 (scanned 21.4); nothing flagged as verified.
+        XCTAssertEqual(e.perimeterM, 21.5, accuracy: 1e-9)
+        XCTAssertEqual(e.perimeterScannedM, 21.4, accuracy: 1e-9)
+        XCTAssertEqual(e.wallPerimeterM, 21.5, accuracy: 1e-9)
+        XCTAssertEqual(e.wallPerimeterScannedM, 21.4, accuracy: 1e-9)
+        XCTAssertEqual(e.perimeterVerified, false)
+        XCTAssertEqual(e.wallPerimeterVerified, false)
+    }
+
+    func testEveryWallVerifiedMakesTheDerivedFiguresVerified() throws {
+        // South 6.30, east 4.52, north 6.28, west 4.50: length = 6.29, width = 4.51, area = 28.3679, perimeter 21.6.
+        let e = Self.scanRoom(Self.verifiedRect(width: 6.2, depth: 4.5, verify: [0: 6.30, 1: 4.52, 2: 6.28, 3: 4.50]))
+        XCTAssertEqual(try XCTUnwrap(e.lengthM), 6.29, accuracy: 1e-9)
+        XCTAssertEqual(try XCTUnwrap(e.widthM), 4.51, accuracy: 1e-9)
+        XCTAssertEqual(e.lengthVerified, true)
+        XCTAssertEqual(e.widthVerified, true)
+        XCTAssertEqual(e.effectiveFloorAreaM2, 6.29 * 4.51, accuracy: 1e-4)
+        XCTAssertEqual(e.effectiveFloorAreaVerified, true)
+        XCTAssertEqual(e.effectiveFloorAreaScannedM2, 27.9, accuracy: 1e-9)       // the LiDAR figure is still there
+        XCTAssertEqual(e.perimeterM, 6.30 + 4.52 + 6.28 + 4.50, accuracy: 1e-9)
+        XCTAssertEqual(e.perimeterScannedM, 21.4, accuracy: 1e-9)
+        XCTAssertEqual(e.perimeterVerified, true)
+        XCTAssertEqual(e.wallPerimeterVerified, true)
+    }
+
+    func testOnlyOneOppositePairVerifiedFlagsOnlyThatDimension() throws {
+        // South and north verified: the long side is verified, the short side and the area are not.
+        let e = Self.scanRoom(Self.verifiedRect(width: 6.2, depth: 4.5, verify: [0: 6.30, 2: 6.28]))
+        XCTAssertEqual(e.lengthVerified, true)
+        XCTAssertEqual(e.widthVerified, false)
+        XCTAssertEqual(e.effectiveFloorAreaVerified, false)
+        XCTAssertEqual(e.perimeterVerified, false)
+    }
+
+    func testLengthAndWidthFlagsFollowTheLongerPairWhicheverWallsItIs() throws {
+        // 3 wide x 5 deep: the east and west walls (1 and 3) are the long side.
+        let tall = Self.scanRoom(Self.verifiedRect(width: 3, depth: 5, verify: [1: 5.02, 3: 5.00]))
+        XCTAssertEqual(try XCTUnwrap(tall.lengthM), 5.01, accuracy: 1e-9)
+        XCTAssertEqual(try XCTUnwrap(tall.lengthScannedM), 5.0, accuracy: 1e-9)
+        XCTAssertEqual(tall.lengthVerified, true)
+        XCTAssertEqual(tall.widthVerified, false)
+        XCTAssertEqual(try XCTUnwrap(tall.widthScannedM), 3.0, accuracy: 1e-9)
+        // Verification can swap which pair is longer: a 3.0 x 3.1 room whose short pair is verified up to 3.3.
+        let swapped = Self.scanRoom(Self.verifiedRect(width: 3.0, depth: 3.1, verify: [0: 3.3, 2: 3.3]))
+        XCTAssertEqual(try XCTUnwrap(swapped.lengthM), 3.3, accuracy: 1e-9)       // the verified pair is now the long one
+        XCTAssertEqual(try XCTUnwrap(swapped.lengthScannedM), 3.0, accuracy: 1e-9)  // scanned figure of the SAME pair
+        XCTAssertEqual(swapped.lengthVerified, true)
+        XCTAssertEqual(try XCTUnwrap(swapped.widthM), 3.1, accuracy: 1e-9)
+        XCTAssertEqual(try XCTUnwrap(swapped.widthScannedM), 3.1, accuracy: 1e-9)
+        XCTAssertEqual(swapped.widthVerified, false)
+    }
+
+    func testASideMadeOfSeveralWallsIsVerifiedOnlyWhenEveryPieceIs() throws {
+        // A rectangle whose long side is two collinear walls (a 6-wall loop): 2 m + 2 m on the south, one wall north.
+        var study = Room.polygon(name: "Study", corners: [Point2(0, 0), Point2(2, 0), Point2(4, 0), Point2(4, 3), Point2(0, 3)])
+        XCTAssertEqual(study.walls.count, 5)
+        study.walls[0].length.verify(2.01, source: .laser, date: Self.verifiedAt)
+        var e = Self.scanRoom(study)
+        XCTAssertTrue(e.isRectangular)
+        XCTAssertEqual(try XCTUnwrap(e.lengthM), (2.01 + 2.0 + 4.0) / 2, accuracy: 1e-9)   // 4.005: matches no measurement
+        XCTAssertEqual(e.lengthVerified, false)
+        study.walls[1].length.verify(2.0, source: .laser, date: Self.verifiedAt)
+        study.walls[2].length.verify(3.0, source: .laser, date: Self.verifiedAt)
+        study.walls[3].length.verify(4.0, source: .laser, date: Self.verifiedAt)          // north (4 m)
+        study.walls[4].length.verify(3.0, source: .laser, date: Self.verifiedAt)
+        e = Self.scanRoom(study)
+        XCTAssertEqual(e.lengthVerified, true)
+        XCTAssertEqual(e.widthVerified, true)
+        XCTAssertEqual(e.effectiveFloorAreaVerified, true)
+    }
+
+    func testAnIrregularRoomsAreaIsNeverVerifiedEvenWithEveryWallChecked() throws {
+        var l = Room.polygon(name: "L", corners: [Point2(0, 0), Point2(6, 0), Point2(6, 2), Point2(4, 2), Point2(4, 4), Point2(0, 4)])
+        for i in l.walls.indices { l.walls[i].length.verify(l.walls[i].geometricLength + 0.01, source: .laser, date: Self.verifiedAt) }
+        let e = Self.scanRoom(l)
+        XCTAssertFalse(e.isRectangular)
+        XCTAssertEqual(e.perimeterVerified, true)                  // wall lengths: all checked
+        XCTAssertEqual(e.wallPerimeterVerified, true)
+        XCTAssertEqual(e.effectiveFloorAreaVerified, false)        // area: from scanned corners
+        XCTAssertEqual(e.effectiveFloorAreaM2, 20, accuracy: 1e-9)
+        XCTAssertEqual(e.effectiveFloorAreaScannedM2, 20, accuracy: 1e-9)
+        XCTAssertNil(e.lengthM); XCTAssertNil(e.lengthScannedM); XCTAssertNil(e.lengthVerified)
+        XCTAssertNil(e.widthM); XCTAssertNil(e.widthScannedM); XCTAssertNil(e.widthVerified)
+        // Perimeter 20 + 6 x 0.01 = 20.06 against 20 scanned.
+        XCTAssertEqual(e.perimeterM, 20.06, accuracy: 1e-9)
+        XCTAssertEqual(e.perimeterScannedM, 20, accuracy: 1e-9)
+    }
+
+    func testOpenPlanBoundariesDoNotCountAgainstTheWallPerimeterFlag() throws {
+        var r = Self.verifiedRect(width: 4, depth: 3, verify: [0: 4.01, 1: 3.01, 3: 3.0])
+        r.walls[2].kind = .virtual                                  // open edge on the north, never checked
+        let e = Self.scanRoom(r)
+        XCTAssertEqual(e.wallPerimeterVerified, true)               // every SOLID wall checked
+        XCTAssertEqual(e.perimeterVerified, false)                  // but not every wall
+        XCTAssertEqual(e.wallPerimeterM, 4.01 + 3.01 + 3.0, accuracy: 1e-9)
+        XCTAssertEqual(e.wallPerimeterScannedM, 10, accuracy: 1e-9)
+        XCTAssertEqual(e.perimeterM, 4.01 + 3.01 + 4.0 + 3.0, accuracy: 1e-9)
+    }
+
+    func testNothingVerifiedMeansNothingFlaggedAndScannedEqualsValue() throws {
+        let e = Self.scanRoom(Self.verifiedRect(width: 5, depth: 4, verify: [:]))
+        XCTAssertEqual(e.lengthM, e.lengthScannedM)
+        XCTAssertEqual(e.widthM, e.widthScannedM)
+        XCTAssertEqual(e.effectiveFloorAreaM2, e.effectiveFloorAreaScannedM2)
+        XCTAssertEqual(e.perimeterM, e.perimeterScannedM)
+        XCTAssertEqual(e.wallPerimeterM, e.wallPerimeterScannedM)
+        XCTAssertEqual([e.lengthVerified, e.widthVerified, e.effectiveFloorAreaVerified, e.perimeterVerified, e.wallPerimeterVerified]
+            .map { $0 == true }, [false, false, false, false, false])
+        // A room with no walls at all has nothing verified either.
+        let ghost = Self.scanRoom(Room(name: "Ghost", walls: [], ceilingHeight: Measured(scanned: 2.8)))
+        XCTAssertEqual(ghost.perimeterVerified, false)
+        XCTAssertEqual(ghost.wallPerimeterVerified, false)
+        XCTAssertEqual(ghost.effectiveFloorAreaVerified, false)
+        XCTAssertNil(ghost.lengthVerified)
+    }
+
+    func testDerivedProvenanceIsWrittenToTheJSONAsExplicitKeys() throws {
+        let root = try Self.jsonObject(ScanExport.json(property: Self.marina(), generatedAt: Self.generatedAt))
+        let rooms = try XCTUnwrap((root["floors"] as? [[String: Any]])?[0]["rooms"] as? [[String: Any]])
+        let living = rooms[0], openPlan = rooms[3]
+        // Living room: south and north (walls A and C) verified at 6.24, east and west not.
+        XCTAssertEqual(living["lengthM"] as? Double, 6.24)
+        XCTAssertEqual(living["lengthScannedM"] as? Double, 6.2)
+        XCTAssertEqual(living["lengthVerified"] as? Bool, true)
+        XCTAssertEqual(living["widthM"] as? Double, 4.5)
+        XCTAssertEqual(living["widthVerified"] as? Bool, false)
+        XCTAssertEqual(living["effectiveFloorAreaVerified"] as? Bool, false)
+        XCTAssertEqual(living["effectiveFloorAreaScannedM2"] as? Double, 27.9)
+        XCTAssertEqual(living["perimeterScannedM"] as? Double, 21.4)
+        XCTAssertEqual(living["perimeterM"] as? Double, 21.48)
+        XCTAssertEqual(living["perimeterVerified"] as? Bool, false)
+        // The L-shape has the keys, as null where there is nothing to say.
+        XCTAssertTrue(openPlan["lengthScannedM"] is NSNull)
+        XCTAssertTrue(openPlan["lengthVerified"] is NSNull)
+        XCTAssertTrue(openPlan["widthVerified"] is NSNull)
+        XCTAssertEqual(openPlan["effectiveFloorAreaVerified"] as? Bool, false)
+        // And the file reads back.
+        let file = ScanExport.make(property: Self.marina(), generatedAt: Self.generatedAt)
+        let back = try JSONDecoder().decode(ScanFile.self, from: ScanExport.encode(file))
+        XCTAssertEqual(back, file)
+    }
+
+    func testRoomsCSVCarriesTheDerivedProvenanceColumns() throws {
+        let rows = Self.table(try XCTUnwrap(CSVExport.files(for: Self.marina(), units: .default).first { $0.name == "rooms.csv" }).content)
+        let living = rows[0], openPlan = rows[3]
+        XCTAssertEqual(living["length_mm"], "6240.0")
+        XCTAssertEqual(living["length_scanned_mm"], "6200.0")
+        XCTAssertEqual(living["length_verified"], "yes")
+        XCTAssertEqual(living["width_mm"], "4500.0")
+        XCTAssertEqual(living["width_scanned_mm"], "4500.0")
+        XCTAssertEqual(living["width_verified"], "no")
+        XCTAssertEqual(living["effective_floor_area_m2"], "28.080")
+        XCTAssertEqual(living["effective_floor_area_scanned_m2"], "27.900")
+        XCTAssertEqual(living["effective_floor_area_verified"], "no")
+        XCTAssertEqual(living["perimeter_mm"], "21480.0")
+        XCTAssertEqual(living["perimeter_scanned_mm"], "21400.0")
+        XCTAssertEqual(living["perimeter_verified"], "no")
+        XCTAssertEqual(living["wall_perimeter_verified"], "no")
+        // Not a rectangle: no length / width, so the three columns are empty, not "no".
+        XCTAssertEqual(openPlan["is_rectangular"], "no")
+        XCTAssertEqual([openPlan["length_mm"], openPlan["length_scanned_mm"], openPlan["length_verified"]], ["", "", ""])
+        XCTAssertEqual([openPlan["width_mm"], openPlan["width_scanned_mm"], openPlan["width_verified"]], ["", "", ""])
+        XCTAssertEqual(openPlan["effective_floor_area_verified"], "no")
+    }
+
+    // MARK: - Costing spec: names, floors, flags
+
+    func testUnverifiedItemsUseTheNamesOfTheCostingRoomsSoDuplicatesCanBeToldApart() {
+        let rooms = [Room.rectangle(name: "Bedroom", kind: .bedroom, width: 4, depth: 4),
+                     Room.rectangle(name: "Bedroom", kind: .bedroom, width: 3, depth: 4,
+                                    openings: [.door(wall: 0, offset: 0.5)])]
+        let upstairs = [Room.rectangle(name: "Bedroom", kind: .bedroom, width: 3, depth: 3)]
+        let p = Property(name: "P", floors: [Floor(name: "Ground", rooms: rooms), Floor(name: "First", level: 1, rooms: upstairs)])
+        let spec = CostingSpecExport.make(property: p)
+        XCTAssertEqual(spec.rooms.map(\.name), ["Bedroom", "Bedroom (2)", "Bedroom (3)"])
+        XCTAssertEqual(spec.scanInfo.rooms.map(\.name), ["Bedroom", "Bedroom (2)", "Bedroom (3)"])
+
+        // Joinery items: 4 wall lengths + ceiling (+ door width and height). 5, 7 and 5.
+        var perRoom: [String: Int] = [:]
+        for item in spec.scanInfo.unverifiedJoinery { perRoom[item.room, default: 0] += 1 }
+        XCTAssertEqual(perRoom, ["Bedroom": 5, "Bedroom (2)": 7, "Bedroom (3)": 5])
+        // The counts in x_nexafix_scan.rooms agree with the list, room for room.
+        for info in spec.scanInfo.rooms {
+            XCTAssertEqual(perRoom[info.name], info.joineryTotal - info.joineryVerified, info.name)
+        }
+        // The floor travels with every item.
+        XCTAssertEqual(Set(spec.scanInfo.unverifiedJoinery.filter { $0.room == "Bedroom (3)" }.map(\.floor)), ["First"])
+        XCTAssertEqual(Set(spec.scanInfo.unverifiedJoinery.filter { $0.room != "Bedroom (3)" }.map(\.floor)), ["Ground"])
+    }
+
+    func testEveryUnverifiedRoomNameIsACostingRoomOrMarkedNotCosted() {
+        let spec = CostingSpecExport.make(property: Self.marina())
+        let names = Set(spec.rooms.map(\.name))
+        XCTAssertTrue(spec.scanInfo.unverifiedJoinery.allSatisfy { names.contains($0.room) })
+
+        let ghost = Room(name: "Bedroom", walls: [], ceilingHeight: Measured(scanned: 2.8))
+        let real = Room.rectangle(name: "Bedroom", width: 3, depth: 3)
+        let withGhost = CostingSpecExport.make(property: Property(name: "P", floors: [Floor(name: "F", rooms: [ghost, real])]))
+        XCTAssertEqual(withGhost.rooms.map(\.name), ["Bedroom"])                  // the ghost did not take the name
+        XCTAssertEqual(Set(withGhost.scanInfo.unverifiedJoinery.map(\.room)), ["Bedroom", "Bedroom (not costed)"])
+        XCTAssertTrue(withGhost.scanInfo.notes.contains { $0.contains("Bedroom (F)") && $0.contains("left out") })
+    }
+
+    func testRoomInfoSaysWhichQuantitiesRestOnVerifiedDimensions() {
+        let spec = CostingSpecExport.make(property: Self.marina())
+        let byName = Dictionary(uniqueKeysWithValues: spec.scanInfo.rooms.map { ($0.name, $0) })
+        // Living room: ceiling checked, long walls checked, short walls not -> height yes, area no, perimeter no.
+        XCTAssertEqual(byName["Living Room"]?.heightVerified, true)
+        XCTAssertEqual(byName["Living Room"]?.areaVerified, false)
+        XCTAssertEqual(byName["Living Room"]?.perimeterVerified, false)
+        XCTAssertEqual(byName["Master Bathroom"]?.heightVerified, false)
+        // The L-shape's area comes from scanned corners: never verified, even with every wall checked.
+        var l = Room.polygon(name: "L", corners: [Point2(0, 0), Point2(6, 0), Point2(6, 2), Point2(4, 2), Point2(4, 4), Point2(0, 4)])
+        for i in l.walls.indices { l.walls[i].length.verify(l.walls[i].geometricLength, source: .laser, date: Self.verifiedAt) }
+        l.ceilingHeight.verify(2.8, source: .laser, date: Self.verifiedAt)
+        let lSpec = CostingSpecExport.make(property: Property(name: "P", floors: [Floor(name: "F", rooms: [l])]))
+        XCTAssertEqual(lSpec.scanInfo.rooms[0].areaVerified, false)
+        XCTAssertEqual(lSpec.scanInfo.rooms[0].perimeterVerified, true)
+        XCTAssertEqual(lSpec.scanInfo.rooms[0].heightVerified, true)
+        // A fully verified rectangle is verified on all three, with and without an open-plan edge.
+        let full = Self.verifiedRect(width: 5, depth: 4, verify: [0: 5.01, 1: 4.01, 2: 5.0, 3: 4.0])
+        var open = full
+        open.walls[2].kind = .virtual
+        for room in [full, open] {
+            let s = CostingSpecExport.make(property: Property(name: "P", floors: [Floor(name: "F", rooms: [room])]))
+            XCTAssertEqual(s.scanInfo.rooms[0].areaVerified, true)
+            XCTAssertEqual(s.scanInfo.rooms[0].perimeterVerified, true, "virtual wall: \(room.walls[2].kind)")
+        }
+        // Only the solid walls count for the perimeter handed to the engine: an unchecked open edge does not spoil it.
+        var halfOpen = Self.verifiedRect(width: 5, depth: 4, verify: [0: 5.01, 1: 4.01, 3: 4.0])
+        halfOpen.walls[2].kind = .virtual
+        let hs = CostingSpecExport.make(property: Property(name: "P", floors: [Floor(name: "F", rooms: [halfOpen])]))
+        XCTAssertEqual(hs.scanInfo.rooms[0].perimeterVerified, true)
+        XCTAssertEqual(hs.scanInfo.rooms[0].areaVerified, false)         // the north edge is part of the area
+    }
+
+    // MARK: - Costing spec: what the engine will do to names and wall areas
+
+    /// Expected output of `_guess_tags` in nexa_costing/spec.py for each name (tests/test_from_scan.py runs the
+    /// same table against the Python function, so the mirror and the engine cannot drift apart unnoticed).
+    static let engineGuessTable: [(String, [String])] = [
+        ("Corridor to Balcony", ["circulation", "outdoor"]), ("Master Bedroom Terrace Side", ["outdoor"]),
+        ("Showcase Area", ["bathroom"]), ("Bedroom 2 Ensuite", ["bathroom"]), ("Living Room", ["living"]),
+        ("Maid's Room", ["utility"]), ("Master Bath", ["bathroom"]), ("Master", ["bedroom"]), ("Hall", ["circulation"]),
+        ("Wallpaper Store", ["utility"]), ("Store Room", ["utility"]), ("Majlis", ["living"]), ("Kitchenette", ["kitchen"]),
+        ("\u{063A}\u{0631}\u{0641}\u{0629} \u{0627}\u{0644}\u{0645}\u{0639}\u{064A}\u{0634}\u{0629}", []), ("", []),
+        ("BALCONY", ["outdoor"]), ("Dining", ["living"]), ("Powder Room", ["bathroom"]), ("Entrance", ["circulation"]),
+        ("Lobby / Foyer", ["circulation"]), ("Study", []), ("Terrace", ["outdoor"]), ("Master Bedroom", ["bedroom"]),
+        ("Walk-in WC", ["bathroom"]), ("Bedroom", ["bedroom"]), ("Hallway Bedroom", ["bedroom", "circulation"]),
+        ("Entry", ["circulation"]), ("Kitchen", ["kitchen"]), ("Laundry", ["utility"]), ("Storage", []), ("Office", []),
+        ("Reception", []), ("Meeting Room", []), ("Room", []), ("Living", ["living"]), ("Cinema Room", []),
+        ("Master Suite Balcony", ["outdoor"]), ("Master Laundry", ["utility"]),
+    ]
+
+    func testTheEngineNameGuessMirrorMatchesTheEnginesOwnTable() {
+        for (name, expected) in Self.engineGuessTable {
+            XCTAssertEqual(CostingEngineGuess.tags(forName: name).sorted(), expected, name.debugDescription)
+        }
+        // A combining mark does not hide a keyword (Python searches code points).
+        XCTAssertEqual(CostingEngineGuess.tags(forName: "bed\u{0301}room").sorted(), ["bedroom"])
+    }
+
+    func testRoomsTheEngineWillReclassifyAreNamedInTheNotes() {
+        func spec(_ name: String, _ kind: RoomKind) -> CostingSpec {
+            CostingSpecExport.make(property: Property(name: "P", floors: [Floor(name: "F", rooms: [Room.rectangle(name: name, kind: kind, width: 4, depth: 3)])]))
+        }
+        func guessNotes(_ s: CostingSpec) -> [String] { s.scanInfo.notes.filter { $0.contains("costing engine also tags") } }
+
+        // The four rooms of the review: file tags [living] [circulation] [bedroom] [] -> the engine changes three.
+        let corridor = spec("Corridor to Balcony", .corridor)
+        XCTAssertEqual(corridor.rooms[0].tags, ["circulation"])
+        XCTAssertEqual(guessNotes(corridor).count, 1)
+        XCTAssertTrue(guessNotes(corridor)[0].hasPrefix("Corridor to Balcony: "), guessNotes(corridor)[0])
+        XCTAssertTrue(guessNotes(corridor)[0].contains("\"outdoor\""))
+        XCTAssertTrue(guessNotes(corridor)[0].contains("\"all\" and \"dry\""))
+        XCTAssertTrue(guessNotes(corridor)[0].contains("Rename the room"))
+
+        let master = spec("Master Bedroom Terrace Side", .masterBedroom)
+        XCTAssertTrue(guessNotes(master)[0].contains("\"outdoor\""))
+
+        let showcase = spec("Showcase Area", .other)           // "wc" inside "showcase"
+        XCTAssertNil(showcase.rooms[0].wet)                    // the app leaves `wet` to the engine for kind other...
+        XCTAssertTrue(guessNotes(showcase)[0].contains("\"bathroom\""))
+        XCTAssertTrue(guessNotes(showcase)[0].contains("wet area"))   // ...so it comes out wet, and the note says so
+
+        let ensuite = spec("Bedroom 2 Ensuite", .bedroom)
+        XCTAssertEqual(ensuite.rooms[0].wet, false)            // explicit, so the engine keeps it dry
+        XCTAssertTrue(guessNotes(ensuite)[0].contains("\"bathroom\""))
+        XCTAssertFalse(guessNotes(ensuite)[0].contains("wet area"))
+
+        // Ordinary names produce no note, for every kind's default name.
+        for kind in RoomKind.allCases {
+            XCTAssertTrue(guessNotes(spec(kind.displayName, kind)).isEmpty, kind.displayName)
+        }
+        XCTAssertTrue(guessNotes(spec("Living Room", .livingRoom)).isEmpty)
+        XCTAssertTrue(guessNotes(CostingSpecExport.make(property: Self.marina())).isEmpty)
+    }
+
+    func testWallAreaDifferenceBetweenScanFileAndEngineIsReportedOnce() throws {
+        // Marina's living room: ceiling verified 2.85, walls scanned 2.8.
+        // Scan file: 21.48 x 2.8 - 9.132 = 51.012. Engine: 21.48 x 2.85 - 9.132 = 52.086.
+        let file = ScanExport.make(property: Self.marina(), generatedAt: Self.generatedAt)
+        XCTAssertEqual(file.floors[0].rooms[0].netWallAreaM2, 51.012, accuracy: 1e-9)
+        let spec = CostingSpecExport.make(property: Self.marina())
+        let living = try XCTUnwrap(spec.rooms.first)
+        // Engine side by hand: 2 x (6.24 + 4.5) = 21.48 m of wall, 2.85 m high, less the door and the window.
+        XCTAssertEqual(living.length?.inMetres, 6.24)
+        XCTAssertEqual(living.width?.inMetres, 4.5)
+        XCTAssertEqual(living.height.inMetres, 2.85)
+        XCTAssertEqual(2 * (6.24 + 4.5) * 2.85 - (0.92 * 2.1 + 3.0 * 2.4), 52.086, accuracy: 1e-9)
+        let notes = spec.scanInfo.notes.filter { $0.hasPrefix("Wall area differs") }
+        XCTAssertEqual(notes.count, 1, "one note for the whole property, not one per room")
+        XCTAssertTrue(notes[0].contains("Living Room"), notes[0])
+        XCTAssertTrue(notes[0].contains("51.01 m2 in the scan file"), notes[0])
+        XCTAssertTrue(notes[0].contains("52.09 m2 in the costing engine"), notes[0])
+
+        // No difference, no note: wall heights equal the ceiling height and there are no openings.
+        let plain = CostingSpecExport.make(property: Property(name: "P", floors: [Floor(name: "F", rooms: [Room.rectangle(name: "Plain", width: 4, depth: 3)])]))
+        XCTAssertTrue(plain.scanInfo.notes.allSatisfy { !$0.hasPrefix("Wall area differs") })
     }
 
     // MARK: - Fixture generation (run by the lead when the examples need refreshing)

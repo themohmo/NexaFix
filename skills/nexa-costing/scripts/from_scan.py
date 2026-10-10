@@ -19,13 +19,26 @@ estimator's call. This script adds the scope and writes a spec `estimate.py` can
     --out FILE     write the spec here (default: print it on stdout).
     --check        also dry-run the engine on the result (no PDFs) so unknown rooms, materials
                    or missing sizes show up now; --rates picks a rate book.
-    --strict       exit 3 when any joinery-critical dimension is still LiDAR-only.
+    --strict       fail closed (exit 3, after writing the spec) unless the scan PROVES that every
+                   joinery-critical dimension was verified on site: a missing `x_nexafix_scan`
+                   block, missing or inconsistent counts, or any LiDAR-only dimension all fail.
+                   It also fails when the engine's name guessing leaves a room out of the `all` /
+                   `dry` selectors (see below). Use it for anything that goes to a client.
+
+The scan's verification status stops here: `estimate.py` ignores `x_nexafix_scan`, so estimate.json, the
+cost sheet and the quote look the same whether the dimensions were laser-checked or LiDAR-only. The stderr
+warning and `--strict` are the only safeguards, so run with `--strict` for any client-facing quote.
 
 Rooms come from the scan only; a `rooms:` list in a scope file is ignored with a warning.
 Nothing is written when the scope would be empty, or when the rooms or scope do not load
 through the engine's own spec parser (`nexa_costing.spec`).
 
-Exit codes: 0 ok, 2 error (bad input, empty scope, invalid spec), 3 --strict and unverified.
+The engine ADDS tags guessed from room names to the tags in the file, and nothing in the file can
+remove one ("Corridor to Balcony" becomes `outdoor`, "Showcase" contains "wc" and becomes a wet
+bathroom). Those rooms silently drop out of the `all` / `dry` selectors and under-quote flooring
+and painting, so every room whose classification the engine changes is listed on stderr.
+
+Exit codes: 0 ok, 2 error (bad input, empty scope, invalid spec), 3 --strict and not proven.
 Warnings and notes go to stderr, so stdout stays clean JSON when no --out is given.
 """
 from __future__ import annotations
@@ -33,6 +46,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import stat
 import sys
 import tempfile
 from pathlib import Path
@@ -166,6 +180,28 @@ def starter_scope(rooms: list, scope: list) -> tuple[list, list]:
 
 
 # ------------------------------------------------------------------ validation
+def _engine_rooms(spec: dict, notes: list) -> list:
+    """Engine Room objects for the spec's rooms, exactly as the engine builds them.
+
+    Hand-edited input can make the engine's parser raise something other than SpecError (a `tags`
+    that is a number, a room that is not a mapping ...); that is reported as a bad room, not a crash.
+    """
+    project = spec.get("project") or {}
+    height = dim(project.get("ceiling_height"), "ceiling height", notes)
+    if height is None:
+        height = 2.8
+    rooms = []
+    for i, raw in enumerate(spec.get("rooms") or []):
+        try:
+            rooms.append(build_room(raw, height, notes))
+        except SpecError:
+            raise
+        except (TypeError, ValueError, AttributeError, KeyError) as exc:
+            name = raw.get("name") if isinstance(raw, dict) else None
+            raise SpecError(f"room {name or i + 1!s} cannot be read ({type(exc).__name__}: {exc})") from exc
+    return rooms
+
+
 def validate(spec: dict) -> tuple[list, list]:
     """Load the spec the way the engine does. Returns (engine Room objects, notes).
 
@@ -173,11 +209,7 @@ def validate(spec: dict) -> tuple[list, list]:
     that select a room the scan does not have.
     """
     notes: list[str] = []
-    project = spec.get("project") or {}
-    height = dim(project.get("ceiling_height"), "ceiling height", notes)
-    if height is None:
-        height = 2.8
-    rooms = [build_room(r, height, notes) for r in spec.get("rooms") or []]
+    rooms = _engine_rooms(spec, notes)
     packages = build_packages(spec.get("scope") or [])
 
     names = ", ".join(r.name for r in rooms) or "no rooms defined"
@@ -204,6 +236,64 @@ def engine_dry_run(spec: dict, rates_path: str | None) -> dict:
     return run_estimate(json.loads(json.dumps(spec)), rates, base_dir=Path.cwd())
 
 
+# ------------------------------------------------------------------ what the engine does to the rooms
+def engine_reclassifications(spec: dict, rooms: list | None = None) -> list[dict]:
+    """Rooms whose tags or wet flag the engine changes from what the scan file says.
+
+    The engine unions the file's tags with tags guessed from the room NAME and, when the file has no
+    `wet`, derives it from those tags. Nothing in the file can take a guessed tag away. Each entry:
+    room, area, added (tags), became_wet, excluded (True when the room was in the file's `all` / `dry`
+    selection and the engine leaves it out), message.
+    """
+    if rooms is None:
+        rooms = _engine_rooms(spec, [])
+    out: list[dict] = []
+    for raw, room in zip(spec.get("rooms") or [], rooms):
+        file_tags = {str(t).lower() for t in raw.get("tags") or []}
+        file_wet = raw.get("wet")
+        if file_wet is None:
+            file_wet = bool(file_tags & {"bathroom"}) or "wet" in file_tags
+        file_wet = bool(file_wet)
+        added = sorted(room.tags - file_tags)
+        became_wet = bool(room.wet) and not file_wet
+        if not added and not became_wet and bool(room.wet) == file_wet:
+            continue
+        file_indoor = "outdoor" not in file_tags
+        indoor = "outdoor" not in room.tags
+        excluded = (file_indoor and not indoor) or (file_indoor and not file_wet and room.wet)
+        effects = []
+        if file_indoor and not indoor:
+            effects.append("it counts as outdoor, so the `all` and `dry` room selectors (the starter flooring and painting) leave it out")
+        if became_wet and indoor:
+            effects.append("it counts as a wet area, so the `dry` selector (the starter flooring) leaves it out")
+        if not effects:
+            effects.append("selectors that use " + ("that tag" if len(added) == 1 else "those tags") + " include it")
+        tag_text = ", ".join(f"`{t}`" for t in added) if added else "as wet"
+        out.append({
+            "room": room.name, "area": room.area, "added": added, "became_wet": became_wet, "excluded": excluded,
+            "message": f"{room.name} ({room.area:.1f} m2): the engine also tags it {tag_text} from its name, so " + "; ".join(effects),
+        })
+    return out
+
+
+def reclassification_lines(changes: list[dict]) -> list[str]:
+    """stderr lines for `engine_reclassifications`: a loud block for rooms that drop out of selectors, plain notes for the rest."""
+    lines: list[str] = []
+    excluded = [c for c in changes if c["excluded"]]
+    if excluded:
+        lines += [
+            "=" * 72,
+            f"WARNING: THE COSTING ENGINE LEAVES {len(excluded)} ROOM(S) OUT BECAUSE OF THEIR NAMES",
+            "=" * 72,
+            "The engine adds tags guessed from room names and the scan cannot remove them. Flooring and",
+            "painting for `all` / `dry` rooms will NOT include:",
+        ]
+        lines += [f"  - {c['message']}" for c in excluded]
+        lines += ["Rename the room in the app, or list it by name in the scope file.", "=" * 72]
+    lines += [f"NOTE: {c['message']}" for c in changes if not c["excluded"]]
+    return lines
+
+
 # ------------------------------------------------------------------ warnings
 def unverified_block(spec: dict) -> list[str]:
     """Lines to show when the scan lists joinery-critical dimensions nobody checked on site."""
@@ -212,7 +302,7 @@ def unverified_block(spec: dict) -> list[str]:
         return [f"NOTE: no `{SCAN_BLOCK}` block - this spec did not come from the NexaFix Scan app, "
                 "so there is no information about which dimensions were verified."]
     unverified = scan.get("unverified_joinery") or []
-    if not unverified:
+    if not isinstance(unverified, list) or not unverified:
         return []
     project = (spec.get("project") or {}).get("name") or "this property"
     when = f" (scanned {scan['scan_date']})" if scan.get("scan_date") else ""
@@ -228,28 +318,84 @@ def unverified_block(spec: dict) -> list[str]:
     if scan.get("warning"):
         lines.append(str(scan["warning"]))
     lines.append("This quote is a BUDGET until they are checked with a laser measure. Unverified:")
+    floors = {u.get("floor") for u in unverified if isinstance(u, dict) and u.get("floor")}
     for u in unverified[:MAX_LISTED]:
+        if not isinstance(u, dict):
+            lines.append(f"  - {u}")
+            continue
         scanned, tol = u.get("scanned_m"), u.get("typical_tolerance_m")
         detail = ""
-        if isinstance(scanned, (int, float)):
+        if isinstance(scanned, (int, float)) and not isinstance(scanned, bool):
             detail = f" - {scanned * 1000:.0f} mm"
-            if isinstance(tol, (int, float)):
+            if isinstance(tol, (int, float)) and not isinstance(tol, bool):
                 detail += f" (typically +/-{tol * 1000:.0f} mm)"
-        lines.append(f"  - {u.get('room', '?')}: {u.get('item', '?')}{detail}")
+        where = u.get("room", "?")
+        if len(floors) > 1 and u.get("floor"):
+            where = f"{where} ({u['floor']})"          # two floors: the same room name can appear on both
+        lines.append(f"  - {where}: {u.get('item', '?')}{detail}")
     if len(unverified) > MAX_LISTED:
         lines.append(f"  ... and {len(unverified) - MAX_LISTED} more (see {SCAN_BLOCK}.unverified_joinery)")
     lines.append("=" * 72)
     return lines
 
 
+def strict_problems(spec: dict, changes: list[dict]) -> list[str]:
+    """Why `--strict` must fail. Empty only when the scan proves every joinery-critical dimension was
+    verified and the engine keeps every room the scan classified as indoor in the `all` / `dry` selectors.
+    Missing or contradictory information fails: "unknown" is not "verified"."""
+    problems: list[str] = []
+    scan = spec.get(SCAN_BLOCK)
+    if not isinstance(scan, dict):
+        problems.append(f"no `{SCAN_BLOCK}` block, so nothing says which dimensions were verified on site")
+    else:
+        def count(key):
+            v = scan.get(key)
+            return v if isinstance(v, int) and not isinstance(v, bool) and v >= 0 else None
+        total, verified = count("joinery_measurement_count"), count("joinery_verified_count")
+        listed = scan.get("unverified_joinery")
+        if not isinstance(listed, list):
+            problems.append(f"`{SCAN_BLOCK}.unverified_joinery` is missing, so the unverified dimensions are unknown")
+        elif listed:
+            problems.append(f"{len(listed)} joinery-critical dimension(s) are LiDAR-scanned only")
+        if total is None or verified is None:
+            problems.append("`joinery_measurement_count` / `joinery_verified_count` are missing or not whole numbers")
+        elif total == 0:
+            problems.append("the scan counts no joinery-critical dimensions at all")
+        elif verified > total:
+            problems.append(f"the scan claims {verified} verified of only {total} joinery-critical dimensions")
+        elif verified < total:
+            if not (isinstance(listed, list) and listed):
+                problems.append(f"only {verified} of {total} joinery-critical dimensions are verified")
+            elif len(listed) != total - verified:
+                problems.append(f"the counts ({verified} of {total} verified) and the list of {len(listed)} unverified dimensions disagree")
+        elif isinstance(listed, list) and listed:
+            problems.append(f"the counts say all {total} are verified, but {len(listed)} are listed as unverified")
+    excluded = [c["room"] for c in changes if c["excluded"]]
+    if excluded:
+        problems.append("the engine leaves out of the `all` / `dry` selectors because of the room name: " + ", ".join(excluded))
+    return problems
+
+
 # ------------------------------------------------------------------ output
+def _default_mode(path: Path) -> int:
+    """The mode a normal write would give `path`: its current mode when it exists, else 0666 minus the umask."""
+    try:
+        return stat.S_IMODE(path.stat().st_mode)
+    except OSError:
+        mask = os.umask(0)
+        os.umask(mask)
+        return 0o666 & ~mask
+
+
 def write_json_atomic(path: Path, spec: dict) -> None:
     text = json.dumps(spec, indent=2, ensure_ascii=False) + "\n"
     path.parent.mkdir(parents=True, exist_ok=True)
+    mode = _default_mode(path)
     fd, tmp = tempfile.mkstemp(prefix=path.name + ".", suffix=".tmp", dir=str(path.parent))
     try:
         with os.fdopen(fd, "w", encoding="utf-8") as fh:
             fh.write(text)
+        os.chmod(tmp, mode)          # mkstemp makes 0600; a colleague or a sync job must be able to read the spec
         os.replace(tmp, path)
     except BaseException:
         try:
@@ -257,6 +403,17 @@ def write_json_atomic(path: Path, spec: dict) -> None:
         except OSError:
             pass
         raise
+
+
+def write_stdout(text: str) -> None:
+    """Write UTF-8 bytes to stdout whatever the console's encoding (a legacy code page cannot encode Arabic)."""
+    buffer = getattr(sys.stdout, "buffer", None)
+    if buffer is None:                      # a text-only replacement stream (tests, embedding)
+        sys.stdout.write(text)
+        return
+    sys.stdout.flush()
+    buffer.write(text.encode("utf-8"))
+    buffer.flush()
 
 
 def build_spec(scan_path: Path, scope_path: Path | None, starter: bool) -> tuple[dict, list, list]:
@@ -323,6 +480,9 @@ def main(argv=None) -> int:
         print(f"- {line}", file=sys.stderr)
     for w in warnings:
         print(f"NOTE: {w}", file=sys.stderr)
+    changes = engine_reclassifications(spec)
+    for line in reclassification_lines(changes):
+        print(line, file=sys.stderr)
     block = unverified_block(spec)
     for line in block:
         print(line, file=sys.stderr)
@@ -336,12 +496,14 @@ def main(argv=None) -> int:
         print(f"Wrote {args.out}: {len(spec['rooms'])} rooms, {len(spec['scope'])} scope item(s). "
               f"Next: python estimate.py {args.out}", file=sys.stderr)
     else:
-        sys.stdout.write(json.dumps(spec, indent=2, ensure_ascii=False) + "\n")
+        write_stdout(json.dumps(spec, indent=2, ensure_ascii=False) + "\n")
 
-    scan = spec.get(SCAN_BLOCK)
-    if args.strict and isinstance(scan, dict) and scan.get("unverified_joinery"):
-        print("ERROR: --strict: joinery-critical dimensions are not verified", file=sys.stderr)
-        return 3
+    if args.strict:
+        problems = strict_problems(spec, changes)
+        if problems:
+            for problem in problems:
+                print(f"ERROR: --strict: {problem}", file=sys.stderr)
+            return 3
     return 0
 
 

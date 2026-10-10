@@ -77,34 +77,44 @@
     "joinery_verified_count" : 3,
     "measurement_count" : 39,
     "notes" : [
-
+      "Living / Kitchen: the costing engine also tags this living room \"kitchen\" because of its name, so selectors that use that tag include it. Rename the room if that is wrong.",
+      "Wall area differs between the scan file and the costing engine in 1 room(s): the scan file multiplies each wall by its own height, the engine multiplies the perimeter by the room's ceiling height and subtracts the doors and windows. The quote uses the engine's figure. Largest difference: Living / Kitchen, 53.22 m2 in the scan file, 53.63 m2 in the costing engine."
     ],
     "property_id" : "00000000-0000-0000-0000-0000000000A1",
     "rooms" : [
       {
+        "area_verified" : false,
         "floor" : "Level 12",
+        "height_verified" : true,
         "joinery_total" : 11,
         "joinery_verified" : 3,
         "kind" : "livingRoom",
         "name" : "Living / Kitchen",
+        "perimeter_verified" : false,
         "total" : 17,
         "verified" : 3
       },
       {
+        "area_verified" : false,
         "floor" : "Level 12",
+        "height_verified" : false,
         "joinery_total" : 7,
         "joinery_verified" : 0,
         "kind" : "bathroom",
         "name" : "Bathroom",
+        "perimeter_verified" : false,
         "total" : 11,
         "verified" : 0
       },
       {
+        "area_verified" : false,
         "floor" : "Level 12",
+        "height_verified" : false,
         "joinery_total" : 7,
         "joinery_verified" : 0,
         "kind" : "balcony",
         "name" : "Balcony",
+        "perimeter_verified" : false,
         "total" : 11,
         "verified" : 0
       }
@@ -113,132 +123,154 @@
     "schema" : "nexafix.costing-spec",
     "unverified_joinery" : [
       {
+        "floor" : "Level 12",
         "item" : "Wall B length",
         "room" : "Living / Kitchen",
         "scanned_m" : 2.4,
         "typical_tolerance_m" : 0.036
       },
       {
+        "floor" : "Level 12",
         "item" : "Wall C length",
         "room" : "Living / Kitchen",
         "scanned_m" : 2.2,
         "typical_tolerance_m" : 0.033
       },
       {
+        "floor" : "Level 12",
         "item" : "Wall D length",
         "room" : "Living / Kitchen",
         "scanned_m" : 2.2,
         "typical_tolerance_m" : 0.033
       },
       {
+        "floor" : "Level 12",
         "item" : "Wall E length",
         "room" : "Living / Kitchen",
         "scanned_m" : 3.4,
         "typical_tolerance_m" : 0.051
       },
       {
+        "floor" : "Level 12",
         "item" : "Door 1 width",
         "room" : "Living / Kitchen",
         "scanned_m" : 0.9,
         "typical_tolerance_m" : 0.0135
       },
       {
+        "floor" : "Level 12",
         "item" : "Door 1 height",
         "room" : "Living / Kitchen",
         "scanned_m" : 2.1,
         "typical_tolerance_m" : 0.0315
       },
       {
+        "floor" : "Level 12",
         "item" : "Window 1 width",
         "room" : "Living / Kitchen",
         "scanned_m" : 1.8,
         "typical_tolerance_m" : 0.027
       },
       {
+        "floor" : "Level 12",
         "item" : "Window 1 height",
         "room" : "Living / Kitchen",
         "scanned_m" : 2.3,
         "typical_tolerance_m" : 0.0345
       },
       {
+        "floor" : "Level 12",
         "item" : "Wall A length",
         "room" : "Bathroom",
         "scanned_m" : 2.2,
         "typical_tolerance_m" : 0.033
       },
       {
+        "floor" : "Level 12",
         "item" : "Wall B length",
         "room" : "Bathroom",
         "scanned_m" : 1.8,
         "typical_tolerance_m" : 0.027
       },
       {
+        "floor" : "Level 12",
         "item" : "Wall C length",
         "room" : "Bathroom",
         "scanned_m" : 2.2,
         "typical_tolerance_m" : 0.033
       },
       {
+        "floor" : "Level 12",
         "item" : "Wall D length",
         "room" : "Bathroom",
         "scanned_m" : 1.8,
         "typical_tolerance_m" : 0.027
       },
       {
+        "floor" : "Level 12",
         "item" : "Ceiling height",
         "room" : "Bathroom",
         "scanned_m" : 2.6,
         "typical_tolerance_m" : 0.039
       },
       {
+        "floor" : "Level 12",
         "item" : "Door 1 width",
         "room" : "Bathroom",
         "scanned_m" : 0.75,
         "typical_tolerance_m" : 0.0113
       },
       {
+        "floor" : "Level 12",
         "item" : "Door 1 height",
         "room" : "Bathroom",
         "scanned_m" : 2.1,
         "typical_tolerance_m" : 0.0315
       },
       {
+        "floor" : "Level 12",
         "item" : "Wall A length",
         "room" : "Balcony",
         "scanned_m" : 3.8,
         "typical_tolerance_m" : 0.057
       },
       {
+        "floor" : "Level 12",
         "item" : "Wall B length",
         "room" : "Balcony",
         "scanned_m" : 1.5,
         "typical_tolerance_m" : 0.0225
       },
       {
+        "floor" : "Level 12",
         "item" : "Wall C length",
         "room" : "Balcony",
         "scanned_m" : 3.8,
         "typical_tolerance_m" : 0.057
       },
       {
+        "floor" : "Level 12",
         "item" : "Wall D length",
         "room" : "Balcony",
         "scanned_m" : 1.5,
         "typical_tolerance_m" : 0.0225
       },
       {
+        "floor" : "Level 12",
         "item" : "Ceiling height",
         "room" : "Balcony",
         "scanned_m" : 2.9,
         "typical_tolerance_m" : 0.0435
       },
       {
+        "floor" : "Level 12",
         "item" : "Door 1 width",
         "room" : "Balcony",
         "scanned_m" : 2,
         "typical_tolerance_m" : 0.03
       },
       {
+        "floor" : "Level 12",
         "item" : "Door 1 height",
         "room" : "Balcony",
         "scanned_m" : 2.3,

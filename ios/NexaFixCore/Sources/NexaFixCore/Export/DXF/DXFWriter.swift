@@ -126,6 +126,12 @@ enum DXFFormat {
         return text == "-0.0" ? "0.0" : text
     }
 
+    /// True when `value` is still greater than zero once written by `number`, which keeps nine decimals. A radius
+    /// or text height below that resolution would be written as `0.0`, which CAD programs reject or draw as nothing.
+    static func isPositiveWhenWritten(_ value: Double) -> Bool {
+        value.isFinite && (Double(number(value)) ?? 0) > 0
+    }
+
     /// Replace line breaks and control characters with a space and escape non-ASCII scalars as
     /// `\U+XXXX` (UTF-16 surrogate pairs above U+FFFF). Used for every string value.
     static func safeLine(_ text: String) -> String {
@@ -148,6 +154,8 @@ enum DXFFormat {
     /// - every other non-ASCII character (m with U+00B2 superscript two, en dash, ...) -> `\U+XXXX`.
     /// - a literal `%` that would be read as part of a control code is written as `%%037`.
     /// - a backslash is written as `\U+005C` so it cannot start an accidental escape.
+    /// - a caret is written as `^ ` (caret, space): in DXF text `^J` means a line feed and `^M` a carriage return,
+    ///   and the space is how AutoCAD itself marks a literal caret.
     /// - tabs and line breaks become spaces (a TEXT entity is a single line).
     /// - the result is cut to `maxLength` characters (the DXF limit is 255) on an escape boundary.
     static func text(_ source: String, maxLength: Int = 255) -> String {
@@ -166,6 +174,7 @@ enum DXFFormat {
                     || next == 0x2205
                 tokens.append(previousIsPercent || nextIsControl ? "%%037" : "%")
             case 0x5C: tokens.append("\\U+005C")
+            case 0x5E: tokens.append("^ ")
             case 0x20...0x7E: tokens.append(String(scalar))
             case 0x00...0x1F, 0x7F: tokens.append(" ")
             default: tokens.append(unicodeEscape(scalar))
@@ -197,12 +206,22 @@ enum DXFFormat {
 
 /// Mapping from plan colours to AutoCAD Color Index (ACI) numbers and true-colour integers.
 ///
-/// Only the ACI entries whose RGB value is the same in every common palette table are candidates
-/// (the six pure colours, the full-brightness and 50% pastel hue ramps, the darker hue ramps, the
-/// 250-255 grey ramp). ACI 8 and 9 are excluded because applications disagree on their brightness.
-/// Black maps to ACI 7, which AutoCAD shows black on a light background and white on a dark one;
-/// white maps to ACI 255, which is always white.
+/// Candidates are the ACI entries whose RGB value is the same in the published AutoCAD table as reproduced by
+/// ezdxf 1.4.4: the six pure colours, the full-brightness and pastel hue ramps and the half- and dark-brightness
+/// ramps (138 entries; ACI 147, 157, 167, 177, 187 and 197 are left out because their blue channel is 126 in that
+/// table, not the 76 of the ramp). The grey ramp 251-254 is included at the middle of the values in circulation,
+/// which differ by up to 25 per entry (for example 80, 105, 130, 190 in one table and 101, 102, 153, 204 in
+/// another); ACI 250 is not used because it is 51 in some tables and black in others. ACI 8 and 9 are excluded
+/// because applications disagree on their brightness.
+///
+/// Neutral colours (channels within 24 of each other) only map to neutral entries, so a grey never turns into a
+/// tinted dark pastel. Very dark neutrals (the plan's ink) map to ACI 7, which AutoCAD shows black on a light
+/// background and white on a dark one, so the ink stays readable on either. White maps to ACI 255, which is always
+/// white.
 enum DXFColor {
+    /// ACI numbers left out of the hue ramps; see the type comment.
+    private static let irregularEntries: Set<Int> = [147, 157, 167, 177, 187, 197]
+
     /// (ACI index, red, green, blue) candidates, built once.
     static let candidates: [(index: Int, r: Int, g: Int, b: Int)] = {
         var list: [(index: Int, r: Int, g: Int, b: Int)] = [
@@ -233,14 +252,15 @@ enum DXFColor {
             let half = scaled(127), halfPastel = towardsLevel(half, 127)
             let dark = scaled(76), darkPastel = towardsLevel(dark, 76)
             for (variant, c) in [(0, full), (1, pastel), (4, half), (5, halfPastel), (6, dark), (7, darkPastel)] {
-                list.append((10 + hue * 10 + variant, c[0], c[1], c[2]))
+                let index = 10 + hue * 10 + variant
+                if irregularEntries.contains(index) { continue }
+                list.append((index, c[0], c[1], c[2]))
             }
         }
-        list.append((250, 51, 51, 51))
         list.append((251, 91, 91, 91))
-        list.append((252, 132, 132, 132))
-        list.append((253, 173, 173, 173))
-        list.append((254, 214, 214, 214))
+        list.append((252, 113, 113, 113))
+        list.append((253, 152, 152, 152))
+        list.append((254, 203, 203, 203))
         list.append((255, 255, 255, 255))
         return list
     }()
@@ -260,12 +280,26 @@ enum DXFColor {
         return (byte(color.r), byte(color.g), byte(color.b))
     }
 
-    /// The ACI number whose colour is closest (Euclidean distance in RGB, ties to the lower index).
+    /// True when the channels are within 24 of each other: a grey, or a warm or cool grey such as the plan's ink.
+    static func isNeutral(_ c: (r: Int, g: Int, b: Int)) -> Bool {
+        Swift.max(c.r, c.g, c.b) - Swift.min(c.r, c.g, c.b) <= 24
+    }
+
+    /// True for black and the dark greys and warm blacks used for ink: neutral with every channel below 64.
+    static func isNearBlackNeutral(_ c: (r: Int, g: Int, b: Int)) -> Bool {
+        isNeutral(c) && Swift.max(c.r, c.g, c.b) < 64
+    }
+
+    /// The ACI number whose colour is closest (Euclidean distance in RGB, ties to the lower index). Neutral colours
+    /// only consider neutral entries (7, the greys, 255), and near-black neutrals are ACI 7.
     static func nearestACI(_ color: DrawColor) -> Int {
         let c = bytes(color)
+        if isNearBlackNeutral(c) { return 7 }
+        let neutral = isNeutral(c)
         var best = 7
         var bestDistance = Int.max
         for candidate in candidates {
+            if neutral, candidate.r != candidate.g || candidate.g != candidate.b { continue }
             let dr = candidate.r - c.r, dg = candidate.g - c.g, db = candidate.b - c.b
             let distance = dr * dr + dg * dg + db * db
             if distance < bestDistance {

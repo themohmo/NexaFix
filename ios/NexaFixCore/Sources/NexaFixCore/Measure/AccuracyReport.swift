@@ -88,6 +88,11 @@ public struct AccuracyReport: Sendable {
     public static let sizeBandBoundary = 2.0
 
     /// Every verified dimension counted, in property order (floors, rooms, `Room.measureTargets()`).
+    /// The sources that are real measurements of the room: a laser meter and a steel tape. A value
+    /// copied from a drawing (`.drawing`) is a document, not evidence of how well the phone scans,
+    /// so the "how accurate is this phone" figure should pass `sources: AccuracyReport.measuredSources`.
+    public static let measuredSources: Set<VerificationSource> = [.laser, .tape]
+
     public let samples: [Sample]
     public let overall: Stats
     /// Dimensions with a verified value under 2 m.
@@ -96,6 +101,11 @@ public struct AccuracyReport: Sendable {
     public let longBand: Stats
 
     public var sampleCount: Int { overall.sampleCount }
+
+    /// How many of the counted checks came from `source`. The three counts add up to `sampleCount`.
+    public func sampleCount(for source: VerificationSource) -> Int {
+        samples.reduce(0) { $0 + ($1.source == source ? 1 : 0) }
+    }
     public var meanAbsoluteError: Double { overall.meanAbsoluteError }
     /// Bias: positive means the scan reads short on average.
     public var meanSignedError: Double { overall.meanSignedError }
@@ -103,7 +113,10 @@ public struct AccuracyReport: Sendable {
     public var maxAbsoluteError: Double { overall.maxAbsoluteError }
     public var p90AbsoluteError: Double { overall.p90AbsoluteError }
 
-    /// All sources by default; pass `[.laser]` to count laser checks only.
+    /// All sources by default (the full record of what was checked); pass `[.laser]` for laser checks
+    /// only, or `AccuracyReport.measuredSources` for real measurements without drawings. `summary`
+    /// names the sources it counted whenever they are not all laser, so a mixed figure never reads
+    /// as a laser figure.
     public init(property: Property, sources: Set<VerificationSource> = Set(VerificationSource.allCases)) {
         self.init(rooms: property.allRooms, sources: sources)
     }
@@ -143,6 +156,8 @@ public struct AccuracyReport: Sendable {
 
     /// "12 checks: typically 6 mm (0.3 %), worst 21 mm", or "No laser checks yet".
     /// "Typically" is the mean absolute error; the percentage is the mean absolute percent.
+    /// When any counted check is not a laser reading the sources are named, so the figure is never
+    /// mistaken for a laser one: "12 checks (9 laser, 2 tape, 1 drawing): typically 6 mm ...".
     public var summary: String { summary(unit: .millimetres) }
 
     public func summary(unit: LengthUnit) -> String {
@@ -151,7 +166,18 @@ public struct AccuracyReport: Sendable {
         let worst = UnitFormatter.length(maxAbsoluteError, unit: unit)
         let percent = String(format: "%.1f", meanAbsolutePercent)
         let noun = sampleCount == 1 ? "check" : "checks"
-        return "\(sampleCount) \(noun): typically \(typical) (\(percent) %), worst \(worst)"
+        return "\(sampleCount) \(noun)\(sourceBreakdown): typically \(typical) (\(percent) %), worst \(worst)"
+    }
+
+    /// "" when every counted check is a laser reading, otherwise " (9 laser, 2 tape, 1 drawing)"
+    /// with the sources that have at least one check, in the order laser, tape, drawing.
+    private var sourceBreakdown: String {
+        guard sampleCount(for: .laser) != sampleCount else { return "" }
+        let parts = VerificationSource.allCases.compactMap { source -> String? in
+            let n = sampleCount(for: source)
+            return n > 0 ? "\(n) \(source.rawValue)" : nil
+        }
+        return " (" + parts.joined(separator: ", ") + ")"
     }
 
     /// Plain-language reading of the bias, e.g. "Scans read about 4 mm short on average".

@@ -19,7 +19,11 @@ import Foundation
 //    skills/nexa-costing/scripts/from_scan.py (or the estimator) adds the scope.
 //  - `x_nexafix_scan` is an extra top-level object the engine ignores. It says how much of the
 //    geometry was verified on site and lists every joinery-critical dimension that was not, with
-//    a warning to show to a person.
+//    a warning to show to a person. For each room it also says whether the three quantities the
+//    engine prices from (floor area, perimeter, height) rest on verified dimensions.
+//  - The engine ADDS tags guessed from the room name to the ones written here (and takes `wet` from
+//    them when it is absent); nothing in the spec can remove a guessed tag. `notes` therefore lists
+//    every room whose tags the engine will change (`CostingEngineGuess` mirrors `_guess_tags`).
 
 /// The costing project spec for one property.
 public struct CostingSpec: Codable, Hashable, Sendable {
@@ -180,16 +184,30 @@ public struct CostingSpec: Codable, Hashable, Sendable {
         public var total: Int
         public var joineryVerified: Int
         public var joineryTotal: Int
+        /// The floor area given to the engine rests on verified dimensions only (a rectangle whose four
+        /// sides were all checked). Never true for an irregular room: its area is from scanned corners.
+        public var areaVerified: Bool
+        /// The perimeter the engine uses rests on verified wall lengths only.
+        public var perimeterVerified: Bool
+        /// The ceiling height given to the engine was verified on site.
+        public var heightVerified: Bool
 
         enum CodingKeys: String, CodingKey {
             case name, floor, kind, verified, total
             case joineryVerified = "joinery_verified"
             case joineryTotal = "joinery_total"
+            case areaVerified = "area_verified"
+            case perimeterVerified = "perimeter_verified"
+            case heightVerified = "height_verified"
         }
     }
 
     public struct UnverifiedItem: Codable, Hashable, Sendable {
+        /// The name used in `rooms[].name` (so it matches `x_nexafix_scan.rooms[].name`, `Name (2)` and all).
+        /// A room left out of the costing rooms has no such name: its name is followed by " (not costed)".
         public var room: String
+        /// The floor the room is on.
+        public var floor: String
         /// "Wall A length", "Door 1 width", "Ceiling height", ...
         public var item: String
         /// The LiDAR value the quote is currently based on, metres.
@@ -198,7 +216,7 @@ public struct CostingSpec: Codable, Hashable, Sendable {
         public var typicalToleranceM: Double
 
         enum CodingKeys: String, CodingKey {
-            case room, item
+            case room, floor, item
             case scannedM = "scanned_m"
             case typicalToleranceM = "typical_tolerance_m"
         }
@@ -223,6 +241,7 @@ public enum CostingSpecExport {
         var heights: [Double] = []
         var latestScan: Date?
         var usedSlugs: Set<String> = []
+        var wallAreas: [(name: String, scanFile: Double, engine: Double)] = []
 
         for floor in property.floors {
             for room in floor.rooms {
@@ -234,47 +253,62 @@ public enum CostingSpecExport {
                 let displayName = room.name.trimmingCharacters(in: .whitespacesAndNewlines)
                 let baseName = displayName.isEmpty ? room.kind.displayName : displayName
 
+                let metrics = room.metrics
+                let area = metrics.effectiveFloorArea
+                let costable = room.walls.count >= 3 && area.isFinite && area >= minimumArea
+
+                // Unique names, because the engine selects rooms by name. It compares names by `slug`, so
+                // "Living / Kitchen" and "Living Kitchen" (and any two names without Latin letters) are
+                // the same room to it. The unverified list uses this same name, so a reader can tell two
+                // rooms called "Bedroom" apart.
+                var name = baseName
+                if costable {
+                    var n = 1
+                    while usedSlugs.contains(engineSlug(name)) {
+                        n += 1
+                        name = "\(baseName) (\(n))"
+                    }
+                    usedSlugs.insert(engineSlug(name))
+                    if n > 1 {
+                        notes.append("Room name \"\(baseName)\" is used more than once (the engine compares names ignoring case and punctuation); renamed to \"\(name)\" in the costing rooms.")
+                    }
+                } else {
+                    name = baseName + " (not costed)"
+                }
+
                 // Joinery-critical dimensions that were not laser-checked are reported for every
                 // room, including rooms that cannot be costed.
                 for item in items where item.isJoinery && !item.measured.isVerified {
                     unverified.append(CostingSpec.UnverifiedItem(
-                        room: baseName, item: item.label,
+                        room: name, floor: floor.name, item: item.label,
                         scannedM: DataNumber.round4(item.measured.scanned),
                         typicalToleranceM: DataNumber.round4(ScanAccuracy.typicalTolerance(forLength: item.measured.scanned))))
                 }
 
-                let metrics = room.metrics
-                let area = metrics.effectiveFloorArea
-                guard room.walls.count >= 3, area.isFinite, area >= minimumArea else {
-                    notes.append("\(baseName): left out of the costing rooms (no usable floor outline).")
+                guard costable else {
+                    notes.append("\(baseName) (\(floor.name)): left out of the costing rooms (no usable floor outline).")
                     continue
                 }
 
-                // Unique names, because the engine selects rooms by name. It compares names by `slug`, so
-                // "Living / Kitchen" and "Living Kitchen" (and any two names without Latin letters) are
-                // the same room to it.
-                var name = baseName
-                var n = 1
-                while usedSlugs.contains(engineSlug(name)) {
-                    n += 1
-                    name = "\(baseName) (\(n))"
+                let built = makeRoom(room, name: name, metrics: metrics)
+                notes.append(contentsOf: built.notes)
+                if let guess = CostingEngineGuess.reclassification(
+                    name: name, kind: room.kind, fileTags: built.entry.tags, wet: built.entry.wet) {
+                    notes.append(guess)
                 }
-                usedSlugs.insert(engineSlug(name))
-                if n > 1 {
-                    notes.append("Room name \"\(baseName)\" is used more than once (the engine compares names ignoring case and punctuation); renamed to \"\(name)\" in the costing rooms.")
-                }
-
-                let (entry, roomNotes) = makeRoom(room, name: name, metrics: metrics)
-                notes.append(contentsOf: roomNotes)
-                rooms.append(entry)
+                wallAreas.append((name, DataNumber.round4(metrics.netWallArea), DataNumber.round4(built.engineWallArea)))
+                rooms.append(built.entry)
                 heights.append(metrics.ceilingHeight)
                 infos.append(CostingSpec.RoomInfo(
                     name: name, floor: floor.name, kind: room.kind.rawValue,
                     verified: counts.verified, total: counts.total,
-                    joineryVerified: counts.joineryVerified, joineryTotal: counts.joineryTotal))
+                    joineryVerified: counts.joineryVerified, joineryTotal: counts.joineryTotal,
+                    areaVerified: built.areaVerified, perimeterVerified: built.perimeterVerified,
+                    heightVerified: room.ceilingHeight.isVerified))
             }
         }
 
+        if let note = wallAreaNote(wallAreas) { notes.append(note) }
         if property.roomCount == 0 { notes.append("The property has no rooms.") }
 
         var warning: String?
@@ -314,15 +348,26 @@ public enum CostingSpecExport {
 
     // MARK: Rooms
 
-    private static func makeRoom(_ room: Room, name: String, metrics m: RoomMetrics)
-        -> (CostingSpec.RoomEntry, [String]) {
+    private struct BuiltRoom {
+        var entry: CostingSpec.RoomEntry
+        var notes: [String]
+        var areaVerified: Bool
+        var perimeterVerified: Bool
+        /// What the engine will compute for the net wall area: perimeter x height - door and window areas.
+        var engineWallArea: Double
+    }
+
+    private static func makeRoom(_ room: Room, name: String, metrics m: RoomMetrics) -> BuiltRoom {
         var notes: [String] = []
         let hasVirtualWalls = room.walls.contains { $0.kind == .virtual }
+        let derived = DataDerived(room: room, metrics: m)
 
         // Solid walls only: an open-plan edge has nothing to paint or skirt.
         var perimeter = m.wallPerimeter
+        var perimeterVerified = derived.wallPerimeterVerified
         if perimeter <= 0 && m.perimeter > 0 {
             perimeter = m.perimeter
+            perimeterVerified = derived.perimeterVerified
             notes.append("\(name): has no solid walls; the full outline perimeter was used.")
         }
 
@@ -332,10 +377,17 @@ public enum CostingSpecExport {
             doors: [], windows: [], tags: room.kind.costingTags,
             wet: room.kind == .other ? nil : room.kind.isWet)
 
+        var areaVerified = false
         if m.isRectangular, let l = m.length, let w = m.width, l > 0, w > 0 {
             entry.length = .make(l, millimetreThreshold: 60)
             entry.width = .make(w, millimetreThreshold: 60)
-            if hasVirtualWalls { entry.perimeter = .make(perimeter, millimetreThreshold: 150) }
+            areaVerified = derived.effectiveAreaVerified
+            if hasVirtualWalls {
+                entry.perimeter = .make(perimeter, millimetreThreshold: 150)
+            } else {
+                // No `perimeter` key: the engine computes 2 x (length + width), which rests on the same walls.
+                perimeterVerified = derived.effectiveAreaVerified
+            }
         } else {
             entry.area = DataNumber.round4(m.effectiveFloorArea)
             entry.perimeter = .make(perimeter, millimetreThreshold: 150)
@@ -344,6 +396,7 @@ public enum CostingSpecExport {
         // Openings count only on solid walls, exactly like the wall-area maths in RoomMetrics.
         let solid = Set(room.walls.filter { $0.kind == .solid }.map(\.id))
         var dropped = 0
+        var openingArea = 0.0
         for ref in DataOpenings.ordered(in: room) {
             let o = ref.opening
             let w = o.width.value, h = o.height.value
@@ -353,6 +406,7 @@ public enum CostingSpecExport {
                 continue
             }
             let size = [DataNumber.round4(w), DataNumber.round4(h)]
+            openingArea += size[0] * size[1]
             if o.kind == .window { entry.windows.append(size) } else { entry.doors.append(size) }
         }
         if dropped > 0 {
@@ -361,7 +415,22 @@ public enum CostingSpecExport {
         if room.openings.contains(where: { $0.kind == .opening }) {
             notes.append("\(name): doorless openings are listed as doors (they remove wall and skirting like a door).")
         }
-        return (entry, notes)
+        let engineWallArea = max(0, perimeter * m.ceilingHeight - openingArea)
+        return BuiltRoom(entry: entry, notes: notes, areaVerified: areaVerified,
+                         perimeterVerified: perimeterVerified, engineWallArea: engineWallArea)
+    }
+
+    /// One note when the wall area the costing engine will compute differs from the scan file's. The scan
+    /// file multiplies each wall by its own height; the engine multiplies the whole perimeter by the room's
+    /// ceiling height. They part ways whenever the ceiling was verified and the wall heights were not (or
+    /// the walls differ in height), and the quote uses the engine's figure.
+    private static func wallAreaNote(_ rows: [(name: String, scanFile: Double, engine: Double)]) -> String? {
+        let differing = rows.filter { abs($0.scanFile - $0.engine) > max(0.05, 0.005 * $0.scanFile) }
+        guard let worst = differing.max(by: { abs($0.scanFile - $0.engine) < abs($1.scanFile - $1.engine) }) else { return nil }
+        return "Wall area differs between the scan file and the costing engine in \(differing.count) room(s): the scan file "
+            + "multiplies each wall by its own height, the engine multiplies the perimeter by the room's ceiling height and "
+            + "subtracts the doors and windows. The quote uses the engine's figure. Largest difference: \(worst.name), "
+            + "\(DataNumber.fixed(worst.scanFile, decimals: 2)) m2 in the scan file, \(DataNumber.fixed(worst.engine, decimals: 2)) m2 in the costing engine."
     }
 
     /// Mirror of `slug()` in nexa_costing/util.py: lower-case, every run of characters other than
@@ -392,5 +461,69 @@ public enum CostingSpecExport {
             a.value != b.value ? a.value < b.value : a.key < b.key
         }) else { return nil }
         return Double(best.key) / 100
+    }
+}
+
+// MARK: - What the engine will do to the tags
+
+/// Mirror of the name guessing in the engine (`_guess_tags()` and the `wet` default in `build_room()`, in
+/// skills/nexa-costing/scripts/nexa_costing/spec.py). The engine unions the tags in the file with tags it
+/// guesses from the room NAME, and takes `wet` from the tags when the file has no `wet`. The file cannot
+/// remove a guessed tag, so a room called "Corridor to Balcony" is `outdoor` to the engine whatever kind it
+/// has. `tests/test_from_scan.py` checks the same table against the Python function; `from_scan.py` asks
+/// the engine itself, so it stays right when this mirror drifts.
+enum CostingEngineGuess {
+
+    /// (substring of the lower-cased name, tag), in the engine's order.
+    static let keywords: [(String, String)] = [
+        ("bed", "bedroom"), ("living", "living"), ("majlis", "living"), ("dining", "living"),
+        ("kitchen", "kitchen"), ("bath", "bathroom"), ("toilet", "bathroom"), ("wc", "bathroom"),
+        ("powder", "bathroom"), ("ensuite", "bathroom"), ("laundry", "utility"), ("maid", "utility"),
+        ("store", "utility"), ("corridor", "circulation"), ("hall", "circulation"), ("entr", "circulation"),
+        ("foyer", "circulation"), ("lobby", "circulation"), ("balcony", "outdoor"), ("terrace", "outdoor"),
+    ]
+
+    /// Tags the engine guesses from `name`. Substrings are searched by Unicode scalar, like Python's `in`.
+    static func tags(forName name: String) -> Set<String> {
+        let haystack = Array(name.lowercased().unicodeScalars)
+        var tags: Set<String> = []
+        for (key, tag) in keywords where contains(haystack, key) { tags.insert(tag) }
+        if contains(haystack, "master"), tags.isDisjoint(with: ["bathroom", "outdoor", "utility"]) {
+            tags.insert("bedroom")
+        }
+        if !tags.isDisjoint(with: ["bathroom", "outdoor"]) { tags.remove("bedroom") }
+        return tags
+    }
+
+    /// The tags and wet flag the engine ends up with for a room entry.
+    static func engineView(name: String, fileTags: [String], wet: Bool?) -> (tags: Set<String>, wet: Bool) {
+        let tags = Set(fileTags.map { $0.lowercased() }).union(self.tags(forName: name))
+        return (tags, wet ?? (tags.contains("bathroom") || tags.contains("wet")))
+    }
+
+    /// A sentence when the engine will classify the room differently from the file, otherwise nil.
+    static func reclassification(name: String, kind: RoomKind, fileTags: [String], wet: Bool?) -> String? {
+        let file = Set(fileTags.map { $0.lowercased() })
+        let fileWet = wet ?? (file.contains("bathroom") || file.contains("wet"))
+        let engine = engineView(name: name, fileTags: fileTags, wet: wet)
+        let added = engine.tags.subtracting(file).sorted()
+        guard !added.isEmpty || engine.wet != fileWet else { return nil }
+
+        var effects: [String] = []
+        if added.contains("outdoor") { effects.append("the \"all\" and \"dry\" room selectors leave it out") }
+        if engine.wet && !fileWet { effects.append("it counts as a wet area, so the \"dry\" room selector leaves it out") }
+        if effects.isEmpty { effects.append("selectors that use \(added.count == 1 ? "that tag" : "those tags") include it") }
+        let tagText = added.isEmpty ? "as wet" : added.map { "\"\($0)\"" }.joined(separator: ", ")
+        return "\(name): the costing engine also tags this \(kind.displayName.lowercased()) \(tagText) because of its name, so "
+            + effects.joined(separator: " and ") + ". Rename the room if that is wrong."
+    }
+
+    private static func contains(_ haystack: [Unicode.Scalar], _ needle: String) -> Bool {
+        let n = Array(needle.unicodeScalars)
+        guard let first = n.first, haystack.count >= n.count else { return false }
+        for i in 0...(haystack.count - n.count) where haystack[i] == first {
+            if Array(haystack[i..<(i + n.count)]) == n { return true }
+        }
+        return false
     }
 }

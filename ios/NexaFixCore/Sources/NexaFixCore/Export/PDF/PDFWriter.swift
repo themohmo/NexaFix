@@ -235,10 +235,20 @@ public struct PDFPage: Sendable {
     public mutating func arc(centerX cx: Double, centerY cy: Double, radius r: Double,
                              startDegrees: Double, endDegrees: Double, moveToStart: Bool = true) {
         guard r.isFinite, r > 0, cx.isFinite, cy.isFinite, startDegrees.isFinite, endDegrees.isFinite else { return }
+        // The sweep is brought into 0...360 in one step, however large the angles are: a negative sweep
+        // gains whole turns, one of 360 or more is a full circle. (A loop adding 360 at a time would
+        // never finish for an angle like 1e17.)
         var sweep = endDegrees - startDegrees
-        while sweep < 0 { sweep += 360 }
-        if sweep > 360 { sweep = 360 }
-        let a0 = startDegrees * Double.pi / 180
+        if !sweep.isFinite {
+            sweep = sweep > 0 ? 360 : 0
+        } else if sweep < 0 {
+            sweep = sweep.truncatingRemainder(dividingBy: 360)
+            if sweep < 0 { sweep += 360 }
+        } else if sweep > 360 {
+            sweep = 360
+        }
+        // Reduce the start as well so cos and sin never see a huge argument.
+        let a0 = startDegrees.truncatingRemainder(dividingBy: 360) * Double.pi / 180
         if moveToStart {
             move(to: cx + r * cos(a0), cy + r * sin(a0))
         }

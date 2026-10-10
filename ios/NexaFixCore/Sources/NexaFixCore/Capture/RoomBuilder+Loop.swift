@@ -2,21 +2,29 @@ import Foundation
 
 // Boundary-loop reconstruction for `RoomBuilder`: merge collinear pieces, build a graph of wall
 // ends, search for the closed loop that explains the most wall with the least repair, and fall
-// back to the floor polygon / convex hull when no loop exists.
+// back to the floor polygon / convex hull when no acceptable loop exists.
 //
 // Model. Every wall segment gives two DIRECTED nodes (a -> b and b -> a). A directed edge u -> v
 // means "walking along wall u, you can turn onto wall v": either the two wall LINES meet at a
-// point close to u's end and v's start (gap up to `snapTolerance`, overshoot up to
-// `maxCornerOvershoot`), or the two ends are within `snapTolerance` (midpoint corner), or both
-// ends are "free" (nothing touches them) and a virtual wall can bridge them. A room boundary is a
-// simple cycle in this graph. The search (`LoopSearch`) enumerates cycles with a bounded
-// depth-first search, scores each as
+// point inside both walls' extents (gap up to `snapTolerance`, any overshoot), or the two ends are
+// within `snapTolerance` (midpoint corner), or both ends are "free" (nothing touches them) and a
+// virtual wall can bridge them. A room boundary is a simple cycle in this graph. The search
+// (`LoopSearch`) enumerates cycles with a bounded depth-first search and scores each as
 //
-//     cost = 4 * (corner gaps healed) + 3 * (overshoot trimmed) + 3 * (bridged length)
-//          + 1 * (length of wall left out)
+//     cost = 4 * (corner gaps healed) + 3 * (overshoot trimmed, first `maxCornerOvershoot` m; 1/m beyond)
+//          + (1.5 + 3 * length) per bridge + 12 per floating wall (both ends bridged)
+//          + 1 * (wall left out) + 3..6 extra (wall left out outside the loop, more for long walls)
+//          + 9 extra * (cut-off tail of a used wall lying outside the loop)
+//          + 3 * (boundary length that does not follow the exact floor polygon, either way) + 50 * (1 - IoU)
 //
-// and keeps the cheapest; equal-cost loops are separated by the larger enclosed area (so an
-// interior partition never shrinks the room). Cycles must be simple polygons.
+// and keeps the cheapest acceptable one; equal-cost loops are separated by the larger enclosed
+// area (so an interior partition never shrinks the room). Cycles must be simple polygons.
+//
+// Acceptable: more than `maxOutsideWallFraction` of all scanned wall outside the loop, or (with an
+// exact floor polygon) a loop that needed repair yet covers less than `minFloorOverlap` of the
+// floor, is rejected outright. The bridging cost model alone cannot tell a free-standing wall that
+// merely sits near an open side from the boundary; the floor polygon and the "wall outside the
+// loop" terms can.
 
 extension RoomBuilder {
 
@@ -33,10 +41,15 @@ extension RoomBuilder {
     struct LoopOutcome {
         var walls: [LoopWall]
         var droppedSegments: [Int]
+        /// The subset of `droppedSegments` that lies (mostly) outside the loop.
+        var droppedOutside: [Int]
         var gapsClosed: Int
         var maxGap: Double
         var wallsTrimmed: Int
         var maxTrim: Double
+        var bridges: Int
+        /// The loop's total cost under the model in the header (for diagnostics and tests).
+        var cost: Double
     }
 
     /// What `findLoop` found, and whether it had to stop early.
@@ -62,22 +75,52 @@ extension RoomBuilder {
         var shortfall: Double
         /// Largest overshoot trimmed at this corner (metres).
         var overshoot: Double
+        /// How far the corner lies from the END of the wall the edge leaves (metres). A corner far back from
+        /// the end (a T-junction in the middle of a wall) leaves that end free for bridging.
+        var fromOffset: Double = 0
         var isBridge: Bool { corner == nil }
     }
 
     static let gapCostPerMetre = 4.0
     static let overshootCostPerMetre = 3.0
     static let bridgeCostPerMetre = 3.0
+    /// Every bridge costs this much on top of its length, so two short bridges through a stray wall are
+    /// dearer than one honest bridge.
+    static let bridgeFixedCost = 1.5
+    /// A solid wall whose both ends are bridged touches nothing: far more likely a free-standing wall
+    /// than part of the boundary.
+    static let floatingWallPenalty = 12.0
     static let dropCostPerMetre = 1.0
+    /// Extra cost per metre of scanned wall left outside the chosen loop (on top of `dropCostPerMetre`):
+    /// walls are evidence of rooms, and evidence outside the boundary means the boundary is suspect.
+    static let outsideExtraCostPerMetre = 3.0
+    /// Added to the above, scaled up to this much for walls of 3 m and longer (none below 1.5 m).
+    static let longWallExtraCostPerMetre = 3.0
+    /// Same for the cut-off tail of a wall used by the loop (a boundary wall truncated to make room for a stub).
+    static let outsideTailExtraCostPerMetre = 9.0
+    /// Cost of a floor-polygon disagreement in area: 50 per unit of (1 - IoU), i.e. 0.5 per percent.
+    static let floorMismatchPenalty = 50.0
+    /// Cost per metre of boundary (of the loop, or of the floor polygon) that is not within
+    /// `floorBoundaryTolerance` of the other one: the same as bridging a metre.
+    static let floorBoundaryPenaltyPerMetre = 3.0
+    static let floorBoundaryTolerance = 0.30
+    /// Boundary sampling is capped per edge so an absurdly large floor polygon cannot stall the search.
+    static let maxBoundarySamplesPerEdge = 200.0
     /// Equal-cost band inside which the larger enclosed area wins.
     static let costTieBand = 0.01
     static let searchSegmentCap = 400
     /// A free wall end may bridge to its nearest few free ends only.
-    static let maxBridgeCandidates = 3
+    static let maxBridgeCandidates = 8
+    /// Extra bridge partners, beyond the nearest, taken from the longest walls.
+    static let maxLongWallCandidates = 4
     /// A loop may need a bridge at every corner of a badly scanned room, but not at every wall of a big one.
     static let maxBridgesPerLoop = 8
+    /// Hostile (dense) input only: the graph keeps at most this many edges per node, symmetrically.
+    static let maxEdgesPerNode = 40
     /// Slack on tolerance comparisons so a gap of exactly `snapTolerance` is not lost to rounding.
     static let epsilon = 1e-9
+    /// Where along a left-out wall the inside/outside test samples.
+    static let sampleFractions: [Double] = [0.1, 0.3, 0.5, 0.7, 0.9]
 
     // MARK: Collinear merge
 
@@ -180,6 +223,12 @@ extension RoomBuilder {
         return nodes
     }
 
+    /// Cost of trimming `overshoot` metres off a wall that runs past a corner: the full repair rate for the
+    /// first `cap` metres, the plain "wall left out" rate beyond (so there is no cliff at `cap`).
+    static func overshootCost(_ overshoot: Double, cap: Double) -> Double {
+        overshootCostPerMetre * min(overshoot, cap) + dropCostPerMetre * max(0, overshoot - cap)
+    }
+
     /// Can you turn from the end of `u` onto the start of `v`?
     private static func directEdge(_ u: DirectedNode, _ v: DirectedNode, to: Int, sinTol: Double,
                                    options: Options) -> LoopEdge? {
@@ -190,7 +239,7 @@ extension RoomBuilder {
         func midpointEdge() -> LoopEdge? {
             guard endGap <= snap else { return nil }
             return LoopEdge(to: to, corner: u.p1.lerp(to: v.p0, t: 0.5), cost: gapCostPerMetre * endGap,
-                            shortfall: endGap, overshoot: 0)
+                            shortfall: endGap, overshoot: 0, fromOffset: endGap)
         }
         if abs(cross) <= sinTol {
             // Near-parallel: only a straight-through joint makes sense, meeting at the gap midpoint.
@@ -202,20 +251,28 @@ extension RoomBuilder {
         let s = w.cross(u.dir) / cross
         let shortU = max(0, t), overU = max(0, -t)
         let shortV = max(0, -s), overV = max(0, s)
-        if shortU <= snap, shortV <= snap,
-           overU <= options.maxCornerOvershoot + epsilon, overV <= options.maxCornerOvershoot + epsilon {
+        // The corner must lie within both walls' extents (a gap of up to `snapTolerance` beyond an end is
+        // healed) and leave each wall a usable length: u is used from its start to the corner, v from the
+        // corner to its end. How far a wall runs PAST the corner only changes the cost, never feasibility.
+        let lengthU = (u.p1 - u.p0).length, lengthV = (v.p1 - v.p0).length
+        let usable = options.minWallLength * 0.5
+        if shortU <= snap, shortV <= snap, overU <= lengthU - usable, overV <= lengthV - usable {
             let x = u.p1 + u.dir * t
             guard x.x.isFinite, x.y.isFinite else { return nil }
+            let cap = options.maxCornerOvershoot
             return LoopEdge(to: to, corner: x,
-                            cost: gapCostPerMetre * (shortU + shortV) + overshootCostPerMetre * (overU + overV),
-                            shortfall: max(shortU, shortV), overshoot: max(overU, overV))
+                            cost: gapCostPerMetre * (shortU + shortV)
+                                + overshootCost(overU, cap: cap) + overshootCost(overV, cap: cap),
+                            shortfall: max(shortU, shortV), overshoot: max(overU, overV), fromOffset: abs(t))
         }
         return midpointEdge()
     }
 
     /// The wall-end graph. It is symmetric under reversal: u -> v exists exactly when (v reversed) -> (u reversed)
     /// does, with the same corner and cost. The loop search relies on that to start every wall forwards only.
-    static func buildEdges(_ nodes: [DirectedNode], options: Options) -> [[LoopEdge]] {
+    /// `floors` are the exact floor polygons, if any: a bridge must then follow the floor boundary, because
+    /// a virtual wall is the missing piece of the room edge and the floor shows where that edge is.
+    static func buildEdges(_ nodes: [DirectedNode], floors: [[Point2]] = [], options: Options) -> [[LoopEdge]] {
         let n = nodes.count
         let sinTol = sin(options.collinearToleranceDegrees * Double.pi / 180)
         var adj = [[LoopEdge]](repeating: [], count: n)
@@ -226,20 +283,32 @@ extension RoomBuilder {
                 }
             }
         }
-        // Bridges join wall ends that nothing else touches ("free" ends).
-        let directCount = adj.map(\.count)
+        // Bridges join wall ends that nothing else touches ("free" ends). A wall that merely passes through a
+        // T-junction well short of its end still has a free end.
+        let attachedLimit = options.snapTolerance + epsilon
+        let directCount = adj.map { list in list.filter { $0.fromOffset <= attachedLimit }.count }
         var bridges = Set<[Int]>()      // (from, to) pairs, kept symmetric under reversal
         var distances: [[Int]: Double] = [:]
         for u in 0..<n where directCount[u] == 0 {
             var candidates: [(to: Int, distance: Double)] = []
-            for v in 0..<n where nodes[u].segment != nodes[v].segment && directCount[v ^ 1] == 0 {
+            let direct = Set(adj[u].map(\.to))
+            for v in 0..<n where nodes[u].segment != nodes[v].segment && directCount[v ^ 1] == 0 && !direct.contains(v) {
                 let d = nodes[u].p1.distance(to: nodes[v].p0)
-                if d > options.snapTolerance + epsilon, d <= options.maxBridgeableGap + epsilon {
+                if d > options.snapTolerance + epsilon, d <= options.maxBridgeableGap + epsilon,
+                   floors.isEmpty || bridgeFollowsFloor(nodes[u].p1, nodes[v].p0, floors: floors) {
                     candidates.append((v, d))
                 }
             }
             candidates.sort { $0.distance != $1.distance ? $0.distance < $1.distance : $0.to < $1.to }
-            for c in candidates.prefix(maxBridgeCandidates) {
+            // The nearest few, plus the ends of the longest walls: a free-standing stray wall puts two free
+            // ends close by and must not crowd the real partner (the end of a long wall) out of the set.
+            var chosen = Array(candidates.prefix(maxBridgeCandidates))
+            let longest = candidates.dropFirst(maxBridgeCandidates).sorted { a, b in
+                let la = (nodes[a.to].p1 - nodes[a.to].p0).length, lb = (nodes[b.to].p1 - nodes[b.to].p0).length
+                return la != lb ? la > lb : a.to < b.to
+            }
+            chosen.append(contentsOf: longest.prefix(maxLongWallCandidates))
+            for c in chosen {
                 bridges.insert([u, c.to])
                 bridges.insert([c.to ^ 1, u ^ 1])
                 distances[[u, c.to]] = c.distance
@@ -248,12 +317,44 @@ extension RoomBuilder {
         }
         for pair in bridges.sorted(by: { $0[0] != $1[0] ? $0[0] < $1[0] : $0[1] < $1[1] }) {
             let d = distances[pair] ?? 0
-            adj[pair[0]].append(LoopEdge(to: pair[1], corner: nil, cost: bridgeCostPerMetre * d, shortfall: 0, overshoot: 0))
+            adj[pair[0]].append(LoopEdge(to: pair[1], corner: nil, cost: bridgeFixedCost + bridgeCostPerMetre * d,
+                                         shortfall: 0, overshoot: 0))
         }
         for u in 0..<n {
             adj[u].sort { $0.cost != $1.cost ? $0.cost < $1.cost : $0.to < $1.to }
         }
-        return adj
+        return boundedDegree(adj)
+    }
+
+    /// Does the straight segment a-b run along the boundary of one of the floor polygons (every sample within
+    /// `floorBoundaryTolerance` plus a little slack)?
+    static func bridgeFollowsFloor(_ a: Point2, _ b: Point2, floors: [[Point2]]) -> Bool {
+        let tolerance = floorBoundaryTolerance + 0.05
+        let length = a.distance(to: b)
+        let pieces = Int(min(maxBoundarySamplesPerEdge, max(1, (length / 0.2).rounded(.up))))
+        for f in floors {
+            var along = true
+            for k in 0...pieces {
+                if distanceToBoundary(f, a.lerp(to: b, t: Double(k) / Double(pieces))) > tolerance { along = false; break }
+            }
+            if along { return true }
+        }
+        return false
+    }
+
+    /// Keep at most `maxEdgesPerNode` edges per node, symmetrically: an edge survives only if it AND its
+    /// reverse are among the cheapest of their nodes. Real rooms never come near the limit; dense garbage
+    /// does, and would otherwise make the graph (and the reachability sweeps) quadratic.
+    private static func boundedDegree(_ adj: [[LoopEdge]]) -> [[LoopEdge]] {
+        let limit = maxEdgesPerNode
+        guard adj.contains(where: { $0.count > limit }) else { return adj }
+        var out = adj
+        for u in adj.indices {
+            out[u] = adj[u].prefix(limit).filter { e in
+                adj[e.to ^ 1].prefix(limit).contains { $0.to == u ^ 1 }
+            }
+        }
+        return out
     }
 
     /// Turn a cycle of directed nodes and the edges between them into loop walls. nil when a wall
@@ -278,6 +379,152 @@ extension RoomBuilder {
         return out
     }
 
+    // MARK: Geometry helpers for the search
+
+    /// Distance from `p` to the boundary of the polygon.
+    static func distanceToBoundary(_ poly: [Point2], _ p: Point2) -> Double {
+        var best = Double.infinity
+        let n = poly.count
+        for i in 0..<n {
+            let a = poly[i], d = poly[(i + 1) % n] - a
+            let l2 = d.dot(d)
+            let t = l2 > 1e-18 ? min(1, max(0, (p - a).dot(d) / l2)) : 0
+            best = min(best, p.distance(to: a + d * t))
+        }
+        return best
+    }
+
+    /// Inside the polygon, or within `tolerance` of its boundary.
+    static func insideOrNear(_ poly: [Point2], _ p: Point2, tolerance: Double) -> Bool {
+        Polygon.contains(poly, p) || distanceToBoundary(poly, p) <= tolerance
+    }
+
+    /// x at which segments pq and rs cross or touch, nil when they do not (or are parallel).
+    private static func crossingX(_ p: Point2, _ q: Point2, _ r: Point2, _ s: Point2) -> Double? {
+        let r1 = q - p, r2 = s - r
+        let den = r1.cross(r2)
+        guard abs(den) > 1e-12 * r1.length * r2.length, den != 0 else { return nil }
+        let t = (r - p).cross(r2) / den
+        let u = (r - p).cross(r1) / den
+        guard t >= 0, t <= 1, u >= 0, u <= 1 else { return nil }
+        return p.x + t * r1.x
+    }
+
+    /// y values where the vertical line at `x` (not through any vertex) crosses the polygon, sorted.
+    private static func crossings(_ poly: [Point2], at x: Double) -> [Double] {
+        var ys: [Double] = []
+        let n = poly.count
+        for i in 0..<n {
+            let p = poly[i], q = poly[(i + 1) % n]
+            if (p.x < x) != (q.x < x) { ys.append(p.y + (x - p.x) / (q.x - p.x) * (q.y - p.y)) }
+        }
+        return ys.sorted()
+    }
+
+    /// Total length of the overlap of two sets of intervals given as sorted even-odd crossings.
+    private static func intervalOverlap(_ a: [Double], _ b: [Double]) -> Double {
+        var total = 0.0
+        var i = 0, j = 0
+        while i + 1 < a.count, j + 1 < b.count {
+            let lo = max(a[i], b[j]), hi = min(a[i + 1], b[j + 1])
+            if hi > lo { total += hi - lo }
+            if a[i + 1] < b[j + 1] { i += 2 } else { j += 2 }
+        }
+        return total
+    }
+
+    /// Area of the intersection of two simple polygons (any winding), exactly: the plane is cut into
+    /// vertical slabs at every vertex and every edge crossing, inside which both polygons are trapezoids,
+    /// so the overlap length is linear in x and the midpoint rule is exact.
+    static func overlapArea(_ a: [Point2], _ b: [Point2]) -> Double {
+        guard a.count >= 3, b.count >= 3 else { return 0 }
+        var xs: [Double] = a.map(\.x) + b.map(\.x)
+        let na = a.count, nb = b.count
+        for i in 0..<na {
+            let p = a[i], q = a[(i + 1) % na]
+            for j in 0..<nb {
+                if let x = crossingX(p, q, b[j], b[(j + 1) % nb]) { xs.append(x) }
+            }
+        }
+        xs.sort()
+        var total = 0.0
+        for k in 0..<(xs.count - 1) {
+            let w = xs[k + 1] - xs[k]
+            guard w > 1e-12 else { continue }
+            let xm = (xs[k] + xs[k + 1]) / 2
+            total += w * intervalOverlap(crossings(a, at: xm), crossings(b, at: xm))
+        }
+        return total
+    }
+
+    /// Length of the boundary of `poly` that is farther than `tolerance` from every polygon in `others`
+    /// (sampled every `step` metres).
+    static func unmatchedBoundaryLength(_ poly: [Point2], against others: [[Point2]], tolerance: Double,
+                                        step: Double = 0.2) -> Double {
+        var total = 0.0
+        let n = poly.count
+        for i in 0..<n {
+            let a = poly[i], b = poly[(i + 1) % n]
+            let len = a.distance(to: b)
+            guard len > 1e-12 else { continue }
+            let pieces = Int(min(maxBoundarySamplesPerEdge, max(1, (len / step).rounded(.up))))
+            for k in 0..<pieces {
+                let mid = a.lerp(to: b, t: (Double(k) + 0.5) / Double(pieces))
+                if !others.contains(where: { distanceToBoundary($0, mid) <= tolerance }) { total += len / Double(pieces) }
+            }
+        }
+        return total
+    }
+
+    /// Scanned wall that the chosen loop leaves out, classified by where it lies relative to the loop.
+    struct LeftOut {
+        /// Dropped wall length inside / outside the loop (by sampled fraction).
+        var insideLength = 0.0
+        var outsideLength = 0.0
+        /// The extra cost of the outside part: `outsideExtraCostPerMetre`, more for long walls.
+        var outsideExtraCost = 0.0
+        /// Length of trimmed-off wall ends (tails) that lie outside the loop.
+        var outsideTailLength = 0.0
+        /// Dropped segments that lie mostly outside the loop.
+        var droppedOutside: [Int] = []
+    }
+
+    /// `a`, `b`: end points of every segment; `used[i]`: segment i is part of the loop. Walls of `walls`
+    /// refer to the same segment numbering. Pieces within `tolerance` of the boundary count as inside.
+    static func evaluateLeftOut(polygon: [Point2], walls: [LoopWall], a: [Point2], b: [Point2],
+                                used: [Bool], tolerance: Double) -> LeftOut {
+        var out = LeftOut()
+        for i in 0..<a.count where !used[i] {
+            let len = a[i].distance(to: b[i])
+            guard len > 1e-12 else { continue }
+            var outside = 0
+            for f in sampleFractions where !insideOrNear(polygon, a[i].lerp(to: b[i], t: f), tolerance: tolerance) {
+                outside += 1
+            }
+            let frac = Double(outside) / Double(sampleFractions.count)
+            out.outsideLength += len * frac
+            out.insideLength += len * (1 - frac)
+            // A long full-height wall outside the boundary is far more likely a missing boundary than an exterior stub.
+            let longness = min(1, max(0, (len - 1.5) / 1.5))
+            out.outsideExtraCost += len * frac * (outsideExtraCostPerMetre + longWallExtraCostPerMetre * longness)
+            if outside * 2 > sampleFractions.count { out.droppedOutside.append(i) }
+        }
+        // Tails: the parts of used walls beyond the corners that the loop cut off.
+        for w in walls {
+            guard let si = w.segment, a.indices.contains(si) else { continue }
+            let length = a[si].distance(to: b[si])
+            guard length > 1e-12 else { continue }
+            let d = (b[si] - a[si]) / length
+            let tp = (w.start - a[si]).dot(d), tq = (w.end - a[si]).dot(d)
+            let lo = min(tp, tq), hi = max(tp, tq)
+            for (from, to) in [(0.0, lo), (hi, length)] where to - from > tolerance {
+                let mid = a[si] + d * ((from + to) / 2)
+                if !insideOrNear(polygon, mid, tolerance: tolerance) { out.outsideTailLength += to - from }
+            }
+        }
+        return out
+    }
+
     // MARK: Search
 
     private final class LoopSearch {
@@ -292,8 +539,17 @@ extension RoomBuilder {
         let adj: [[LoopEdge]]
         let radj: [[Int]]
         let segLength: [Double]
+        let segA: [Point2]
+        let segB: [Point2]
         let totalLength: Double
         let minEdgeLength: Double
+        let tolerance: Double
+        let floors: [[Point2]]
+        let floorArea: Double
+        let floorVertices: Int
+        let floorPerimeter: Double
+        let minFloorOverlap: Double
+        let maxOutsideFraction: Double
         var budget: Int
         var exhausted = false
         var best: Best?
@@ -307,12 +563,22 @@ extension RoomBuilder {
         var startVerts: [Point2] = []
         var poly: [(Point2, Point2)] = []
 
-        init(nodes: [DirectedNode], adj: [[LoopEdge]], segLength: [Double], minEdgeLength: Double, budget: Int) {
+        init(nodes: [DirectedNode], adj: [[LoopEdge]], segLength: [Double], minEdgeLength: Double, budget: Int,
+             tolerance: Double, floors: [[Point2]], minFloorOverlap: Double, maxOutsideFraction: Double) {
             self.nodes = nodes
             self.adj = adj
             self.segLength = segLength
+            self.segA = stride(from: 0, to: nodes.count, by: 2).map { nodes[$0].p0 }
+            self.segB = stride(from: 0, to: nodes.count, by: 2).map { nodes[$0].p1 }
             self.totalLength = segLength.reduce(0, +)
             self.minEdgeLength = minEdgeLength
+            self.tolerance = tolerance
+            self.floors = floors
+            self.floorArea = floors.reduce(0.0) { $0 + Polygon.area($1) }
+            self.floorVertices = floors.reduce(0) { $0 + $1.count }
+            self.floorPerimeter = floors.reduce(0.0) { $0 + Polygon.perimeter($1) }
+            self.minFloorOverlap = minFloorOverlap
+            self.maxOutsideFraction = maxOutsideFraction
             self.budget = max(0, budget)
             var r = [[Int]](repeating: [], count: nodes.count)
             for (u, list) in adj.enumerated() { for e in list { r[e.to].append(u) } }
@@ -337,20 +603,23 @@ extension RoomBuilder {
                 canReach[startNode] = true
                 var queue = [startNode]
                 var qi = 0
+                var swept = 0
                 while qi < queue.count {
                     let x = queue[qi]; qi += 1
+                    swept += radj[x].count
                     for y in radj[x] where allowed[nodes[y].segment] && !canReach[y] {
                         canReach[y] = true
                         queue.append(y)
                     }
                 }
+                budget -= swept / 16 + 1     // the sweep is real work too
                 guard adj[startNode].contains(where: { canReach[$0.to] }) else { continue }
                 path = [startNode]
                 pathEdges = []
                 startVerts = [Point2.zero]
                 poly = []
                 used[s] = true
-                dfs(cost: 0, usedLength: segLength[s], bridges: 0)
+                dfs(cost: 0, bridges: 0)
                 used[s] = false
             }
         }
@@ -369,7 +638,7 @@ extension RoomBuilder {
             return true
         }
 
-        private func dfs(cost: Double, usedLength: Double, bridges: Int) {
+        private func dfs(cost: Double, bridges: Int) {
             if exhausted { return }
             let k = path.count - 1
             let u = path[k]
@@ -380,7 +649,7 @@ extension RoomBuilder {
                 if e.isBridge && bridges >= RoomBuilder.maxBridgesPerLoop { continue }
                 let v = e.to
                 if v == startNode {
-                    close(with: e, cost: cost + e.cost, usedLength: usedLength)
+                    close(with: e, cost: cost + e.cost)
                     if exhausted { return }
                     continue
                 }
@@ -403,8 +672,7 @@ extension RoomBuilder {
                     pathEdges.append(e)
                     startVerts.append(e.corner ?? nodes[v].p0)
                     used[sv] = true
-                    dfs(cost: cost + e.cost, usedLength: usedLength + segLength[sv],
-                        bridges: bridges + (e.isBridge ? 1 : 0))
+                    dfs(cost: cost + e.cost, bridges: bridges + (e.isBridge ? 1 : 0))
                     used[sv] = false
                     startVerts.removeLast()
                     pathEdges.removeLast()
@@ -415,7 +683,8 @@ extension RoomBuilder {
             }
         }
 
-        private func close(with e: LoopEdge, cost: Double, usedLength: Double) {
+        /// Score the finished cycle (`cost` = the edges only) and keep it if it is acceptable and the best so far.
+        private func close(with e: LoopEdge, cost: Double) {
             if e.isBridge && pathEdges.filter({ $0.isBridge }).count >= RoomBuilder.maxBridgesPerLoop { return }
             budget -= path.count * path.count / 4 + 1   // assembling and testing a loop is O(n^2)
             let edges = pathEdges + [e]
@@ -425,21 +694,71 @@ extension RoomBuilder {
             guard verts.count >= 3 else { return }
             let area = Polygon.area(verts)
             guard area > 0.01, RoomBuilder.isSimplePolygon(verts) else { return }
-            let total = cost + RoomBuilder.dropCostPerMetre * max(0, totalLength - usedLength)
-            if let b = best {
-                let diff = total - b.total
-                let better = diff < -RoomBuilder.costTieBand
-                    || (abs(diff) <= RoomBuilder.costTieBand && area > b.area + 1e-9)
-                if !better { return }
+
+            // Structure: bridges, and floating walls (both ends bridged).
+            let m = path.count
+            var bridgeCount = 0, floating = 0
+            for j in 0..<m {
+                if edges[j].isBridge { bridgeCount += 1 }
+                if edges[(j + m - 1) % m].isBridge && edges[j].isBridge { floating += 1 }
+            }
+            var total = cost + RoomBuilder.floatingWallPenalty * Double(floating)
+            if !wins(total, area) { return }
+
+            // Scanned wall left out, and where it lies.
+            budget -= segLength.count * 5 * verts.count / 64
+            let left = RoomBuilder.evaluateLeftOut(polygon: verts, walls: walls, a: segA, b: segB, used: used,
+                                                   tolerance: tolerance)
+            let outside = left.outsideLength + left.outsideTailLength
+            if totalLength > 0, outside / totalLength > maxOutsideFraction { return }
+            total += RoomBuilder.dropCostPerMetre * (left.insideLength + left.outsideLength)
+                + left.outsideExtraCost
+                + RoomBuilder.outsideTailExtraCostPerMetre * left.outsideTailLength
+            if !wins(total, area) { return }
+
+            // Agreement with the exact floor polygon.
+            if !floors.isEmpty, floorArea > 1e-9 {
+                budget -= (verts.count + floorVertices) * (verts.count + floorVertices) / 8
+                var inter = 0.0
+                for f in floors { inter += RoomBuilder.overlapArea(verts, f) }
+                let union = area + floorArea - inter
+                let iou = union > 1e-9 ? min(1, max(0, inter / union)) : 0
+                // A loop that needed no repair is trusted even if the floor disagrees (the floor warning
+                // reports it); one that bridged or left real wall outside must match the floor.
+                let repaired = bridgeCount > 0 || outside > 0.5
+                if repaired, iou < minFloorOverlap { return }
+                total += RoomBuilder.floorMismatchPenalty * (1 - iou)
+                if !wins(total, area) { return }
+                // Boundary agreement, both ways: loop edges the floor does not have, floor edges the loop lacks.
+                let samples = min(Polygon.perimeter(verts) / 0.2, 200 * Double(verts.count)) * Double(floorVertices)
+                    + min(floorPerimeter / 0.2, 200 * Double(floorVertices)) * Double(verts.count)
+                budget -= Int(min(samples / 64, 1e9))
+                // (With several floor pieces their shared edges are not room boundary, so only the loop is checked.)
+                var unmatched = RoomBuilder.unmatchedBoundaryLength(verts, against: floors,
+                                                                    tolerance: RoomBuilder.floorBoundaryTolerance)
+                if floors.count == 1 {
+                    unmatched += RoomBuilder.unmatchedBoundaryLength(floors[0], against: [verts],
+                                                                     tolerance: RoomBuilder.floorBoundaryTolerance)
+                }
+                total += RoomBuilder.floorBoundaryPenaltyPerMetre * unmatched
+                if !wins(total, area) { return }
             }
             best = Best(path: path, edges: edges, total: total, area: area)
+        }
+
+        /// Would a loop with this cost (so far) and area replace the current best?
+        private func wins(_ total: Double, _ area: Double) -> Bool {
+            guard let b = best else { return true }
+            let diff = total - b.total
+            return diff < -RoomBuilder.costTieBand || (abs(diff) <= RoomBuilder.costTieBand && area > b.area + 1e-9)
         }
     }
 
     // MARK: Loop
 
     /// Find the closed boundary loop (counter-clockwise, canonical start); `outcome` is nil when none exists.
-    static func findLoop(segments all: [Segment], options: Options) -> LoopSearchResult {
+    /// `floors` are the exact floor polygons of the capture, used to arbitrate between candidate loops.
+    static func findLoop(segments all: [Segment], floors: [[Point2]] = [], options: Options) -> LoopSearchResult {
         guard all.count >= 2 else { return LoopSearchResult(outcome: nil, budgetExhausted: false) }
         // Keep the search tractable on hostile input: only the longest walls compete.
         var globalIndex = Array(0..<all.count)
@@ -450,9 +769,12 @@ extension RoomBuilder {
         let segs = globalIndex.map { all[$0] }
 
         let nodes = buildNodes(segs)
-        let adj = buildEdges(nodes, options: options)
+        let adj = buildEdges(nodes, floors: floors, options: options)
         let search = LoopSearch(nodes: nodes, adj: adj, segLength: segs.map(\.length),
-                                minEdgeLength: options.minWallLength * 0.5, budget: options.searchBudget)
+                                minEdgeLength: options.minWallLength * 0.5, budget: options.searchBudget,
+                                tolerance: options.snapTolerance, floors: floors,
+                                minFloorOverlap: options.minFloorOverlap,
+                                maxOutsideFraction: options.maxOutsideWallFraction)
         search.run()
         guard let best = search.best,
               var walls = assembleCycle(path: best.path, edges: best.edges, nodes: nodes,
@@ -467,17 +789,22 @@ extension RoomBuilder {
 
         let usedSet = Set(walls.compactMap(\.segment))
         let dropped = (0..<all.count).filter { !usedSet.contains($0) }
+        let polygon = walls.map(\.start)
+        let left = evaluateLeftOut(polygon: polygon, walls: walls, a: all.map(\.a), b: all.map(\.b),
+                                   used: (0..<all.count).map { usedSet.contains($0) }, tolerance: options.snapTolerance)
 
         let threshold = options.snapTolerance / 2
-        var gaps = 0, trims = 0
+        var gaps = 0, trims = 0, bridges = 0
         var maxGap = 0.0, maxTrim = 0.0
         for e in best.edges {
+            if e.isBridge { bridges += 1 }
             if e.shortfall > threshold { gaps += 1; maxGap = max(maxGap, e.shortfall) }
             if e.overshoot > threshold { trims += 1; maxTrim = max(maxTrim, e.overshoot) }
         }
         return LoopSearchResult(
-            outcome: LoopOutcome(walls: walls, droppedSegments: dropped, gapsClosed: gaps, maxGap: maxGap,
-                                 wallsTrimmed: trims, maxTrim: maxTrim),
+            outcome: LoopOutcome(walls: walls, droppedSegments: dropped, droppedOutside: left.droppedOutside,
+                                 gapsClosed: gaps, maxGap: maxGap, wallsTrimmed: trims, maxTrim: maxTrim,
+                                 bridges: bridges, cost: best.total),
             budgetExhausted: search.exhausted)
     }
 

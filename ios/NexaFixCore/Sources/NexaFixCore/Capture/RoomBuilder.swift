@@ -13,17 +13,22 @@ import Foundation
 ///     no more than `snapTolerance`) are merged into ONE segment, and ONE `Wall` is emitted for
 ///     it. (Decision: merge, never keep two walls with a straight shared corner. A genuine hole
 ///     bigger than `snapTolerance` between collinear pieces is bridged by a `.virtual` wall, whose
-///     corners ARE straight; `Room.metrics.sides` merges those correctly.)
+///     corners ARE straight; `Room.metrics.sides` merges those correctly. A collinear piece that
+///     continues PAST a corner is merged too: the loop then trims the wall at the corner like any other
+///     overshoot, however far it runs, and reports the trim.)
 ///  3. **Boundary loop.** A search over wall ends finds the closed loop that explains the most wall
-///     length with the least gap healing, trimming and bridging. Adjacent wall LINES are
-///     intersected to get corner points (so gaps and overshoots vanish and T-junctions are
-///     trimmed); near-parallel neighbours meet at the midpoint of the gap. Gaps wider than
-///     `snapTolerance` (up to `maxBridgeableGap`) between wall ends nothing else touches are
-///     bridged with a `.virtual` wall. Interior partial walls that cannot belong to the loop are
-///     dropped with a warning. Angles are never snapped, so an out-of-square corner stays out of
-///     square.
-///  4. **Fallbacks.** If no loop can be formed: the floor surface polygon, else the convex hull of
-///     wall end points, always with a loud `.noClosedLoop` warning.
+///     length with the least repair. Adjacent wall LINES are intersected to get corner points (so
+///     gaps and overshoots vanish and T-junctions are trimmed, at a cost that grows with the trim but
+///     has no cliff); near-parallel neighbours meet at the midpoint of the gap. Gaps wider than `snapTolerance` (up to `maxBridgeableGap`) between wall
+///     ends nothing else touches are bridged with a `.virtual` wall. Interior partial walls that
+///     cannot belong to the loop are dropped with a warning. Angles are never snapped, so an
+///     out-of-square corner stays out of square. The exact floor polygon, when the capture has one,
+///     is the arbiter: loops that disagree with it are penalised, and a loop that had to be repaired
+///     (bridged, or leaving real wall outside it) and still covers less than `minFloorOverlap` of
+///     the floor is rejected. Loops that leave most of the scanned wall outside them are rejected
+///     too (`maxOutsideWallFraction`).
+///  4. **Fallbacks.** If no acceptable loop exists: the floor surface polygon, else the convex hull
+///     of wall end points, always with a loud `.noClosedLoop` warning (critical).
 ///  5. **Openings and objects**, see `RoomBuilder+Openings.swift`.
 ///
 /// Curved walls: a surface with `isCurved` set must describe its straight CHORD (transform centre and
@@ -39,6 +44,11 @@ import Foundation
 /// neighbours), the room identifier is the capture identifier, and the loop starts at its
 /// lowest-then-leftmost corner. Time is injected via `now`; nothing ambient is read.
 ///
+/// Honesty: the builder may be uncertain but it is never silently wrong. A result whose outline is a
+/// fallback guess, or whose area disagrees grossly with the scanned floor, carries a CRITICAL warning;
+/// `Result.isReliable` is false for it, and caution-or-worse warnings are copied into `Room.notes` so
+/// the exports carry them.
+///
 /// All lengths are metres. The result never contains NaN or infinity, whatever the input.
 public enum RoomBuilder {
 
@@ -53,7 +63,9 @@ public enum RoomBuilder {
         /// a `.virtual` wall.
         public var maxBridgeableGap: Double
         /// A wall that continues past the corner (walls crossing, or a T-junction) is trimmed at
-        /// the intersection of the two wall lines, up to this much.
+        /// the intersection of the two wall lines. Up to this much of the overshoot is charged at
+        /// the full repair rate; the excess is charged like any other wall left out. (It is a cost
+        /// threshold, not a cliff: a wall running 3 m past a corner is still trimmed.)
         public var maxCornerOvershoot: Double
         /// Wall surfaces shorter than this (in plan) are noise and ignored.
         public var minWallLength: Double
@@ -67,7 +79,8 @@ public enum RoomBuilder {
         public var minHorizontalComponent: Double
         /// An opening farther than this from every wall is left unattached (`wallID == nil`).
         public var openingMatchDistance: Double
-        /// A `parentID` is trusted only while the opening is within this distance of that wall.
+        /// A `parentID` is trusted only while the opening is within this distance of that wall AND that wall
+        /// is (within 5 cm) also the nearest wall: RoomPlan's parent is a hint, the geometry has the last word.
         public var openingParentTrustDistance: Double
         /// Floor polygon area and outline area may differ by this fraction before a warning.
         public var floorAreaTolerance: Double
@@ -76,6 +89,14 @@ public enum RoomBuilder {
         public var maxPlausibleArea: Double
         /// Upper bound on loop-search steps (edges examined; keeps hostile input from running away).
         public var searchBudget: Int
+        /// A loop that needed repair (a bridge, or real wall left outside it) must cover at least this
+        /// fraction (intersection over union) of the exact floor polygon, else it is rejected.
+        public var minFloorOverlap: Double
+        /// A loop is rejected when more than this fraction of all scanned wall length lies outside it.
+        public var maxOutsideWallFraction: Double
+        /// Without an exact floor polygon, an outline that bridges an open side while at least this much wall
+        /// (metres) lies outside it is flagged critical: part of the room is probably missing.
+        public var unverifiedOutsideWallLength: Double
 
         public init(snapTolerance: Double = 0.15, maxBridgeableGap: Double = 6.5,
                     maxCornerOvershoot: Double = 1.0, minWallLength: Double = 0.10,
@@ -83,7 +104,8 @@ public enum RoomBuilder {
                     minHorizontalComponent: Double = 0.15, openingMatchDistance: Double = 0.4,
                     openingParentTrustDistance: Double = 1.0, floorAreaTolerance: Double = 0.15,
                     minPlausibleArea: Double = 1.0, maxPlausibleArea: Double = 400.0,
-                    searchBudget: Int = 100_000) {
+                    searchBudget: Int = 100_000, minFloorOverlap: Double = 0.70,
+                    maxOutsideWallFraction: Double = 0.5, unverifiedOutsideWallLength: Double = 1.0) {
             self.snapTolerance = snapTolerance
             self.maxBridgeableGap = maxBridgeableGap
             self.maxCornerOvershoot = maxCornerOvershoot
@@ -97,6 +119,9 @@ public enum RoomBuilder {
             self.minPlausibleArea = minPlausibleArea
             self.maxPlausibleArea = maxPlausibleArea
             self.searchBudget = searchBudget
+            self.minFloorOverlap = minFloorOverlap
+            self.maxOutsideWallFraction = maxOutsideWallFraction
+            self.unverifiedOutsideWallLength = unverifiedOutsideWallLength
         }
 
         public static let standard = Options()
@@ -132,10 +157,18 @@ public enum RoomBuilder {
         case steepWallsIgnored(count: Int)
         /// `pieces` surfaces that lie on one line were merged into `walls` walls.
         case collinearWallsMerged(pieces: Int, walls: Int)
-        /// Walls that do not belong to the boundary loop (partitions, bulkheads, half walls).
+        /// Walls inside the room that do not belong to the boundary loop (partitions, bulkheads, half walls).
         case interiorWallsDropped(count: Int, totalLength: Double)
+        /// Wall pieces that lie outside the room outline (a neighbour's wall seen through a window or door,
+        /// an exterior stub) and were ignored.
+        case wallsOutsideRoomIgnored(count: Int, totalLength: Double)
+        /// An open side was closed with a virtual wall while `length` metres of scanned wall lie outside the
+        /// resulting outline, and no floor shape exists to check it: part of the room is probably missing.
+        case bridgedOutlineLeavesWallOutside(length: Double)
         /// An open-plan boundary with no wall was closed with a virtual wall.
         case openBoundaryBridged(length: Double, at: Point2)
+        /// A hole between two collinear pieces of one scanned wall was closed with a straight virtual wall.
+        case scannedWallHoleBridged(length: Double, at: Point2)
         /// Corners needed noteworthy repair: gaps closed by extending walls, overshoots trimmed.
         case cornersAdjusted(gapsClosed: Int, maxGap: Double, wallsTrimmed: Int, maxTrim: Double)
         /// Curved wall surfaces are stored as their chord.
@@ -156,29 +189,46 @@ public enum RoomBuilder {
         case missingFloorSurface
         /// An opening could not be attached to any wall.
         case openingUnmatched(id: UUID, kind: OpeningKind, nearestDistance: Double?)
-        /// An opening was moved or narrowed to fit inside its wall.
-        case openingAdjusted(id: UUID, kind: OpeningKind)
+        /// An opening was moved along its wall by `movedBy` metres and/or narrowed by `narrowedBy` metres to fit
+        /// inside it (routine below 5 cm, a caution above).
+        case openingAdjusted(id: UUID, kind: OpeningKind, movedBy: Double = 0, narrowedBy: Double = 0)
         /// Door / window / opening surfaces with bad numbers were ignored.
         case invalidOpeningsIgnored(count: Int)
         /// Objects with bad numbers were ignored.
         case invalidObjectsIgnored(count: Int)
 
+        /// A floor/outline area disagreement beyond this fraction is critical (between `floorAreaTolerance`
+        /// and this it is a caution).
+        public static let criticalFloorMismatch = 0.40
+        /// An opening moved or narrowed by more than this (metres) is a caution rather than routine clean-up.
+        public static let notableOpeningAdjustment = 0.10
+
         public var severity: Severity {
             switch self {
-            case .noWallSurfaces, .tooFewWalls, .noClosedLoop, .selfIntersectingOutline: return .critical
-            case .invalidSurfacesIgnored, .interiorWallsDropped, .openBoundaryBridged, .cornersAdjusted,
-                 .searchBudgetExhausted, .floorAreaMismatch, .roomAreaOutOfRange, .openingUnmatched,
-                 .lowConfidenceWalls:
+            case .noWallSurfaces, .tooFewWalls, .noClosedLoop, .selfIntersectingOutline,
+                 .bridgedOutlineLeavesWallOutside: return .critical
+            case .floorAreaMismatch(let floor, let outline):
+                guard outline > 1e-9 else { return .critical }
+                return abs(floor - outline) / outline > BuildWarning.criticalFloorMismatch ? .critical : .caution
+            case .openingAdjusted(_, _, let moved, let narrowed):
+                return max(moved, narrowed) > BuildWarning.notableOpeningAdjustment ? .caution : .info
+            case .invalidSurfacesIgnored, .interiorWallsDropped, .wallsOutsideRoomIgnored, .openBoundaryBridged,
+                 .scannedWallHoleBridged, .cornersAdjusted, .searchBudgetExhausted, .roomAreaOutOfRange,
+                 .openingUnmatched, .lowConfidenceWalls:
                 return .caution
             case .shortWallsIgnored, .steepWallsIgnored, .collinearWallsMerged, .curvedWallsStoredAsChords,
-                 .missingFloorSurface, .openingAdjusted, .invalidOpeningsIgnored, .invalidObjectsIgnored:
+                 .missingFloorSurface, .invalidOpeningsIgnored, .invalidObjectsIgnored:
                 return .info
             }
         }
 
         /// Human-readable text for the scan summary screen.
         public var message: String {
-            func m(_ v: Double) -> String { String(format: "%.2f", v) }
+            /// Two decimals, never "-0.00".
+            func m(_ v: Double) -> String {
+                let t = String(format: "%.2f", v)
+                return t == "-0.00" ? "0.00" : t
+            }
             func plural(_ n: Int, _ one: String, _ many: String) -> String { n == 1 ? one : many }
             switch self {
             case .noWallSurfaces:
@@ -195,8 +245,14 @@ public enum RoomBuilder {
                 return "\(pieces) wall pieces on the same line were merged into \(walls) \(plural(walls, "wall", "walls"))."
             case .interiorWallsDropped(let n, let total):
                 return "\(n) interior \(plural(n, "wall", "walls")) (\(m(total)) m in total) not part of the room boundary \(plural(n, "was", "were")) left out: partition, bulkhead or half wall."
+            case .wallsOutsideRoomIgnored(let n, let total):
+                return "\(n) wall \(plural(n, "piece", "pieces")) (\(m(total)) m in total) lying outside the room outline \(plural(n, "was", "were")) ignored: probably a neighbouring room or the outside seen through an opening."
+            case .bridgedOutlineLeavesWallOutside(let length):
+                return "An open side was closed with a virtual wall, but \(m(length)) m of scanned wall lies outside the resulting outline and there is no floor shape to check it against. Part of the room is probably missing from the outline. Rescan this room."
             case .openBoundaryBridged(let length, let p):
                 return "No wall was scanned along a \(m(length)) m side near (\(m(p.x)), \(m(p.y))). It was closed with a virtual wall (open-plan boundary); check it on site."
+            case .scannedWallHoleBridged(let length, let p):
+                return "There is a \(m(length)) m hole in a scanned wall near (\(m(p.x)), \(m(p.y))). It was closed with a straight virtual wall; check it on site."
             case .cornersAdjusted(let gaps, let maxGap, let trimmed, let maxTrim):
                 var parts: [String] = []
                 if gaps > 0 { parts.append("\(gaps) corner \(plural(gaps, "gap", "gaps")) closed (up to \(m(maxGap)) m)") }
@@ -216,7 +272,8 @@ public enum RoomBuilder {
                     return "The walls do not form a closed room and there is no floor shape. The outline is the convex hull of the wall ends, a rough guess. Rescan this room."
                 }
             case .floorAreaMismatch(let floor, let outline):
-                return "The scanned floor area (\(m(floor)) m\u{00B2}) and the wall outline area (\(m(outline)) m\u{00B2}) disagree by more than 15 %. Check the walls."
+                let pct = outline > 1e-9 ? String(format: "%.0f", abs(floor - outline) / outline * 100) : "100+"
+                return "The scanned floor area (\(m(floor)) m\u{00B2}) and the wall outline area (\(m(outline)) m\u{00B2}) disagree by \(pct) %. Check the walls."
             case .selfIntersectingOutline:
                 return "The room outline crosses itself. The walls were probably mis-detected; rescan this room."
             case .roomAreaOutOfRange(let area):
@@ -228,8 +285,13 @@ public enum RoomBuilder {
                     return "A \(kind.displayName.lowercased()) is \(m(d)) m from the nearest wall and was not attached to any wall."
                 }
                 return "A \(kind.displayName.lowercased()) could not be attached to any wall (the room has no walls)."
-            case .openingAdjusted(_, let kind):
-                return "A \(kind.displayName.lowercased()) overhung the end of its wall and was moved or narrowed to fit."
+            case .openingAdjusted(_, let kind, let moved, let narrowed):
+                let name = kind.displayName.lowercased()
+                var parts: [String] = []
+                if moved > 0.005 { parts.append("moved \(m(moved)) m along its wall") }
+                if narrowed > 0.005 { parts.append("narrowed by \(m(narrowed)) m") }
+                if parts.isEmpty { return "A \(name) overhung the end of its wall and was adjusted to fit." }
+                return "A \(name) overhung the end of its wall and was " + parts.joined(separator: " and ") + " to fit. Check its size and position."
             case .invalidOpeningsIgnored(let n):
                 return "\(n) door/window \(plural(n, "surface", "surfaces")) with invalid size or position \(plural(n, "was", "were")) ignored."
             case .invalidObjectsIgnored(let n):
@@ -240,21 +302,51 @@ public enum RoomBuilder {
 
     // MARK: Result
 
+    /// Where the room outline came from.
+    public enum OutlineSource: String, Hashable, Sendable {
+        /// A closed loop of scanned walls (with virtual walls over the open sides): the normal case.
+        case walls
+        /// No acceptable wall loop; the outline is the scanned floor shape. Wall lengths are NOT reliable.
+        case floorPolygon
+        /// No wall loop and no floor shape; the outline is the convex hull of the wall ends, a rough guess.
+        case convexHull
+        /// There is no outline at all (`Result.room.walls` is empty).
+        case none
+    }
+
     public struct Result: Hashable, Sendable {
         public var room: Room
+        /// Everything the builder repaired, dropped or doubted, most severe first (stable within a severity).
         public var warnings: [BuildWarning]
         /// RoomPlan wall surface id -> id of the `Wall` it ended up in. A merged wall has several
         /// entries pointing at one wall; dropped (interior / noise) surfaces are absent.
         public var surfaceToWall: [UUID: UUID]
+        /// Where the outline came from. Only `.walls` outlines carry measured wall lengths.
+        public var outlineSource: OutlineSource
 
-        public init(room: Room, warnings: [BuildWarning], surfaceToWall: [UUID: UUID]) {
+        public init(room: Room, warnings: [BuildWarning], surfaceToWall: [UUID: UUID],
+                    outlineSource: OutlineSource = .walls) {
             self.room = room
             self.warnings = warnings
             self.surfaceToWall = surfaceToWall
+            self.outlineSource = outlineSource
         }
 
         /// Worst severity among the warnings, nil when there are none.
         public var worstSeverity: BuildWarning.Severity? { warnings.map(\.severity).max() }
+
+        /// The room has an outline (at least three walls). False means there is nothing to name or save.
+        public var isUsable: Bool { room.walls.count >= 3 }
+
+        /// The outline was built from scanned walls and nothing critical was found. A reliable result can
+        /// still carry cautions (an open-plan side, a repaired corner); see `reviewMessages`.
+        public var isReliable: Bool { isUsable && outlineSource == .walls && worstSeverity != .critical }
+
+        /// Messages of every caution-or-worse warning, most severe first. These are also written to
+        /// `room.notes`.
+        public var reviewMessages: [String] {
+            warnings.filter { $0.severity >= .caution }.map(\.message)
+        }
     }
 
     // MARK: Build
@@ -281,34 +373,55 @@ public enum RoomBuilder {
         }
 
         let floors = extractFloors(capture.floors)
+        let exactFloors = floors.filter { $0.isExact }.compactMap { $0.polygon }
 
         // 3. Boundary loop, with fallbacks.
         var loopWalls: [LoopWall] = []
-        var droppedSegments: [Int] = []
+        var outlineSource = OutlineSource.none
         if !segments.isEmpty || floors.contains(where: { $0.polygon != nil }) {
-            let search = findLoop(segments: segments, options: options)
+            let search = findLoop(segments: segments, floors: exactFloors, options: options)
             if search.budgetExhausted { warnings.append(.searchBudgetExhausted) }
             if let outcome = search.outcome {
                 loopWalls = outcome.walls
-                droppedSegments = outcome.droppedSegments
+                outlineSource = .walls
                 if outcome.gapsClosed > 0 || outcome.wallsTrimmed > 0 {
                     warnings.append(.cornersAdjusted(gapsClosed: outcome.gapsClosed, maxGap: outcome.maxGap,
                                                      wallsTrimmed: outcome.wallsTrimmed, maxTrim: outcome.maxTrim))
                 }
-                if !droppedSegments.isEmpty {
-                    let total = droppedSegments.reduce(0.0) { $0 + segments[$1].length }
-                    warnings.append(.interiorWallsDropped(count: droppedSegments.count, totalLength: total))
+                let outside = Set(outcome.droppedOutside)
+                let inside = outcome.droppedSegments.filter { !outside.contains($0) }
+                if !inside.isEmpty {
+                    let total = inside.reduce(0.0) { $0 + segments[$1].length }
+                    warnings.append(.interiorWallsDropped(count: inside.count, totalLength: total))
                 }
-                for w in loopWalls where w.segment == nil {
-                    warnings.append(.openBoundaryBridged(length: w.start.distance(to: w.end), at: w.start.lerp(to: w.end, t: 0.5)))
+                if !outside.isEmpty {
+                    let total = outside.reduce(0.0) { $0 + segments[$1].length }
+                    warnings.append(.wallsOutsideRoomIgnored(count: outside.count, totalLength: total))
+                    // An inferred (bridged) side with real wall left outside, and no floor to arbitrate: a guess.
+                    if exactFloors.isEmpty, outcome.bridges > 0, total >= options.unverifiedOutsideWallLength {
+                        warnings.append(.bridgedOutlineLeavesWallOutside(length: total))
+                    }
+                }
+                for (k, w) in loopWalls.enumerated() where w.segment == nil {
+                    let length = w.start.distance(to: w.end), at = w.start.lerp(to: w.end, t: 0.5)
+                    warnings.append(isHoleInOneWall(loopWalls, at: k) ? .scannedWallHoleBridged(length: length, at: at)
+                                                                      : .openBoundaryBridged(length: length, at: at))
                 }
             } else if let fb = fallbackOutline(segments: segments, floors: floors, options: options) {
                 loopWalls = fb.walls
+                outlineSource = fb.kind == .floorPolygon ? .floorPolygon : .convexHull
                 warnings.append(.noClosedLoop(fallback: fb.kind))
             } else {
                 warnings.append(segments.isEmpty ? .noWallSurfaces : .tooFewWalls(count: segments.count))
             }
         } else {
+            warnings.append(.noWallSurfaces)
+        }
+        // Last line of defence: an outline with a non-finite corner can never be stored (JSON refuses it).
+        if !loopWalls.allSatisfy({ $0.start.x.isFinite && $0.start.y.isFinite && $0.end.x.isFinite && $0.end.y.isFinite
+                                    && abs($0.start.x) < 1e7 && abs($0.start.y) < 1e7 && abs($0.end.x) < 1e7 && abs($0.end.y) < 1e7 }) {
+            loopWalls = []
+            outlineSource = .none
             warnings.append(.noWallSurfaces)
         }
 
@@ -342,14 +455,43 @@ public enum RoomBuilder {
         let objectResult = buildObjects(capture.objects, floorElevation: floorElevation)
         warnings.append(contentsOf: objectResult.warnings)
 
-        let room = Room(id: capture.id, name: name, kind: kind, walls: wallsWithHeights,
+        var room = Room(id: capture.id, name: name, kind: kind, walls: wallsWithHeights,
                         ceilingHeight: Measured(scanned: ceiling), openings: openingResult.openings,
                         objects: objectResult.objects, floorElevation: floorElevation, scannedAt: now)
 
         // 6. Sanity checks.
         warnings.append(contentsOf: sanityWarnings(room: room, floors: floors, options: options))
 
-        return Result(room: room, warnings: warnings, surfaceToWall: assembled.surfaceToWall)
+        // Most severe first (stable), and the review messages travel with the room into every export.
+        warnings = warnings.enumerated().sorted { a, b in
+            a.element.severity != b.element.severity ? a.element.severity > b.element.severity : a.offset < b.offset
+        }.map(\.element)
+        room.notes = reviewNotes(for: warnings)
+
+        return Result(room: room, warnings: warnings, surfaceToWall: assembled.surfaceToWall, outlineSource: outlineSource)
+    }
+
+    /// One line per caution-or-worse warning, most severe first.
+    static func reviewNotes(for warnings: [BuildWarning]) -> String {
+        warnings.filter { $0.severity >= .caution }.map { w in
+            "SCAN CHECK (\(w.severity == .critical ? "critical" : "caution")): \(w.message)"
+        }.joined(separator: "\n")
+    }
+
+    /// Is the virtual wall `k` a short straight hole between two collinear pieces of one scanned wall (rather
+    /// than a missing side)? Both neighbours must be solid and run (within 5 degrees) along the bridge.
+    static func isHoleInOneWall(_ walls: [LoopWall], at k: Int) -> Bool {
+        let n = walls.count
+        guard n >= 3, walls[k].segment == nil else { return false }
+        let prev = walls[(k + n - 1) % n], next = walls[(k + 1) % n]
+        guard prev.segment != nil, next.segment != nil else { return false }
+        let b = (walls[k].end - walls[k].start).normalized
+        let sinTol = sin(5 * Double.pi / 180)
+        for neighbour in [prev, next] {
+            let d = (neighbour.end - neighbour.start).normalized
+            if d.dot(b) <= 0 || abs(d.cross(b)) > sinTol { return false }
+        }
+        return true
     }
 
     // MARK: Segments
@@ -447,7 +589,8 @@ public enum RoomBuilder {
                   s.transform.columnMajor.allSatisfy({ $0.isFinite && abs($0) < 1e7 }) else { continue }
             let elevation = s.transform.translation.y
             if let corners = s.polygonCorners, corners.count >= 3,
-               corners.allSatisfy({ $0.x.isFinite && $0.y.isFinite && $0.z.isFinite }) {
+               corners.allSatisfy({ $0.x.isFinite && $0.y.isFinite && $0.z.isFinite
+                                    && abs($0.x) < 1e6 && abs($0.y) < 1e6 && abs($0.z) < 1e6 }) {
                 let plan = cleanPolygon(corners.map { s.transform.transform($0).plan })
                 if plan.count >= 3, Polygon.area(plan) > 1e-6 {
                     out.append(FloorInfo(elevation: elevation, polygon: plan, isExact: true))
@@ -456,7 +599,8 @@ public enum RoomBuilder {
             }
             // No polygon: fall back to the bounding rectangle in the surface's horizontal plane.
             var rect: [Point2]?
-            if s.dimensions.x.isFinite, s.dimensions.y.isFinite, s.dimensions.z.isFinite {
+            if s.dimensions.x.isFinite, s.dimensions.y.isFinite, s.dimensions.z.isFinite,
+               abs(s.dimensions.x) < 1e6, abs(s.dimensions.y) < 1e6, abs(s.dimensions.z) < 1e6 {
                 let axes = [s.transform.xAxis, s.transform.yAxis, s.transform.zAxis]
                 let dims = [s.dimensions.x, s.dimensions.y, s.dimensions.z]
                 if let normalIdx = (0..<3).max(by: { abs(axes[$0].y) < abs(axes[$1].y) }), abs(axes[normalIdx].y) > 0.7 {

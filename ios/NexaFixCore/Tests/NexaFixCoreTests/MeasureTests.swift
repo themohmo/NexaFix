@@ -171,6 +171,58 @@ final class MeasureTests: XCTestCase {
         assertLength("\u{06F3}\u{06F2}\u{06F4}\u{06F5} mm", .metres, equals: 3.245)                    // extended digits
     }
 
+    /// Review finding: numbers pasted from WhatsApp, Notes or an Arabic keyboard often carry invisible
+    /// direction marks and zero-width characters. They are not part of the number, so they are dropped.
+    func testInvisibleFormatCharactersAreIgnored() {
+        let marks: [(name: String, mark: String)] = [
+            ("LRM", "\u{200E}"), ("RLM", "\u{200F}"), ("ALM", "\u{061C}"), ("ZWSP", "\u{200B}"),
+            ("ZWNJ", "\u{200C}"), ("ZWJ", "\u{200D}"), ("BOM", "\u{FEFF}"), ("word joiner", "\u{2060}"),
+            ("soft hyphen", "\u{00AD}"), ("LRE", "\u{202A}"), ("RLE", "\u{202B}"), ("PDF", "\u{202C}"),
+            ("LRO", "\u{202D}"), ("RLO", "\u{202E}"), ("LRI", "\u{2066}"), ("RLI", "\u{2067}"),
+            ("FSI", "\u{2068}"), ("PDI", "\u{2069}"), ("Arabic number sign", "\u{0600}"),
+            ("Mongolian vowel separator", "\u{180E}"),
+        ]
+        let foot = 0.3048, inch = 0.0254
+        for (name, mark) in marks {
+            for text in ["\(mark)3245 mm", "3245\(mark) mm", "3245 \(mark)mm", "3245 mm\(mark)", "3\(mark)245 mm",
+                         "3245m\(mark)m", "\(mark)\(mark)3245\(mark) mm\(mark)"] {
+                guard let got = UnitParser.parseLength(text, defaultUnit: .metres) else {
+                    XCTFail("\(name): \(text.debugDescription) did not parse")
+                    continue
+                }
+                XCTAssertEqual(got, 3.245, accuracy: 1e-12, "\(name): \(text.debugDescription)")
+            }
+            assertLength("10'\(mark)7\"\(mark)", .millimetres, equals: 10 * foot + 7 * inch)
+            assertLength("\(mark)7\(mark) 3/4\(mark)\"", .millimetres, equals: 7.75 * inch)
+            if let angle = UnitParser.parseAngle("\(mark)90.5\(mark)\u{00B0}\(mark)") {
+                XCTAssertEqual(angle, 90.5, accuracy: 1e-12, name)
+            } else {
+                XCTFail("\(name): angle did not parse")
+            }
+        }
+        // The cases from the review, exactly.
+        assertLength("\u{200E}3245 mm", .metres, equals: 3.245)
+        assertLength("3245\u{200F} mm", .metres, equals: 3.245)
+        assertLength("\u{2066} 3245 \u{2069} mm", .metres, equals: 3.245)
+        assertLength("3245\u{200B}mm", .metres, equals: 3.245)
+        // With Arabic-Indic digits, as typed on an Arabic keyboard and pasted with a direction mark.
+        assertLength("\u{200F}\u{0663}\u{0662}\u{0664}\u{0665}\u{200F} mm", .metres, equals: 3.245)
+        // Dropping a mark never makes a bad number good or joins two numbers into one.
+        XCTAssertNil(len("\u{200E}"))
+        XCTAssertNil(len("\u{200B}\u{200B}"))
+        XCTAssertNil(len("\u{FEFF}mm"))
+        XCTAssertNil(len("3245\u{200B}\u{200B} xyz"))
+        XCTAssertNil(len("3 \u{200B}24 mm"))                 // still "3 24": not a thousands group
+        XCTAssertNil(len("10\u{200B} 7"))                    // still the ambiguous "10 7"
+        XCTAssertNil(UnitParser.parseAngle("\u{200E}"))
+        XCTAssertNil(UnitParser.parseAngle("\u{200E}0\u{200E}"))
+        // Other lookalikes stay refused: full-width digits are documented as unsupported.
+        XCTAssertNil(len("\u{FF13}\u{FF12}\u{FF14}\u{FF15} mm"))
+        // The length cap still applies to what was pasted, invisible characters included.
+        XCTAssertNil(len(String(repeating: "\u{200B}", count: 130) + "5 mm"))
+        XCTAssertNotNil(len(String(repeating: "\u{200B}", count: 100) + "5 mm"))
+    }
+
     func testCompoundLengths() {
         assertLength("3 m 24 cm 5 mm", .millimetres, equals: 3.245)
         assertLength("3m 20cm", .millimetres, equals: 3.2)
@@ -191,6 +243,143 @@ final class MeasureTests: XCTestCase {
         XCTAssertNil(len("1 ft 2 3"))
     }
 
+    /// Review findings: the smaller part of a compound length used to be unchecked, so a one-keystroke
+    /// typo ("10' 7.5" typed as "10' 75") parsed as a plausible but wrong length and could be saved
+    /// as laser-verified. A part after a larger unit must be BELOW what carries into that unit.
+    func testCompoundPartsAtOrAboveTheirCarryAreRejected() {
+        let imperial = [
+            "10' 75", "10'75\"", "10' 70", "10' 130\"", "10' 12", "10' 12\"", "10' 17", "10' 17\"",
+            "10' 125\"", "5' 12\"", "5' 15\"", "1 ft 13 in", "10ft 12in", "10 ft 12", "10' 71/2\"",
+            "10'71/2\"", "10ft 71/2in", "10' 12 1/2\"", "10' 12.5\"", "10'12\"", "10 feet 100 inches",
+            "0' 12\"", "10' 24\"", "10' 99999\"", "10' 12/1\"", "10' 25/2\"",
+        ]
+        let metric = [
+            "3 m 150 cm", "3 m 100 cm", "3 m 2000 mm", "3 m 1000 mm", "3m 250cm", "3m 1500mm", "3 m 245 cm",
+            "3m 2450mm", "1 m 100 cm", "3m 24cm 50mm", "3 m 24 cm 10 mm", "24 cm 10 mm", "24 cm 99 mm",
+            "3 m 24 cm 10.0 mm", "3 m 100.0 cm", "1 m 1000.5 mm", "3 m 1000/1 mm",
+        ]
+        for unit in LengthUnit.allCases {
+            for text in imperial + metric {
+                XCTAssertNil(UnitParser.parseLength(text, defaultUnit: unit), "\"\(text)\" with \(unit)")
+            }
+        }
+    }
+
+    func testCompoundPartsJustBelowTheirCarryStillParse() {
+        let inch = 0.0254, foot = 0.3048
+        assertLength("10' 11\"", .millimetres, equals: 10 * foot + 11 * inch)
+        assertLength("10' 11", .millimetres, equals: 10 * foot + 11 * inch)
+        assertLength("10' 11.99\"", .millimetres, equals: 10 * foot + 11.99 * inch)
+        assertLength("10' 11 15/16\"", .millimetres, equals: 10 * foot + 11.9375 * inch)
+        assertLength("10'11 15/16\"", .millimetres, equals: 10 * foot + 11.9375 * inch)
+        assertLength("10 ft 0 in", .millimetres, equals: 10 * foot)
+        assertLength("3 m 99 cm", .millimetres, equals: 3.99)
+        assertLength("3 m 99.9 cm", .millimetres, equals: 3.999)
+        assertLength("3 m 999 mm", .millimetres, equals: 3.999)
+        assertLength("3 m 999.9 mm", .millimetres, equals: 3.9999)
+        assertLength("3 m 0 cm", .millimetres, equals: 3)
+        assertLength("3 m 24 cm 9 mm", .millimetres, equals: 3.249)
+        assertLength("3 m 24 cm 9.9 mm", .millimetres, equals: 3.2499)
+        assertLength("24 cm 9 mm", .millimetres, equals: 0.249)
+        assertLength("3 m 0 cm 9 mm", .millimetres, equals: 3.009)
+        // The intended reading of the typo cases from the review.
+        assertLength("10' 7 1/2\"", .feetAndInches, equals: 10 * foot + 7.5 * inch)       // 3.2385 m
+        assertLength("10' 7.5\"", .feetAndInches, equals: 10 * foot + 7.5 * inch)
+        assertLength("10' 7", .feetAndInches, equals: 10 * foot + 7 * inch)
+        assertLength("3 m 15 cm", .metres, equals: 3.15)
+        assertLength("3 m 200 mm", .metres, equals: 3.2)
+        // A part that stands alone, or leads, is not limited by a carry: "127 in" is a perfectly good length.
+        assertLength("127 in", .millimetres, equals: 127 * inch)
+        assertLength("127\"", .millimetres, equals: 127 * inch)
+        assertLength("71/2\"", .millimetres, equals: 35.5 * inch)
+        assertLength("150 cm", .millimetres, equals: 1.5)
+        assertLength("2000 mm", .metres, equals: 2)
+        assertLength("130\"", .millimetres, equals: 130 * inch)
+        assertLength("75", .feetAndInches, equals: 75 * foot)
+    }
+
+    /// Property test: for thousands of random compound lengths the parser accepts exactly those whose
+    /// smaller parts are below their carry, and the value is recomputed here with plain arithmetic.
+    func testPropertyCompoundLengthsFollowTheCarryRule() {
+        var rng = MeasRNG(seed: 20_261_010)
+        let foot = 0.3048, inch = 0.0254
+        var accepted = 0, rejected = 0
+        func check(_ text: String, expected: Double?, line: UInt = #line) {
+            let got = UnitParser.parseLength(text, defaultUnit: .millimetres)
+            switch (got, expected) {
+            case (nil, nil): rejected += 1
+            case let (g?, e?):
+                accepted += 1
+                XCTAssertEqual(g, e, accuracy: 1e-9, "\"\(text)\"", line: line)
+            default:
+                XCTFail("\"\(text)\" parsed as \(String(describing: got)), expected \(String(describing: expected))", line: line)
+            }
+        }
+        for _ in 0..<1500 {
+            // Imperial: whole feet, inches with an optional quarter, 0 ... 39.75 so both sides of 12 are hit.
+            let feet = Int.random(in: 0...150, using: &rng)
+            let wholeInches = Int.random(in: 0...39, using: &rng)
+            let quarters = Int.random(in: 0...3, using: &rng)
+            let inches = Double(wholeInches) + Double(quarters) / 4
+            let total = Double(feet) * foot + inches * inch
+            let ok: Double? = (inches < 12 && total > 0) ? total : nil
+            let fractionText = quarters == 0 ? "" : " \(quarters == 2 ? "1/2" : "\(quarters)/4")"
+            check("\(feet)' \(wholeInches)\(fractionText)\"", expected: ok)
+            check("\(feet) ft \(wholeInches)\(fractionText) in", expected: ok)
+            check("\(feet)'-\(wholeInches)\(fractionText)\"", expected: ok)
+            if quarters == 0 { check("\(feet)' \(wholeInches)", expected: ok) }
+
+            // Metric: metres, then centimetres (0 ... 199) and/or millimetres (0 ... 1999).
+            let metres = Int.random(in: 0...150, using: &rng)
+            let cm = Int.random(in: 0...199, using: &rng)
+            let mm = Int.random(in: 0...1999, using: &rng)
+            let mOnlyCm = Double(metres) + Double(cm) / 100
+            check("\(metres) m \(cm) cm", expected: (cm < 100 && mOnlyCm > 0) ? mOnlyCm : nil)
+            let mOnlyMm = Double(metres) + Double(mm) / 1000
+            check("\(metres) m \(mm) mm", expected: (mm < 1000 && mOnlyMm > 0) ? mOnlyMm : nil)
+            let small = mm % 25                                  // 0 ... 24: below and above the 10 mm carry
+            let all = Double(metres) + Double(cm) / 100 + Double(small) / 1000
+            check("\(metres) m \(cm) cm \(small) mm", expected: (cm < 100 && small < 10 && all > 0) ? all : nil)
+            let cmOnly = Double(cm) / 100 + Double(small) / 1000
+            check("\(cm) cm \(small) mm", expected: (small < 10 && cmOnly > 0) ? cmOnly : nil)
+        }
+        // Both outcomes were exercised often, so neither branch is untested.
+        XCTAssertGreaterThan(accepted, 2000)
+        XCTAssertGreaterThan(rejected, 2000)
+    }
+
+    func testOnlyTheLastPartOfACompoundMayHaveAFraction() {
+        let inch = 0.0254, foot = 0.3048
+        // "10.5' 7" has no sensible reading (10 ft 6 in plus 7 in), so it is refused, not guessed.
+        for text in ["10.5' 7\"", "10.5 ft 7 in", "10.5' 7", "3.5 m 20 cm", "3.5 m 245 mm", "3 m 24.5 cm 5 mm",
+                     "1/2 ft 3 in", "10 1/2 ft 3 in", "3.5 m 24 cm 5 mm"] {
+            XCTAssertNil(len(text), "\"\(text)\"")
+            XCTAssertNil(len(text, .feetAndInches), "\"\(text)\"")
+        }
+        assertLength("10.0 ft 7 in", .millimetres, equals: 10 * foot + 7 * inch)    // 10.0 is a whole number
+        assertLength("10 ft 7.5 in", .millimetres, equals: 10 * foot + 7.5 * inch)
+        assertLength("3 m 24 cm 5.5 mm", .millimetres, equals: 3.2455)
+        assertLength("3 m 24.0 cm", .millimetres, equals: 3.24)
+        assertLength("10.5 ft", .millimetres, equals: 10.5 * foot)                  // a single part may be fractional
+    }
+
+    /// An architectural hyphen sits between the foot mark and the inches, spaced the same on both
+    /// sides. A hyphen that touches only the number ("10' -7") is a minus sign, which is never legal.
+    func testHyphenAfterFeetMustBeSymmetric() {
+        let inch = 0.0254, foot = 0.3048
+        assertLength("10'-7\"", .millimetres, equals: 10 * foot + 7 * inch)
+        assertLength("10' - 7\"", .millimetres, equals: 10 * foot + 7 * inch)
+        assertLength("10'-7 3/4\"", .millimetres, equals: 10 * foot + 7.75 * inch)
+        assertLength("10' - 7 3/4\"", .millimetres, equals: 10 * foot + 7.75 * inch)
+        assertLength("10 ft - 7 in", .millimetres, equals: 10 * foot + 7 * inch)
+        assertLength("10 ft-7 in", .millimetres, equals: 10 * foot + 7 * inch)
+        assertLength("10'  -  7\"", .millimetres, equals: 10 * foot + 7 * inch)       // spaces collapse, so still symmetric
+        for text in ["10' -7\"", "10'- 7\"", "10 ft -7 in", "10 ft- 7 in", "10' -7 3/4\"", "10'- 7 3/4\"",
+                     "10' -7", "10'- 7", "10' --7\"", "10' - -7\""] {
+            XCTAssertNil(len(text), "\"\(text)\"")
+        }
+    }
+
     func testLimits() {
         assertLength("200 m", .millimetres, equals: 200)
         assertLength("200000", .millimetres, equals: 200)
@@ -203,6 +392,44 @@ final class MeasureTests: XCTestCase {
         XCTAssertNil(len(String(repeating: "9", count: 400)))             // over-long input
         XCTAssertNil(len("1" + String(repeating: "0", count: 120) + " mm"))
         assertLength("0.0001", .metres, equals: 0.0001)                   // tiny but positive is legal
+    }
+
+    /// A length below the minimum is a unit slip, not a measurement: nothing reads 0.01 mm, and the
+    /// model-level setter shares the same bounds (see testSetVerificationRejectsImplausibleMagnitudes).
+    func testImplausiblySmallLengthsAreRejected() {
+        XCTAssertEqual(UnitParser.minimumLengthMetres, 0.0001, accuracy: 1e-15)
+        assertLength("0.0001", .metres, equals: 0.0001)                  // 0.1 mm: the smallest accepted
+        assertLength("0.1 mm", .metres, equals: 0.0001)
+        assertLength("0.01 cm", .metres, equals: 0.0001)
+        assertLength("0.5 mm", .metres, equals: 0.0005)
+        for text in ["0.00009", "0.00001", "0.000000001", "0.09 mm", "0.01 mm", "0.009 cm", "0.0000001 m",
+                     "1e-9", "0.000000000000000000000000000000001 m", "1/100000 m", "1/20000", "1/1000 mm"] {
+            for unit in LengthUnit.allCases {
+                XCTAssertNil(UnitParser.parseLength(text, defaultUnit: unit), "\"\(text)\" with \(unit)")
+                XCTAssertNil(UnitParser.parseLength(text, defaultUnit: unit, allowZero: true), "\"\(text)\" with \(unit)")
+            }
+        }
+        // Zero is still decided by allowZero alone.
+        XCTAssertEqual(UnitParser.parseLength("0", defaultUnit: .metres, allowZero: true), 0)
+        XCTAssertNil(UnitParser.parseLength("0", defaultUnit: .metres))
+        // The shared predicate.
+        XCTAssertTrue(UnitParser.isPlausibleLength(1.2))
+        XCTAssertTrue(UnitParser.isPlausibleLength(UnitParser.maximumLengthMetres))
+        XCTAssertTrue(UnitParser.isPlausibleLength(UnitParser.minimumLengthMetres))
+        XCTAssertFalse(UnitParser.isPlausibleLength(UnitParser.maximumLengthMetres + 0.001))
+        XCTAssertFalse(UnitParser.isPlausibleLength(UnitParser.minimumLengthMetres / 2))
+        // Arithmetic noise at the edge (a value converted from another unit) does not flip the answer,
+        // but a real shortfall does.
+        XCTAssertTrue(UnitParser.isPlausibleLength(UnitParser.minimumLengthMetres * (1 - 1e-12)))
+        XCTAssertFalse(UnitParser.isPlausibleLength(UnitParser.minimumLengthMetres * (1 - 1e-6)))
+        XCTAssertFalse(UnitParser.isPlausibleLength(UnitParser.minimumLengthMetres * 0.99))
+        XCTAssertFalse(UnitParser.isPlausibleLength(0))
+        XCTAssertTrue(UnitParser.isPlausibleLength(0, allowZero: true))
+        XCTAssertFalse(UnitParser.isPlausibleLength(-1, allowZero: true))
+        XCTAssertFalse(UnitParser.isPlausibleLength(.nan, allowZero: true))
+        XCTAssertFalse(UnitParser.isPlausibleLength(.infinity))
+        XCTAssertFalse(UnitParser.isPlausibleLength(-.infinity))
+        XCTAssertFalse(UnitParser.isPlausibleLength(1e9))
     }
 
     // MARK: - UnitParser: rejected input
@@ -565,6 +792,73 @@ final class MeasureTests: XCTestCase {
         XCTAssertEqual(r.measured(sill)!.value, 0)
     }
 
+    /// Review finding: the setter is the single entry point for verified values, so it must refuse
+    /// absurd magnitudes itself rather than rely on the sheet that usually feeds it.
+    func testSetVerificationRejectsImplausibleMagnitudes() {
+        var r = numberedRoom()
+        r.customMeasurements = [CustomMeasurement(label: "Run", a: Point3(0, 0, 0), b: Point3(2, 0, 0))]
+        let snapshot = r
+        let targets = r.measureTargets()
+        XCTAssertEqual(targets.count, 4 * 2 + 1 + 5 * 3 + 1)
+        for bad in [1e9, 1e300, Double.greatestFiniteMagnitude, 200.001, 201, 1000,
+                    1e-9, 1e-5, 0.00009, UnitParser.minimumLengthMetres / 2, Double.leastNonzeroMagnitude] {
+            for target in targets {
+                XCTAssertFalse(r.setVerification(Verification(value: bad), for: target), "\(bad) for \(target)")
+            }
+        }
+        XCTAssertEqual(r, snapshot)                                        // nothing was stored
+        // The report never sees such a value either.
+        XCTAssertEqual(AccuracyReport(rooms: [r]).sampleCount, 0)
+
+        // Both edges of the range are accepted, for every kind of target.
+        for target in targets {
+            XCTAssertTrue(r.setVerification(Verification(value: UnitParser.maximumLengthMetres), for: target), "\(target)")
+            XCTAssertEqual(r.measured(target)!.value, 200)
+            XCTAssertTrue(r.setVerification(Verification(value: UnitParser.minimumLengthMetres), for: target), "\(target)")
+            XCTAssertEqual(r.measured(target)!.value, UnitParser.minimumLengthMetres)
+        }
+        // Zero stays legal only for a sill, and a tiny non-zero sill is still refused.
+        let sill = MeasureTarget.openingSill(r.openings[1].id)
+        XCTAssertTrue(r.setVerification(Verification(value: 0), for: sill))
+        XCTAssertFalse(r.setVerification(Verification(value: 1e-9), for: sill))
+        XCTAssertFalse(r.setVerification(Verification(value: 1e9), for: sill))
+        XCTAssertEqual(r.measured(sill)!.value, 0)
+        XCTAssertFalse(r.setVerification(Verification(value: 0), for: .wallLength(r.walls[0].id)))
+        // A rejected value leaves an earlier good check alone.
+        let wall = MeasureTarget.wallLength(r.walls[1].id)
+        XCTAssertTrue(r.setVerification(Verification(value: 4.02), for: wall))
+        XCTAssertFalse(r.setVerification(Verification(value: 4e8), for: wall))
+        XCTAssertEqual(r.measured(wall)!.value, 4.02, accuracy: 1e-12)
+        XCTAssertTrue(r.setVerification(nil, for: wall))                   // clearing is always allowed
+    }
+
+    /// Whatever the parser accepts, the setter accepts, so a sheet never shows "can save" for a value
+    /// the model then refuses; and the same bounds hold from the other side.
+    func testSetVerificationAcceptsEverythingTheParserAccepts() {
+        var rng = MeasRNG(seed: 4242)
+        var r = numberedRoom()
+        let wall = MeasureTarget.wallLength(r.walls[0].id)
+        let sill = MeasureTarget.openingSill(r.openings[1].id)
+        var texts = ["200 m", "0.0001", "0.1 mm", "0.01 cm", "199.999 m", "10' 7 3/4\"", "3 m 24 cm 5 mm", "1 mm", "0.5 mm"]
+        for _ in 0..<300 {
+            let x = exp(measSampleLeaf(&rng, log(0.0001)...log(200)))
+            texts.append(String(format: "%.9f", x))                        // metres, may be below 0.1 mm after rounding
+        }
+        var accepted = 0
+        for text in texts {
+            for unit in [LengthUnit.metres, .millimetres, .feetAndInches] {
+                guard let metres = UnitParser.parseLength(text, defaultUnit: unit) else { continue }
+                accepted += 1
+                XCTAssertTrue(r.setVerification(Verification(value: metres), for: wall), "\"\(text)\" -> \(metres)")
+            }
+        }
+        XCTAssertGreaterThan(accepted, 600)
+        guard let zero = UnitParser.parseLength("0", defaultUnit: .metres, allowZero: true) else {
+            XCTFail("zero not parsed with allowZero"); return
+        }
+        XCTAssertTrue(r.setVerification(Verification(value: zero), for: sill))
+    }
+
     func testVerificationNeverModifiesGeometry() {
         var r = numberedRoom()
         let wallsBefore = r.walls.map { ($0.start, $0.end, $0.length.scanned, $0.height.scanned) }
@@ -919,6 +1213,48 @@ final class MeasureTests: XCTestCase {
         // mean |e| = (11 x 0.006 + 0.021) / 12 = 0.087 / 12 = 7.25 mm -> "7 mm"
         XCTAssertEqual(twelve.meanAbsoluteError, 0.087 / 12, accuracy: 1e-9)
         XCTAssertEqual(twelve.summary, "12 checks: typically 7 mm (0.4 %), worst 21 mm")
+    }
+
+    /// Review finding: a figure that mixes laser checks with tape readings and values copied from a
+    /// drawing must say so, because a drawing is not evidence of how well the phone scans.
+    func testAccuracySummaryAdmitsWhichSourcesItCounted() {
+        var r = Room.rectangle(name: "Hall", width: 3, depth: 4)
+        r.setVerification(Verification(value: 3.010, source: .laser), for: .wallLength(r.walls[0].id))
+        r.setVerification(Verification(value: 3.990, source: .laser), for: .wallLength(r.walls[1].id))
+        r.setVerification(Verification(value: 3.020, source: .tape), for: .wallLength(r.walls[2].id))
+        r.setVerification(Verification(value: 2.9, source: .drawing), for: .ceilingHeight)
+
+        let all = AccuracyReport(rooms: [r])
+        XCTAssertEqual(all.sampleCount, 4)
+        XCTAssertEqual(all.sampleCount(for: .laser), 2)
+        XCTAssertEqual(all.sampleCount(for: .tape), 1)
+        XCTAssertEqual(all.sampleCount(for: .drawing), 1)
+        // errors 10, 10, 20 and (2.9 - 2.8 = 100) mm; mean 35 mm; percents 0.33, 0.25, 0.66, 3.45 -> 1.17
+        XCTAssertEqual(all.summary, "4 checks (2 laser, 1 tape, 1 drawing): typically 35 mm (1.2 %), worst 100 mm")
+        XCTAssertEqual(all.summary(unit: .metres),
+                       "4 checks (2 laser, 1 tape, 1 drawing): typically 0.035 m (1.2 %), worst 0.100 m")
+
+        // Laser only: the wording is the plain one.
+        let laser = AccuracyReport(rooms: [r], sources: [.laser])
+        XCTAssertEqual(laser.summary, "2 checks: typically 10 mm (0.3 %), worst 10 mm")
+        // Instruments only (what the app should show as "how accurate is this phone").
+        XCTAssertEqual(AccuracyReport.measuredSources, [.laser, .tape])
+        let measured = AccuracyReport(rooms: [r], sources: AccuracyReport.measuredSources)
+        XCTAssertEqual(measured.sampleCount, 3)
+        XCTAssertEqual(measured.sampleCount(for: .drawing), 0)
+        XCTAssertEqual(measured.summary, "3 checks (2 laser, 1 tape): typically 13 mm (0.4 %), worst 20 mm")
+        // A single non-laser source, singular noun, counts of zero are left out.
+        let tapeOnly = AccuracyReport(rooms: [r], sources: [.tape])
+        XCTAssertEqual(tapeOnly.summary, "1 check (1 tape): typically 20 mm (0.7 %), worst 20 mm")
+        let drawingOnly = AccuracyReport(rooms: [r], sources: [.drawing])
+        XCTAssertEqual(drawingOnly.summary, "1 check (1 drawing): typically 100 mm (3.4 %), worst 100 mm")
+        // Nothing counted: still the empty sentence.
+        XCTAssertEqual(AccuracyReport(rooms: [r], sources: []).summary, "No laser checks yet")
+        // The breakdown always adds up to the sample count.
+        for sources in [Set(VerificationSource.allCases), [.laser], [.tape, .drawing], AccuracyReport.measuredSources] {
+            let report = AccuracyReport(rooms: [r], sources: sources)
+            XCTAssertEqual(VerificationSource.allCases.map { report.sampleCount(for: $0) }.reduce(0, +), report.sampleCount)
+        }
     }
 
     func testP90UsesNearestRank() {

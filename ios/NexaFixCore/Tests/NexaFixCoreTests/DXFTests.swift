@@ -236,11 +236,15 @@ enum DXFFixtures {
 
 // MARK: - Helpers
 
-private func dxfExport(_ drawing: PlanDrawing, _ options: DXFExporter.Options = DXFExporter.Options()) -> String {
+/// Options for the tests of the plan-to-DXF mapping: the provenance note is off, so the entities in the file are
+/// exactly the ones the input primitives map to. The note has its own tests (`DXFProvenanceNoteTests`).
+private let dxfMappingOptions = DXFExporter.Options(includeProvenanceNote: false)
+
+private func dxfExport(_ drawing: PlanDrawing, _ options: DXFExporter.Options = dxfMappingOptions) -> String {
     DXFExporter.export(drawing, options: options)
 }
 
-private func dxfParsed(_ drawing: PlanDrawing, _ options: DXFExporter.Options = DXFExporter.Options(),
+private func dxfParsed(_ drawing: PlanDrawing, _ options: DXFExporter.Options = dxfMappingOptions,
                     file: StaticString = #filePath, line: UInt = #line) throws -> DXFParsed {
     let text = DXFExporter.export(drawing, options: options)
     return try XCTUnwrap(DXFReader.parse(text), "exported text is not well-formed DXF", file: file, line: line)
@@ -424,8 +428,12 @@ final class DXFEncoderTests: XCTestCase {
         XCTAssertEqual(DXFColor.nearestACI(DrawColor(0, 1, 1)), 4)
         XCTAssertEqual(DXFColor.nearestACI(DrawColor(0, 0, 1)), 5)
         XCTAssertEqual(DXFColor.nearestACI(DrawColor(1, 0, 1)), 6)
-        XCTAssertEqual(DXFColor.nearestACI(DrawColor(hex: 0x333333)), 250)       // exactly the darkest grey ramp entry
-        XCTAssertEqual(DXFColor.nearestACI(DrawColor(hex: 0x848484)), 252)
+        XCTAssertEqual(DXFColor.nearestACI(DrawColor(hex: 0x333333)), 7)         // dark neutral: ink, ACI 7
+        XCTAssertEqual(DXFColor.nearestACI(DrawColor(hex: 0x1F1D1A)), 7)         // the plan's ink
+        XCTAssertEqual(DXFColor.nearestACI(DrawColor(hex: 0x3F3F3F)), 7)         // 63: the last near-black value
+        XCTAssertEqual(DXFColor.nearestACI(DrawColor(hex: 0x404040)), 251)       // 64 is a grey: ACI 251 = 91 is nearest
+        XCTAssertEqual(DXFColor.nearestACI(DrawColor(hex: 0x3F0000)), 16, "dark red is a colour, not ink")
+        XCTAssertEqual(DXFColor.nearestACI(DrawColor(hex: 0x848484)), 252)       // 132: 19 from ACI 252 = 113, 20 from 253
         XCTAssertEqual(DXFColor.nearestACI(DrawColor(hex: 0xFF7F00)), 30)        // orange
         XCTAssertEqual(DXFColor.nearestACI(DrawColor(hex: 0x7F0000)), 14)        // half-brightness red
         XCTAssertEqual(DXFColor.nearestACI(DrawColor(hex: 0xFF7F7F)), 11)        // pastel red
@@ -437,21 +445,36 @@ final class DXFEncoderTests: XCTestCase {
     }
 
     func testNearestACIAgainstBruteForce() {
+        func check(_ r: Int, _ g: Int, _ b: Int, file: StaticString = #filePath, line: UInt = #line) {
+            let color = DrawColor(Double(r) / 255, Double(g) / 255, Double(b) / 255)
+            let chosen = DXFColor.nearestACI(color)
+            let neutral = max(r, g, b) - min(r, g, b) <= 24
+            if neutral && max(r, g, b) < 64 {
+                XCTAssertEqual(chosen, 7, "near-black neutral (\(r),\(g),\(b)) is ink", file: file, line: line)
+                return
+            }
+            guard let c = DXFColor.rgb(ofACI: chosen) else {
+                return XCTFail("ACI \(chosen) is not a candidate index", file: file, line: line)
+            }
+            if neutral {
+                XCTAssertTrue(c.r == c.g && c.g == c.b, "neutral (\(r),\(g),\(b)) maps to a neutral ACI", file: file, line: line)
+            }
+            let best = (c.r - r) * (c.r - r) + (c.g - g) * (c.g - g) + (c.b - b) * (c.b - b)
+            for other in DXFColor.candidates where !neutral || (other.r == other.g && other.g == other.b) {
+                let d = (other.r - r) * (other.r - r) + (other.g - g) * (other.g - g) + (other.b - b) * (other.b - b)
+                XCTAssertLessThanOrEqual(best, d, "ACI \(chosen) is not the nearest for (\(r),\(g),\(b))", file: file, line: line)
+            }
+        }
         var generator = DXFSeededGenerator(seed: 99)
         for _ in 0..<400 {
-            let color = DrawColor(Double.random(in: 0...1, using: &generator), Double.random(in: 0...1, using: &generator),
-                                  Double.random(in: 0...1, using: &generator))
-            let (r, g, b) = (Int((color.r * 255).rounded()), Int((color.g * 255).rounded()),
-                             Int((color.b * 255).rounded()))
-            let chosen = DXFColor.nearestACI(color)
-            let chosenRGB = DXFColor.rgb(ofACI: chosen)
-            XCTAssertNotNil(chosenRGB, "result must be a candidate index")
-            guard let c = chosenRGB else { continue }
-            let best = (c.r - r) * (c.r - r) + (c.g - g) * (c.g - g) + (c.b - b) * (c.b - b)
-            for other in DXFColor.candidates {
-                let d = (other.r - r) * (other.r - r) + (other.g - g) * (other.g - g) + (other.b - b) * (other.b - b)
-                XCTAssertLessThanOrEqual(best, d, "ACI \(chosen) is not the nearest for (\(r),\(g),\(b))")
-            }
+            check(Int.random(in: 0...255, using: &generator), Int.random(in: 0...255, using: &generator),
+                  Int.random(in: 0...255, using: &generator))
+        }
+        // Neutral colours are rare in a uniform sample: walk every grey, and greys with a warm or cool tint.
+        for v in 0...255 {
+            check(v, v, v)
+            check(min(255, v + 20), v, max(0, v - 4))
+            check(max(0, v - 5), v, min(255, v + 19))
         }
     }
 
@@ -470,18 +493,63 @@ final class DXFEncoderTests: XCTestCase {
         XCTAssertEqual(rgb(50), [255, 255, 0])
         XCTAssertEqual(rgb(60), [191, 255, 0])
         XCTAssertEqual(rgb(90), [0, 255, 0])
+        XCTAssertEqual(rgb(94), [0, 127, 0])
+        XCTAssertEqual(rgb(95), [63, 127, 63])
         XCTAssertEqual(rgb(130), [0, 255, 255])
         XCTAssertEqual(rgb(150), [0, 127, 255])
         XCTAssertEqual(rgb(170), [0, 0, 255])
+        XCTAssertEqual(rgb(190), [127, 0, 255])
         XCTAssertEqual(rgb(210), [255, 0, 255])
         XCTAssertEqual(rgb(240), [255, 0, 63])
-        XCTAssertEqual(rgb(250), [51, 51, 51])
         XCTAssertEqual(rgb(255), [255, 255, 255])
+        // Greys: only the middle of the ramp, at the middle of the values in circulation.
+        XCTAssertEqual(rgb(251), [91, 91, 91]); XCTAssertEqual(rgb(252), [113, 113, 113])
+        XCTAssertEqual(rgb(253), [152, 152, 152]); XCTAssertEqual(rgb(254), [203, 203, 203])
+        XCTAssertNil(rgb(250), "ACI 250 is 51 in some tables and black in others")
         XCTAssertNil(rgb(8), "ACI 8 and 9 are excluded: applications disagree on their brightness")
+        XCTAssertNil(rgb(9))
+        for irregular in [147, 157, 167, 177, 187, 197] {
+            XCTAssertNil(rgb(irregular), "ACI \(irregular) has blue 126 in the AutoCAD table, not the ramp's 76")
+        }
         XCTAssertNil(rgb(0)); XCTAssertNil(rgb(256))
         let indices = DXFColor.candidates.map { $0.index }
         XCTAssertEqual(Set(indices).count, indices.count, "no duplicate candidate")
         XCTAssertTrue(indices.allSatisfy { (1...255).contains($0) })
+        // 6 pure + black, 24 hues x 6 variants less the 6 irregular entries, 4 greys and white.
+        XCTAssertEqual(indices.count, 7 + 24 * 6 - 6 + 4 + 1)
+    }
+
+    /// The grey ramp is the one place the sources disagree; every entry stays within 25 of each value in circulation.
+    func testGreyRampIsWithinTolerableDistanceOfEveryPublishedTable() {
+        let sources: [[Int]] = [[80, 105, 130, 190], [101, 102, 153, 204], [91, 132, 173, 214]]
+        for (offset, index) in [251, 252, 253, 254].enumerated() {
+            let value = DXFColor.rgb(ofACI: index)?.r ?? -999
+            for source in sources {
+                XCTAssertLessThanOrEqual(abs(value - source[offset]), 25, "ACI \(index) against \(source[offset])")
+            }
+        }
+    }
+
+    func testPlanColoursMapToTheColoursTheyShouldBe() throws {
+        typealias Palette = PlanDrawingBuilder.Palette
+        XCTAssertEqual(DXFColor.nearestACI(Palette.ink), 7, "ink follows the CAD background")
+        // The status colours are pinned to an unmistakable red and green; the nearest entries would be an orange-red
+        // (ACI 20, 255/63/0) and a greyish green (ACI 105).
+        XCTAssertEqual(DXFColor.aci(for: Palette.warning), 1)
+        XCTAssertEqual(DXFColor.aci(for: Palette.verified), 94)
+        XCTAssertEqual(DXFColor.nearestACI(Palette.warning), 20)
+        XCTAssertEqual(DXFColor.aci(for: Palette.ink), 7, "other colours are the nearest entry")
+        XCTAssertEqual(DXFColor.aci(for: DrawColor(hex: 0xC62829)), DXFColor.nearestACI(DrawColor(hex: 0xC62829)),
+                       "one byte off the warning colour is not the warning colour")
+        XCTAssertEqual(DXFColor.nearestACI(Palette.paper), 255)
+        XCTAssertEqual(DXFColor.nearestACI(Palette.muted), 252)                    // (122, 114, 104) against grey 113
+        XCTAssertEqual(DXFColor.nearestACI(Palette.furnitureFill), 254)           // (230, 225, 217) against grey 203
+        XCTAssertTrue(DXFColor.isPlanStatusColor(Palette.verified))
+        XCTAssertTrue(DXFColor.isPlanStatusColor(Palette.warning))
+        for colour in [Palette.ink, Palette.muted, Palette.bronze, Palette.paper, Palette.hairline, Palette.furnitureFill,
+                       DrawColor.black, DrawColor(0.18, 0.48, 0.30), DrawColor(0.78, 0.16, 0.16)] {
+            XCTAssertFalse(DXFColor.isPlanStatusColor(colour), "\(colour)")
+        }
     }
 
     func testTrueColorPacksRGB() {
@@ -583,7 +651,7 @@ final class DXFExporterTests: XCTestCase {
     }
 
     func testMetreUnits() throws {
-        var options = DXFExporter.Options()
+        var options = dxfMappingOptions
         options.units = .metres
         let doc = try dxfParsed(DXFFixtures.samplePlan(), options)
         XCTAssertEqual(doc.header("$INSUNITS").first?.value, "6")
@@ -635,7 +703,7 @@ final class DXFExporterTests: XCTestCase {
         // Hand-typed expectation: ACI colour and lineweight (1/100 mm).
         let expected: [String: (aci: Int, lineweight: Int)] = [
             "NF-WALLS": (7, 50), "NF-WALLS-OPEN": (150, 25), "NF-DOORS": (30, 25), "NF-WINDOWS": (4, 25),
-            "NF-OPENINGS": (6, 25), "NF-FURNITURE": (8, 13), "NF-DIMENSIONS": (3, 13), "NF-ANGLES": (1, 13),
+            "NF-OPENINGS": (6, 25), "NF-FURNITURE": (8, 13), "NF-DIMENSIONS": (190, 13), "NF-ANGLES": (42, 13),
             "NF-ROOM-LABELS": (5, 18), "NF-NOTES": (32, 18),
         ]
         for layer in PlanLayer.allCases {
@@ -685,7 +753,7 @@ final class DXFExporterTests: XCTestCase {
             XCTAssertEqual(ltype.doubles(49), [150, -75], "scale \(bad)")
         }
         // In metres the same pattern is 0.15 m and 0.075 m.
-        var options = DXFExporter.Options()
+        var options = dxfMappingOptions
         options.units = .metres
         let m = try dxfParsed(dxfDrawing([], scale: 50), options)
         let metric = try XCTUnwrap(m.section("TABLES").first(where: { $0.string(2) == "DASHED" }))
@@ -852,11 +920,20 @@ final class DXFExporterTests: XCTestCase {
     func testHatchFillColoursAreExplicit() throws {
         let doc = try dxfParsed(DXFFixtures.samplePlan())
         let hatches = doc.entities.filter { $0.type == "HATCH" }
-        // (0.2, 0.2, 0.2) -> bytes 51 -> ACI 250 and 0x333333; (0.85, ...) -> 217 -> ACI 254 and 0xD9D9D9.
-        XCTAssertEqual(hatches[0].int(62), 250)
-        XCTAssertEqual(hatches[0].int(420), 0x333333)
+        // (0.2, 0.2, 0.2) -> bytes 51, a near-black neutral -> ACI 7; (0.85, ...) -> 217 -> ACI 254 (203).
+        // Group 420 is not part of release 2000, so the default export leaves it out.
+        XCTAssertEqual(hatches[0].int(62), 7)
+        XCTAssertNil(hatches[0].string(420))
         XCTAssertEqual(hatches[1].int(62), 254)
-        XCTAssertEqual(hatches[1].int(420), 0xD9D9D9)
+        XCTAssertNil(hatches[1].string(420))
+        // In true-colour mode (release 2004) the exact tint is written as well.
+        var options = dxfMappingOptions
+        options.colorMode = .trueColor
+        let exact = try dxfParsed(DXFFixtures.samplePlan(), options).entities.filter { $0.type == "HATCH" }
+        XCTAssertEqual(exact[0].int(62), 7)
+        XCTAssertEqual(exact[0].int(420), 0x333333)
+        XCTAssertEqual(exact[1].int(62), 254)
+        XCTAssertEqual(exact[1].int(420), 0xD9D9D9)
     }
 
     func testArcsAndCircles() throws {
@@ -972,7 +1049,7 @@ final class DXFExporterTests: XCTestCase {
     }
 
     func testNearestACIAndTrueColourModes() throws {
-        var options = DXFExporter.Options()
+        var options = dxfMappingOptions
         options.colorMode = .nearestACI
         var doc = try dxfParsed(DXFFixtures.samplePlan(), options)
         let dashed = try XCTUnwrap(doc.entities.first(where: { $0.layer == "NF-WALLS-OPEN" }))
@@ -1032,7 +1109,7 @@ final class DXFExporterTests: XCTestCase {
         ]
         let doc = try dxfParsed(dxfDrawing(items))
         XCTAssertEqual(doc.entities.map { $0.int(370) }, [nil, 25, 50, 18, nil, 211, 0, nil, nil])
-        var options = DXFExporter.Options()
+        var options = dxfMappingOptions
         options.entityLineweights = false
         let plain = try dxfParsed(dxfDrawing(items), options)
         XCTAssertTrue(plain.entities.allSatisfy { $0.string(370) == nil })
@@ -1043,7 +1120,7 @@ final class DXFExporterTests: XCTestCase {
                                                           stroke: DXFFixtures.thin, fill: DrawColor(0.9, 0.9, 0.9)))
         let doc = try dxfParsed(dxfDrawing([item]))
         XCTAssertEqual(doc.entities.map { $0.type }, ["HATCH", "LWPOLYLINE"], "outline drawn on top of the fill")
-        var options = DXFExporter.Options()
+        var options = dxfMappingOptions
         options.includeFills = false
         let none = try dxfParsed(dxfDrawing([item]), options)
         XCTAssertEqual(none.entities.map { $0.type }, ["LWPOLYLINE"])
@@ -1056,7 +1133,7 @@ final class DXFExporterTests: XCTestCase {
 
     func testOptionsSwitchTextAndFillsOff() throws {
         let plan = DXFFixtures.samplePlan()
-        var options = DXFExporter.Options()
+        var options = dxfMappingOptions
         options.includeTextLayers = false
         var doc = try dxfParsed(plan, options)
         XCTAssertEqual(doc.entities.filter { $0.type == "TEXT" }.count, 0)
@@ -1190,17 +1267,18 @@ final class DXFExporterTests: XCTestCase {
         b.subtitle = "\u{00E9}"
         XCTAssertEqual(dxfExport(a), dxfExport(a))
         XCTAssertEqual(dxfExport(a), dxfExport(b), "title and subtitle are not written to the file")
-        XCTAssertNotEqual(dxfExport(a), dxfExport(a, DXFExporter.Options(units: .metres)))
+        XCTAssertNotEqual(dxfExport(a), dxfExport(a, DXFExporter.Options(units: .metres, includeProvenanceNote: false)))
     }
 
     func testDataIsTheASCIIBytesOfTheText() {
         let plan = DXFFixtures.samplePlan()
-        XCTAssertEqual(DXFExporter.data(plan), Data(dxfExport(plan).utf8))
+        XCTAssertEqual(DXFExporter.data(plan, options: dxfMappingOptions), Data(dxfExport(plan).utf8))
+        XCTAssertEqual(DXFExporter.data(plan), Data(DXFExporter.export(plan).utf8), "default options too")
         XCTAssertTrue(DXFExporter.data(plan).allSatisfy { $0 < 0x80 })
     }
 
     func testWindowsLineEndings() throws {
-        var options = DXFExporter.Options()
+        var options = dxfMappingOptions
         options.windowsLineEndings = true
         let plan = DXFFixtures.samplePlan()
         let text = dxfExport(plan, options)
@@ -1226,8 +1304,10 @@ final class DXFExporterTests: XCTestCase {
         XCTAssertEqual(defaults.colorMode, .byLayer)
         XCTAssertTrue(defaults.entityLineweights)
         XCTAssertFalse(defaults.windowsLineEndings)
+        XCTAssertTrue(defaults.includeProvenanceNote, "the hand-off carries its provenance note unless asked not to")
         let custom = DXFExporter.Options(units: .metres, includeTextLayers: false, includeFills: false,
-                                         colorMode: .trueColor, entityLineweights: false, windowsLineEndings: true)
+                                         colorMode: .trueColor, entityLineweights: false, windowsLineEndings: true,
+                                         includeProvenanceNote: false)
         let data = try JSONEncoder().encode(custom)
         XCTAssertEqual(try JSONDecoder().decode(DXFExporter.Options.self, from: data), custom)
     }
@@ -1317,6 +1397,555 @@ final class DXFExporterTests: XCTestCase {
 }
 
 
+// MARK: - 4. Review fixes: colour cue, R2000 purity, degenerate sizes, carets, palette, provenance
+
+/// RGB of the AutoCAD Color Index numbers the tests below rely on, typed from the published table (ezdxf 1.4.4's
+/// `DXF_DEFAULT_COLORS`), so that colour tests do not depend on the exporter's own palette.
+private let dxfReferenceACI: [Int: (r: Int, g: Int, b: Int)] = [
+    1: (255, 0, 0), 4: (0, 255, 255), 5: (0, 0, 255), 6: (255, 0, 255), 8: (128, 128, 128),
+    30: (255, 127, 0), 32: (165, 82, 0), 42: (165, 124, 0), 94: (0, 127, 0), 95: (63, 127, 63),
+    150: (0, 127, 255), 190: (127, 0, 255),
+]
+
+private func dxfIsGreenish(_ c: (r: Int, g: Int, b: Int)) -> Bool { c.g > c.r + 40 && c.g > c.b + 40 }
+private func dxfIsReddish(_ c: (r: Int, g: Int, b: Int)) -> Bool { c.r > c.g + 80 && c.r > c.b + 80 }
+
+/// Two rooms from the real plan builder: a rectangle whose south wall was laser-verified (5.02 m against 5.00 m
+/// scanned) and a trapezoid with two out-of-square corners.
+private func dxfRealPlan(scale: Double = 50, markVerified: Bool = true) -> PlanDrawing {
+    var living = Room.rectangle(name: "Living Room", kind: .livingRoom, width: 5, depth: 4)
+    living.walls[0].length.verify(5.02, source: .laser)
+    let study = Room.polygon(name: "Study", kind: .office,
+                             corners: [Point2(6, 0), Point2(10, 0), Point2(9.4, 3), Point2(6, 3)])
+    return PlanDrawingBuilder.build(rooms: [living, study], title: "Marina Gate - Unit 2304", subtitle: "Level 1",
+                                    options: PlanOptions(scale: scale, markVerified: markVerified))
+}
+
+final class DXFReviewFixTests: XCTestCase {
+
+    // MARK: colour cue (verified green, out of square red) survives the default BYLAYER export
+
+    func testVerifiedAndScannedDimensionTextsLookDifferentInTheDefaultExport() throws {
+        let plan = dxfRealPlan()
+        let doc = try dxfParsed(plan)
+        let texts = doc.entities.filter { $0.type == "TEXT" && $0.layer == "NF-DIMENSIONS" }
+        let verified = texts.filter { ($0.string(1) ?? "").hasSuffix(" v") }
+        let scanned = texts.filter { !($0.string(1) ?? "").hasSuffix(" v") }
+        XCTAssertEqual(verified.count, 1, "only the south wall of the living room was verified")
+        XCTAssertEqual(scanned.count, 7)
+        XCTAssertEqual(verified.first?.string(1), "5020 mm v")
+        for text in verified {
+            let aci = try XCTUnwrap(text.int(62), "a verified number carries an explicit colour")
+            let rgb = try XCTUnwrap(dxfReferenceACI[aci], "ACI \(aci)")
+            XCTAssertTrue(dxfIsGreenish(rgb), "verified text is green, got ACI \(aci)")
+        }
+        // Scanned numbers follow the layer, and the layer is not green (green means verified in the plan and PDF).
+        let layerACI = try XCTUnwrap(doc.section("TABLES").first(where: { $0.type == "LAYER" && $0.string(2) == "NF-DIMENSIONS" })?.int(62))
+        let layerRGB = try XCTUnwrap(dxfReferenceACI[layerACI], "layer colour ACI \(layerACI)")
+        XCTAssertFalse(dxfIsGreenish(layerRGB), "NF-DIMENSIONS must not be green")
+        XCTAssertFalse(dxfIsReddish(layerRGB), "NF-DIMENSIONS must not be red")
+        for text in scanned { XCTAssertNil(text.string(62), "\(text.string(1) ?? "")") }
+    }
+
+    func testOnlyOutOfSquareAnglesAreRedInTheDefaultExport() throws {
+        let plan = dxfRealPlan()
+        let warning = PlanDrawingBuilder.Palette.warning
+        let warned = plan.primitives.filter { item in
+            guard item.layer == .angles else { return false }
+            switch item.primitive {
+            case let .arc(_, _, _, _, stroke): return stroke.color == warning
+            case let .text(_, _, _, _, _, color, _): return color == warning
+            default: return false
+            }
+        }
+        XCTAssertGreaterThan(warned.count, 0, "the trapezoid has out-of-square corners")
+        let doc = try dxfParsed(plan)
+        let red = doc.entities.filter { $0.layer == "NF-ANGLES" && $0.string(62) != nil }
+        XCTAssertEqual(red.count, warned.count)
+        for entity in red {
+            let rgb = try XCTUnwrap(dxfReferenceACI[entity.int(62) ?? -1])
+            XCTAssertTrue(dxfIsReddish(rgb), "\(entity.type)")
+        }
+        let layerACI = try XCTUnwrap(doc.section("TABLES").first(where: { $0.type == "LAYER" && $0.string(2) == "NF-ANGLES" })?.int(62))
+        let layerRGB = try XCTUnwrap(dxfReferenceACI[layerACI], "layer colour ACI \(layerACI)")
+        XCTAssertFalse(dxfIsReddish(layerRGB), "NF-ANGLES must not be red")
+        XCTAssertFalse(dxfIsGreenish(layerRGB))
+    }
+
+    // MARK: no group 420 in an R2000 file
+
+    func testDefaultAndNearestACIExportsAreR2000WithoutTrueColour() throws {
+        for mode in [DXFColorMode.byLayer, .nearestACI] {
+            var options = DXFExporter.Options()
+            options.colorMode = mode
+            let doc = try dxfParsed(dxfRealPlan(), options)
+            XCTAssertEqual(doc.header("$ACADVER").first?.value, "AC1015")
+            let pairs = try XCTUnwrap(DXFReader.pairs(dxfExport(dxfRealPlan(), options)))
+            XCTAssertEqual(pairs.filter { $0.code == 420 }.count, 0, "group 420 is not defined in R2000 (\(mode))")
+            let hatches = doc.entities.filter { $0.type == "HATCH" }
+            XCTAssertGreaterThan(hatches.count, 0)
+            XCTAssertTrue(hatches.allSatisfy { $0.int(62) != nil }, "fills keep their ACI colour")
+        }
+    }
+
+    func testTrueColourModeDeclaresR2004WhereGroup420IsDefined() throws {
+        var options = DXFExporter.Options()
+        options.colorMode = .trueColor
+        let doc = try dxfParsed(dxfRealPlan(), options)
+        XCTAssertEqual(doc.header("$ACADVER").first?.value, "AC1018")
+        // Every entity of the real plan has a colour, so every entity carries the exact one next to its ACI fallback.
+        XCTAssertGreaterThan(doc.entities.count, 50)
+        XCTAssertTrue(doc.entities.allSatisfy { $0.string(420) != nil && $0.string(62) != nil })
+        XCTAssertTrue(doc.entities.filter { $0.type == "HATCH" }.count > 0)
+    }
+
+    // MARK: sub-resolution sizes are skipped, not written as zero
+
+    func testSizesThatRoundToZeroAreSkipped() throws {
+        let stroke = DXFFixtures.wall
+        func text(height: Double) -> LayeredPrimitive {
+            LayeredPrimitive(.notes, .text("x", at: .zero, height: height, rotation: 0, anchor: .left, color: .black, bold: false))
+        }
+        let tiny = [
+            LayeredPrimitive(.walls, .circle(center: .zero, radius: 4e-13, stroke)),
+            LayeredPrimitive(.walls, .arc(center: .zero, radius: 4e-13, startAngle: 0, endAngle: 90, stroke)),
+            LayeredPrimitive(.walls, .arc(center: .zero, radius: 4e-13, startAngle: 0, endAngle: 360, stroke)),
+            text(height: 4e-13),
+        ]
+        XCTAssertEqual(try dxfParsed(dxfDrawing(tiny)).entities.count, 0, "millimetres: 4e-10 mm writes as 0.0")
+        var metres = DXFExporter.Options()
+        metres.units = .metres
+        let tinyMetres = [
+            LayeredPrimitive(.walls, .circle(center: .zero, radius: 4e-10, stroke)),
+            LayeredPrimitive(.walls, .arc(center: .zero, radius: 4e-10, startAngle: 0, endAngle: 90, stroke)),
+            text(height: 4e-10),
+        ]
+        XCTAssertEqual(try dxfParsed(dxfDrawing(tinyMetres), metres).entities.count, 0)
+        // The smallest size that still writes as a non-zero number is kept.
+        let smallest = [
+            LayeredPrimitive(.walls, .circle(center: .zero, radius: 1e-9, stroke)),
+            text(height: 1e-9),
+        ]
+        let doc = try dxfParsed(dxfDrawing(smallest))
+        XCTAssertEqual(doc.entities.map { $0.type }, ["CIRCLE", "TEXT"])
+        XCTAssertEqual(doc.entities[0].double(40), 1e-6, "1e-9 m is 1e-6 mm")
+    }
+
+    func testAFillWithNoAreaIsNotWrittenAsAHatch() throws {
+        let collinear = [Point2(0, 0), Point2(1, 0), Point2(2, 0)]
+        let item = LayeredPrimitive(.furniture, .polyline(collinear, closed: true, stroke: DXFFixtures.thin, fill: .black))
+        XCTAssertEqual(try dxfParsed(dxfDrawing([item])).entities.map { $0.type }, ["LWPOLYLINE"])
+        // Collinear along a diagonal: rounding noise must not pass as an area. Three placements: 1 m long 500 km from
+        // the origin (the sum is taken relative to the first vertex, or the noise is far above any threshold), and
+        // 100 m long near the origin (a threshold that does not grow with the size would be exceeded by the noise).
+        // The numbers were picked so that the noise is real: summed from absolute coordinates the first one gives an
+        // "area" of 16 mm2, relative to the first vertex 1e-11 mm2; the second gives 4e-7 mm2 either way, which is
+        // above 1e-9 but far below 1e-12 x perimeter squared (0.04).
+        func diagonalPoints(from start: Point2, slope: Double, step: Double, count: Int) -> [Point2] {
+            (0..<count).map { k in
+                let x = start.x + Double(k) * step
+                return Point2(x, slope * (x - start.x) + start.y)
+            }
+        }
+        let placements: [(start: Point2, slope: Double, step: Double)] = [
+            (Point2(500_000.0885180931, 400_000.8005953213), 0.9104618273459089, 0.13015307489056194),
+            (Point2(0.1, 0.3), 0.7, 17.123456789),
+        ]
+        for placement in placements {
+            let points = diagonalPoints(from: placement.start, slope: placement.slope, step: placement.step, count: 6)
+            let diagonal = LayeredPrimitive(.furniture, .polyline(points, closed: true, stroke: nil, fill: .black))
+            XCTAssertEqual(try dxfParsed(dxfDrawing([diagonal])).entities.count, 0, "start \(placement.start)")
+        }
+        // The same long sliver with a genuine width of 1 mm is kept.
+        let sliver = LayeredPrimitive(.furniture, .polyline([Point2(0, 0), Point2(100, 0), Point2(100, 0.001), Point2(0, 0.001)],
+                                                            closed: true, stroke: nil, fill: .black))
+        XCTAssertEqual(try dxfParsed(dxfDrawing([sliver])).entities.map { $0.type }, ["HATCH"])
+        // A thin but real band is kept.
+        let band = LayeredPrimitive(.furniture, .polyline(DXFFixtures.box(0, 0, 4, 0.001), closed: true, stroke: nil, fill: .black))
+        XCTAssertEqual(try dxfParsed(dxfDrawing([band])).entities.map { $0.type }, ["HATCH"])
+    }
+
+    // MARK: caret
+
+    func testLiteralCaretsCannotBeReadAsControlCharacters() {
+        XCTAssertEqual(DXFFormat.text("^J"), "^ J")
+        XCTAssertEqual(DXFFormat.text("10^2"), "10^ 2")
+        XCTAssertEqual(DXFFormat.text("x^Zy"), "x^ Zy")
+        XCTAssertEqual(DXFFormat.text("a^"), "a^ ")
+        XCTAssertEqual(DXFFormat.text("^^M"), "^ ^ M")
+        // Reading back the way AutoCAD notation does ("^ " is a caret, "^X" a control character) restores the input.
+        func caretDecode(_ s: String) -> String {
+            var out = "", chars = Array(s), i = 0
+            while i < chars.count {
+                if chars[i] == "^", i + 1 < chars.count {
+                    if chars[i + 1] == " " { out.append("^") }
+                    else if let v = chars[i + 1].asciiValue, v >= 0x40 { out.append(Character(Unicode.Scalar(v - 0x40))) }
+                    else { out.append("^"); i += 1; continue }
+                    i += 2
+                } else { out.append(chars[i]); i += 1 }
+            }
+            return out
+        }
+        for source in ["^J", "10^2", "x^Zy", "a^", "^^M", "m^2 and ^I tab", "caret ^ alone"] {
+            XCTAssertEqual(caretDecode(DXFFormat.text(source)), source, source)
+        }
+        XCTAssertEqual(DXFFormat.text("m\u{00B2}"), "m\\U+00B2", "the superscript two is untouched")
+    }
+}
+
+
+// MARK: - 5. Provenance note
+
+final class DXFProvenanceNoteTests: XCTestCase {
+
+    /// The note's entities: whatever the default export writes after the entities the plan maps to.
+    private func noteEntities(_ plan: PlanDrawing, _ options: DXFExporter.Options = DXFExporter.Options(),
+                              file: StaticString = #filePath, line: UInt = #line) throws -> (note: [DXFRecord], doc: DXFParsed) {
+        var plain = options
+        plain.includeProvenanceNote = false
+        let mapped = try dxfParsed(plan, plain, file: file, line: line)
+        let full = try dxfParsed(plan, options, file: file, line: line)
+        XCTAssertEqual(full.entities.prefix(mapped.entities.count).map { $0.type },
+                       mapped.entities.map { $0.type }, "the note comes after the plan's own entities",
+                       file: file, line: line)
+        return (Array(full.entities.dropFirst(mapped.entities.count)), full)
+    }
+
+    /// The note read back as paragraphs' text: line texts joined by single spaces.
+    private func joined(_ lines: [DXFRecord]) -> String {
+        lines.compactMap { $0.string(1) }.joined(separator: " ")
+    }
+
+    func testDefaultExportCarriesTheDisclaimerAndTheProvenance() throws {
+        let (note, _) = try noteEntities(DXFFixtures.samplePlan())
+        XCTAssertGreaterThanOrEqual(note.count, 4)
+        XCTAssertTrue(note.allSatisfy { $0.type == "TEXT" && $0.layer == "NF-NOTES" })
+        let text = joined(note)
+        XCTAssertTrue(text.contains(ScanAccuracy.joineryDisclaimer), text)
+        XCTAssertTrue(text.contains("Geometry in this file is the LiDAR scan."), text)
+        XCTAssertTrue(text.contains("Do not take cutting dimensions from distances measured on the drawing."), text)
+        XCTAssertTrue(text.contains("Text values marked v are laser-verified and take precedence over the drawn geometry"),
+                      text)
+        XCTAssertTrue(dxfIsASCII(text))
+    }
+
+    func testNoteHangsUnderThePlanLeftAlignedInTheDocumentedUnits() throws {
+        // The sample's bounds run from (-900, -2400) to (5600, 4300) mm; text is 2.5 mm tall on paper at 1:50, so
+        // 125 mm. The first baseline is 2.5 text heights below the bounds: -2400 - 312.5. Lines are 1.8 heights apart.
+        let (note, doc) = try noteEntities(DXFFixtures.samplePlan())
+        XCTAssertEqual(note.first?.string(1), "Sample - 5 x 4 m", "the title comes first")
+        XCTAssertEqual(note.first?.string(7), "NF-BOLD")
+        var expectedY = -2712.5
+        for line in note {
+            XCTAssertEqual(line.double(10), -900, "left edge of the plan")
+            XCTAssertEqual(try XCTUnwrap(line.double(20)), expectedY, accuracy: 1e-6)
+            XCTAssertEqual(line.double(40), 125)
+            XCTAssertNil(line.string(72), "left aligned")
+            XCTAssertNil(line.string(50), "not rotated")
+            XCTAssertEqual(line.int(73), 0, "baseline anchor")
+            expectedY -= 225
+        }
+        let lastBaseline = expectedY + 225
+        // The header and the initial view cover the note: bottom at the last baseline, top and left unchanged.
+        let extMin = doc.header("$EXTMIN").compactMap { Double($0.value) }
+        let extMax = doc.header("$EXTMAX").compactMap { Double($0.value) }
+        XCTAssertEqual(extMin[0], -900); XCTAssertEqual(extMin[1], lastBaseline, accuracy: 1e-6)
+        XCTAssertEqual(extMax[1], 4300)
+        XCTAssertGreaterThanOrEqual(extMax[0], 5600)
+        // Metres: same layout divided by 1000.
+        let (metreNote, _) = try noteEntities(DXFFixtures.samplePlan(), DXFExporter.Options(units: .metres))
+        XCTAssertEqual(metreNote.count, note.count)
+        XCTAssertEqual(metreNote.first?.double(10), -0.9)
+        XCTAssertEqual(try XCTUnwrap(metreNote.first?.double(20)), -2.7125, accuracy: 1e-9)
+        XCTAssertEqual(metreNote.first?.double(40), 0.125)
+    }
+
+    func testNoteStaysClearOfThePlanAtAnyScale() throws {
+        for scale in [20.0, 50.0, 100.0, 200.0] {
+            var plan = DXFFixtures.samplePlan()
+            plan.options.scale = scale
+            let (note, _) = try noteEntities(plan)
+            let height = 2.5 * scale                                    // mm in model space
+            let top = try XCTUnwrap(note.first?.double(20)) + height     // cap line of the first note line
+            XCTAssertLessThan(top, -2400 - height, "at least one text height of clear space under the plan, 1:\(Int(scale))")
+            XCTAssertEqual(note.first?.double(40), height)
+        }
+    }
+
+    func testNoteIsWrittenWhenPlanTextIsSwitchedOffButNotWhenAskedNotTo() throws {
+        let plan = DXFFixtures.samplePlan()
+        var textOff = DXFExporter.Options()
+        textOff.includeTextLayers = false
+        let doc = try dxfParsed(plan, textOff)
+        let texts = doc.entities.filter { $0.type == "TEXT" }
+        XCTAssertGreaterThanOrEqual(texts.count, 4, "geometry alone says nothing about where its numbers come from")
+        XCTAssertTrue(texts.allSatisfy { $0.layer == "NF-NOTES" && ($0.double(20) ?? 0) < -2400 })
+        XCTAssertTrue(joined(texts).contains(ScanAccuracy.joineryDisclaimer))
+        XCTAssertEqual(doc.entities.count - texts.count, 28 - 7, "all the plan's geometry, none of its text")
+
+        var off = DXFExporter.Options()
+        off.includeProvenanceNote = false
+        XCTAssertEqual(try dxfParsed(plan, off).entities.count, 28)
+        XCTAssertFalse(DXFExporter.export(plan, options: off).contains("LiDAR"))
+        off.includeTextLayers = false
+        XCTAssertEqual(try dxfParsed(plan, off).entities.filter { $0.type == "TEXT" }.count, 0)
+    }
+
+    func testNoteWordingFollowsWhetherVerifiedValuesAreMarked() throws {
+        let marked = joined(try noteEntities(dxfRealPlan(markVerified: true)).note)
+        XCTAssertTrue(marked.contains("Text values marked v are laser-verified"))
+        XCTAssertFalse(marked.contains("not marked"))
+        let unmarked = joined(try noteEntities(dxfRealPlan(markVerified: false)).note)
+        XCTAssertTrue(unmarked.contains("Laser-verified values are not marked in this file"))
+        XCTAssertFalse(unmarked.contains("marked v"), "no claim about a marker the plan does not carry")
+        XCTAssertTrue(unmarked.contains(ScanAccuracy.joineryDisclaimer))
+    }
+
+    func testTitleLineIsWrittenOnlyWhenThePlanDidNotDrawItAlready() throws {
+        var plan = DXFFixtures.samplePlan()
+        plan.title = "Marina Gate 2 - Unit 2304"
+        plan.subtitle = "Level 1"
+        XCTAssertEqual(try noteEntities(plan).note.first?.string(1), "Marina Gate 2 - Unit 2304 - Level 1")
+        // The CAD export already captions its plan with the same words on NF-NOTES: not repeated.
+        plan.primitives.append(LayeredPrimitive(.notes, .text("Marina Gate 2 - Unit 2304 - Level 1", at: Point2(-0.9, -2.4),
+                                                              height: 0.175, rotation: 0, anchor: .left, color: .black,
+                                                              bold: true)))
+        let withCaption = try noteEntities(plan).note
+        XCTAssertEqual(withCaption.first?.string(1)?.hasPrefix("Geometry in this file is the LiDAR scan."), true)
+        XCTAssertFalse(withCaption.contains { $0.string(1)?.contains("Marina") == true })
+        // With the plan's text switched off the caption is not in the file, so the title is.
+        var textOff = DXFExporter.Options()
+        textOff.includeTextLayers = false
+        XCTAssertEqual(try noteEntities(plan, textOff).note.first?.string(1), "Marina Gate 2 - Unit 2304 - Level 1")
+        // Blank title and subtitle: no title line, and a lone title has no dash.
+        plan.title = "  "; plan.subtitle = ""
+        plan.primitives.removeLast()
+        XCTAssertTrue(try noteEntities(plan).note.first?.string(1)?.hasPrefix("Geometry in this file") == true)
+        plan.title = "Study"
+        XCTAssertEqual(try noteEntities(plan).note.first?.string(1), "Study")
+        // Non-ASCII titles are escaped like any other text.
+        plan.title = "Caf\u{00E9} \u{00B0}"
+        XCTAssertEqual(try noteEntities(plan).note.first?.string(1), "Caf\\U+00E9 %%d")
+    }
+
+    func testNoteWrapsToTheWidthOfTheDrawingAndKeepsEveryWord() throws {
+        // A narrow drawing (a 1 m wide fitting, text 125 mm tall at 1:50): wrapped to the 40-text-height minimum,
+        // 5 m, and no line is wider than that.
+        let narrow = dxfDrawing([LayeredPrimitive(.furniture, .polyline(DXFFixtures.box(0, 0, 1, 2), closed: true,
+                                                                        stroke: DXFFixtures.thin, fill: nil))])
+        let note = try noteEntities(narrow).note
+        let paragraphs = [
+            "Geometry in this file is the LiDAR scan. Do not take cutting dimensions from distances measured on the drawing.",
+            "Text values marked v are laser-verified and take precedence over the drawn geometry: cut joinery from the "
+                + "labelled values.",
+            ScanAccuracy.joineryDisclaimer,
+        ]
+        XCTAssertGreaterThan(note.count, paragraphs.count, "long paragraphs wrap on a narrow drawing")
+        var widest = 0.0
+        for line in note {
+            let text = line.string(1) ?? ""
+            let width = PlanDrawingBuilder.textWidth(text, height: 0.125, bold: line.string(7) != nil)
+            XCTAssertLessThanOrEqual(width, 5.0, text)
+            widest = max(widest, width)
+        }
+        XCTAssertGreaterThan(widest, 4.0, "lines fill the 5 m minimum width, they are not wrapped narrower")
+        // The note sticks out to the right of a 1 m wide plan, and the header extents (and so the view) cover it.
+        let extMax = try noteEntities(narrow).doc.header("$EXTMAX").compactMap { Double($0.value) }
+        XCTAssertGreaterThan(extMax[0], 4_000)
+        XCTAssertLessThanOrEqual(extMax[0], 5_000 + 1e-6)
+        // Words are neither lost nor split: re-joining gives the paragraphs back in order.
+        XCTAssertEqual(joined(note), paragraphs.joined(separator: " "))
+        // A wide drawing (30 m) fits each paragraph on one line.
+        let wide = dxfDrawing([LayeredPrimitive(.walls, .line(Point2(0, 0), Point2(30, 0), DXFFixtures.wall))])
+        let wideNote = try noteEntities(wide).note
+        XCTAssertEqual(wideNote.map { $0.string(1) ?? "" }, paragraphs)
+    }
+
+    func testEmptyDrawingsAndDrawingsWithNothingWrittenGetNoNote() throws {
+        XCTAssertEqual(try dxfParsed(dxfEmptyDrawing(), DXFExporter.Options()).entities.count, 0)
+        // Only text, and text is off: nothing was drawn, so there is nothing to caption.
+        let textOnly = dxfDrawing([LayeredPrimitive(.notes, .text("x", at: .zero, height: 0.1, rotation: 0, anchor: .left,
+                                                                  color: .black, bold: false))])
+        var textOff = DXFExporter.Options()
+        textOff.includeTextLayers = false
+        XCTAssertEqual(try dxfParsed(textOnly, textOff).entities.count, 0)
+        // Only skipped primitives.
+        let nothing = dxfDrawing([LayeredPrimitive(.walls, .line(.zero, .zero, DXFFixtures.wall))])
+        XCTAssertEqual(try dxfParsed(nothing, DXFExporter.Options()).entities.count, 0)
+    }
+
+    func testFileWithTheNoteIsStructurallySoundAndDeterministic() throws {
+        for options in [DXFExporter.Options(), DXFExporter.Options(units: .metres),
+                        DXFExporter.Options(colorMode: .trueColor, windowsLineEndings: true)] {
+            let plan = dxfRealPlan()
+            let text = DXFExporter.export(plan, options: options)
+            XCTAssertEqual(text, DXFExporter.export(plan, options: options))
+            XCTAssertTrue(dxfIsASCII(text))
+            let doc = try XCTUnwrap(DXFReader.parse(text))
+            let defined = doc.definedHandles
+            XCTAssertEqual(Set(defined).count, defined.count, "every handle is unique")
+            let seed = try XCTUnwrap(Int(doc.header("$HANDSEED").first?.value ?? "", radix: 16))
+            XCTAssertGreaterThan(seed, defined.compactMap { Int($0, radix: 16) }.max() ?? 0)
+            let known = Set(defined).union(["0"])
+            XCTAssertTrue(doc.referencedHandles.allSatisfy { known.contains($0) })
+            XCTAssertTrue(doc.endsWithEOF)
+            // The header extents cover every point written for every entity.
+            let extMin = doc.header("$EXTMIN").compactMap { Double($0.value) }
+            let extMax = doc.header("$EXTMAX").compactMap { Double($0.value) }
+            for entity in doc.entities where entity.type == "TEXT" || entity.type == "LINE" {
+                let x = try XCTUnwrap(entity.double(10)), y = try XCTUnwrap(entity.double(20))
+                XCTAssertGreaterThanOrEqual(x, extMin[0] - 1e-6); XCTAssertLessThanOrEqual(x, extMax[0] + 1e-6)
+                XCTAssertGreaterThanOrEqual(y, extMin[1] - 1e-6); XCTAssertLessThanOrEqual(y, extMax[1] + 1e-6)
+            }
+        }
+    }
+
+    /// The CAD export of a real property: the hand-off the joiners get. The file must say that its geometry is
+    /// the scan, carry the joinery disclaimer once, and name the property and level exactly once (the engine's
+    /// caption), not twice.
+    func testTheEngineCADDrawingCarriesTheDisclaimerAndNamesThePropertyOnce() throws {
+        let property = DemoProperty.make(now: Date(timeIntervalSince1970: 1_700_000_000))
+        let floor = try XCTUnwrap(property.floors.first)
+        let drawing = ExportEngine.cadDrawing(for: floor, in: property, scale: 50, units: .default)
+        let text = DXFExporter.export(drawing, options: DXFExporter.Options(units: .millimetres))
+        let doc = try XCTUnwrap(DXFReader.parse(text))
+        let notes = doc.entities.filter { $0.type == "TEXT" && $0.layer == "NF-NOTES" }
+        XCTAssertTrue(joined(notes).contains(ScanAccuracy.joineryDisclaimer))
+        XCTAssertTrue(joined(notes).contains("Geometry in this file is the LiDAR scan."))
+        let caption = "\(property.name) - \(floor.name)"
+        XCTAssertEqual(notes.filter { $0.string(1) == caption }.count, 1, "caption once: \(notes.compactMap { $0.string(1) })")
+        XCTAssertEqual(joined(notes).components(separatedBy: ScanAccuracy.joineryDisclaimer).count - 1, 1,
+                       "the disclaimer once")
+    }
+}
+
+// MARK: - 6. Header, view and options
+
+final class DXFHeaderAndOptionsTests: XCTestCase {
+
+    func testDimensionAndUnitVariablesFollowTheDrawingUnit() throws {
+        func values(_ doc: DXFParsed, _ names: [String]) -> [String: String] {
+            Dictionary(uniqueKeysWithValues: names.map { ($0, doc.header($0).first?.value ?? "<missing>") })
+        }
+        let names = ["$DIMSCALE", "$DIMASZ", "$DIMEXO", "$DIMDLI", "$DIMEXE", "$DIMTXT", "$DIMCEN", "$DIMGAP",
+                     "$DIMDEC", "$DIMTDEC", "$DIMLUNIT", "$LUNITS", "$LUPREC", "$TEXTSIZE", "$TRACEWID", "$CMLSCALE",
+                     "$INSUNITS"]
+        // Millimetres at 1:50: dimension text 2.5 mm on paper (x 50 by $DIMSCALE), whole millimetres.
+        let mm = values(try dxfParsed(DXFFixtures.samplePlan()), names)
+        XCTAssertEqual(mm, ["$DIMSCALE": "50.0", "$DIMASZ": "2.5", "$DIMEXO": "0.625", "$DIMDLI": "3.75",
+                            "$DIMEXE": "1.25", "$DIMTXT": "2.5", "$DIMCEN": "2.5", "$DIMGAP": "0.625",
+                            "$DIMDEC": "0", "$DIMTDEC": "0", "$DIMLUNIT": "2", "$LUNITS": "2", "$LUPREC": "1",
+                            "$TEXTSIZE": "125.0", "$TRACEWID": "2.5", "$CMLSCALE": "20.0", "$INSUNITS": "4"])
+        // Metres: the same sizes in metres, three decimals for dimensions, four for coordinates.
+        var metres = dxfMappingOptions
+        metres.units = .metres
+        let m = values(try dxfParsed(DXFFixtures.samplePlan(), metres), names)
+        XCTAssertEqual(m, ["$DIMSCALE": "50.0", "$DIMASZ": "0.0025", "$DIMEXO": "0.000625", "$DIMDLI": "0.00375",
+                           "$DIMEXE": "0.00125", "$DIMTXT": "0.0025", "$DIMCEN": "0.0025", "$DIMGAP": "0.000625",
+                           "$DIMDEC": "3", "$DIMTDEC": "3", "$DIMLUNIT": "2", "$LUNITS": "2", "$LUPREC": "4",
+                           "$TEXTSIZE": "0.125", "$TRACEWID": "0.0025", "$CMLSCALE": "0.02", "$INSUNITS": "6"])
+        // At 1:100 the dimension scale and text size double; the paper sizes do not.
+        var hundred = DXFFixtures.samplePlan()
+        hundred.options.scale = 100
+        let h = values(try dxfParsed(hundred), ["$DIMSCALE", "$DIMTXT", "$TEXTSIZE"])
+        XCTAssertEqual(h, ["$DIMSCALE": "100.0", "$DIMTXT": "2.5", "$TEXTSIZE": "250.0"])
+    }
+
+    func testDimensionStyleRecordMatchesTheHeader() throws {
+        let cases: [(units: DXFUnits, txt: Double, gap: Double, decimals: Int)] = [
+            (.millimetres, 2.5, 0.625, 0), (.metres, 0.0025, 0.000625, 3),
+        ]
+        for (units, txt, gap, decimals) in cases {
+            let expected = (txt: txt, gap: gap, decimals: decimals)
+            var options = dxfMappingOptions
+            options.units = units
+            let doc = try dxfParsed(DXFFixtures.samplePlan(), options)
+            let style = try XCTUnwrap(doc.section("TABLES").first(where: { $0.type == "DIMSTYLE" }))
+            XCTAssertEqual(style.string(2), "Standard")
+            XCTAssertEqual(style.double(40), 50, "DIMSCALE")
+            XCTAssertEqual(style.double(41), expected.txt, "DIMASZ")
+            XCTAssertEqual(try XCTUnwrap(style.double(42)), expected.gap, accuracy: 1e-12, "DIMEXO")
+            XCTAssertEqual(style.double(140), expected.txt, "DIMTXT")
+            XCTAssertEqual(style.double(141), expected.txt, "DIMCEN")
+            XCTAssertEqual(try XCTUnwrap(style.double(147)), expected.gap, accuracy: 1e-12, "DIMGAP")
+            XCTAssertEqual(style.int(271), expected.decimals, "DIMDEC")
+            XCTAssertEqual(style.int(272), expected.decimals, "DIMTDEC")
+            XCTAssertEqual(style.int(77), 1, "DIMTAD above")
+            // The STYLE table's fixed text height is the scaled 2.5 mm too.
+            let standard = try XCTUnwrap(doc.section("TABLES").first(where: { $0.type == "STYLE" }))
+            XCTAssertEqual(try XCTUnwrap(standard.double(42)), units == .millimetres ? 125 : 0.125, accuracy: 1e-12)
+        }
+    }
+
+    func testViewportIsFramedOnTheExtents() throws {
+        func viewport(_ plan: PlanDrawing, _ options: DXFExporter.Options = dxfMappingOptions) throws -> DXFRecord {
+            try XCTUnwrap(try dxfParsed(plan, options).section("TABLES").first(where: { $0.type == "VPORT" }))
+        }
+        // Sample: extents (-900, -2400)..(5600, 4300). Centre (2350, 950); height 6700 is the larger of 6700 and
+        // 6500 / 1.5, plus 10 %.
+        let v = try viewport(DXFFixtures.samplePlan())
+        XCTAssertEqual(v.string(2), "*Active")
+        XCTAssertEqual(v.double(12), 2350); XCTAssertEqual(v.double(22), 950)
+        XCTAssertEqual(try XCTUnwrap(v.double(40)), 7370, accuracy: 1e-6)
+        XCTAssertEqual(v.double(41), 1.5)
+        XCTAssertEqual(v.double(14), 100); XCTAssertEqual(v.double(24), 100)
+        // Metres: all lengths divided by 1000.
+        var metres = dxfMappingOptions
+        metres.units = .metres
+        let vm = try viewport(DXFFixtures.samplePlan(), metres)
+        XCTAssertEqual(vm.double(12), 2.35); XCTAssertEqual(vm.double(22), 0.95)
+        XCTAssertEqual(try XCTUnwrap(vm.double(40)), 7.37, accuracy: 1e-9)
+        XCTAssertEqual(vm.double(14), 0.1)
+        // A wide plan (30 m x 4 m) is framed by its width: 30000 / 1.5 = 20000, plus 10 %. Centre (15000, 2000).
+        let wide = dxfDrawing([LayeredPrimitive(.walls, .line(Point2(0, 0), Point2(30, 0), DXFFixtures.wall)),
+                               LayeredPrimitive(.walls, .line(Point2(0, 4), Point2(30, 4), DXFFixtures.wall))])
+        let vw = try viewport(wide)
+        XCTAssertEqual(vw.double(12), 15_000); XCTAssertEqual(vw.double(22), 2_000)
+        XCTAssertEqual(try XCTUnwrap(vw.double(40)), 22_000, accuracy: 1e-6)
+        // A tiny plan is not zoomed to a point: at least 100 mm of height.
+        let tiny = dxfDrawing([LayeredPrimitive(.walls, .line(Point2(0, 0), Point2(0.01, 0), DXFFixtures.wall))])
+        XCTAssertEqual(try XCTUnwrap(try viewport(tiny).double(40)), 110, accuracy: 1e-6)
+        // An empty drawing opens on a 5 m x 3 m area.
+        let empty = try viewport(dxfEmptyDrawing())
+        XCTAssertEqual(empty.double(12), 2500); XCTAssertEqual(empty.double(22), 1500); XCTAssertEqual(empty.double(40), 5000)
+        // With the note the view reaches down to it: extents (-900, -4062.5 or lower)..(5600, 4300).
+        let withNote = try viewport(DXFFixtures.samplePlan(), DXFExporter.Options())
+        let doc = try dxfParsed(DXFFixtures.samplePlan(), DXFExporter.Options())
+        let extMin = doc.header("$EXTMIN").compactMap { Double($0.value) }
+        let extMax = doc.header("$EXTMAX").compactMap { Double($0.value) }
+        XCTAssertEqual(try XCTUnwrap(withNote.double(22)), (extMin[1] + extMax[1]) / 2, accuracy: 1e-6)
+        XCTAssertEqual(try XCTUnwrap(withNote.double(40)), (extMax[1] - extMin[1]) * 1.1, accuracy: 1e-6)
+    }
+
+    func testOptionsDecodeFromPartialOrOlderJSON() throws {
+        let decoder = JSONDecoder()
+        func options(_ json: String) throws -> DXFExporter.Options {
+            try decoder.decode(DXFExporter.Options.self, from: Data(json.utf8))
+        }
+        XCTAssertEqual(try options("{}"), DXFExporter.Options())
+        XCTAssertEqual(try options(#"{"units":"metres"}"#), DXFExporter.Options(units: .metres))
+        XCTAssertEqual(try options(#"{"colorMode":"trueColor","includeFills":false,"somethingNew":1}"#),
+                       DXFExporter.Options(includeFills: false, colorMode: .trueColor))
+        // Options stored before the note existed get the note.
+        let old = #"{"units":"millimetres","includeTextLayers":true,"includeFills":true,"colorMode":"byLayer","entityLineweights":true,"windowsLineEndings":false}"#
+        XCTAssertEqual(try options(old), DXFExporter.Options())
+        XCTAssertTrue(try options(old).includeProvenanceNote)
+        // A wrong value is an error, not a silent default.
+        XCTAssertThrowsError(try options(#"{"units":"yards"}"#))
+        XCTAssertThrowsError(try options(#"{"includeFills":"yes"}"#))
+        // Everything round-trips, and all seven keys are written.
+        let custom = DXFExporter.Options(units: .metres, includeTextLayers: false, includeFills: false,
+                                         colorMode: .nearestACI, entityLineweights: false, windowsLineEndings: true,
+                                         includeProvenanceNote: false)
+        let data = try JSONEncoder().encode(custom)
+        XCTAssertEqual(try decoder.decode(DXFExporter.Options.self, from: data), custom)
+        let keys = try XCTUnwrap(try JSONSerialization.jsonObject(with: data) as? [String: Any]).keys
+        XCTAssertEqual(Set(keys), ["units", "includeTextLayers", "includeFills", "colorMode", "entityLineweights",
+                                   "windowsLineEndings", "includeProvenanceNote"])
+    }
+}
+
+
 // MARK: - 3. External validation (ezdxf, GDAL/OGR) -----------------------------------------------------------
 
 /// Expected model-space content computed from the input primitives with plain arithmetic, written as JSON for the
@@ -1327,7 +1956,7 @@ private enum DXFExpectation {
     /// ACI colour and lineweight of each layer, typed by hand (kept in step with `DXFLayerStyle.all`).
     static let layers: [String: [Int]] = [
         "NF-WALLS": [7, 50], "NF-WALLS-OPEN": [150, 25], "NF-DOORS": [30, 25], "NF-WINDOWS": [4, 25],
-        "NF-OPENINGS": [6, 25], "NF-FURNITURE": [8, 13], "NF-DIMENSIONS": [3, 13], "NF-ANGLES": [1, 13],
+        "NF-OPENINGS": [6, 25], "NF-FURNITURE": [8, 13], "NF-DIMENSIONS": [190, 13], "NF-ANGLES": [42, 13],
         "NF-ROOM-LABELS": [5, 18], "NF-NOTES": [32, 18],
     ]
 
@@ -1346,9 +1975,12 @@ private enum DXFExpectation {
 
     static func entities(_ items: [LayeredPrimitive], factor f: Double, options: DXFExporter.Options) -> [[String: Any]] {
         var out: [[String: Any]] = []
+        // A colour is written for fills, in the two explicit modes, and for the plan's status colours; group 420
+        // only in true-colour mode (release 2004).
         func colour(_ c: DrawColor, into d: inout [String: Any], force: Bool = false) {
-            if force || options.colorMode != .byLayer { d["color"] = DXFColor.nearestACI(c) }
-            if force || options.colorMode == .trueColor { d["true_color"] = DXFColor.trueColor(c) }
+            guard force || options.colorMode != .byLayer || DXFColor.isPlanStatusColor(c) else { return }
+            d["color"] = DXFColor.aci(for: c)
+            if options.colorMode == .trueColor { d["true_color"] = DXFColor.trueColor(c) }
         }
         func stroked(_ type: String, _ layer: PlanLayer, _ geom: [Double], _ s: StrokeStyle) -> [String: Any] {
             var d: [String: Any] = ["type": type, "layer": layer.rawValue, "geom": geom,
@@ -1427,12 +2059,22 @@ private enum DXFExpectation {
         let ext = hasEntities ? extents(plan, factor: f) : nil
         let scale = plan.options.scale.isFinite && plan.options.scale > 0 ? plan.options.scale : 50
         let unit = options.units == .millimetres ? 1.0 : 0.001
-        return [
+        var document: [String: Any] = [
             "case": name, "units": options.units.insunitsCode, "layers": layers, "entities": entities,
+            "version": options.colorMode == .trueColor ? "AC1018" : "AC1015",
             "line_length": lineLength(plan.primitives, factor: f),
             "extmin": ext?[0] ?? NSNull(), "extmax": ext?[1] ?? NSNull(),
             "dash": [3 * scale * unit, -1.5 * scale * unit],
         ]
+        // The provenance note: the sentences it must contain (typed here, not read back from the exporter) and the
+        // text height it is set in (2.5 mm on paper at the plot scale).
+        if options.includeProvenanceNote && hasEntities {
+            var needles = ["Geometry in this file is the LiDAR scan.", ScanAccuracy.joineryDisclaimer]
+            needles.append(plan.options.markVerified ? "Text values marked v are laser-verified"
+                                                     : "Laser-verified values are not marked in this file")
+            document["note"] = ["must_contain": needles, "text_height": 2.5 * scale * unit] as [String: Any]
+        }
+        return document
     }
 }
 
@@ -1480,13 +2122,13 @@ private func dxfEdgeCasePlan() -> (plan: PlanDrawing, expected: [[String: Any]],
                                                          Point2(0, 0)], closed: true, stroke: DXFFixtures.thin,
                                                         fill: DrawColor(0.9, 0.95, 1))))
     expected.append(["type": "HATCH", "layer": "NF-FURNITURE", "geom": [0.0, 0.0, 1000.0, 0.0, 1000.0, 1000.0],
-                     "color": DXFColor.nearestACI(DrawColor(0.9, 0.95, 1)), "true_color": DXFColor.trueColor(DrawColor(0.9, 0.95, 1))])
+                     "color": DXFColor.nearestACI(DrawColor(0.9, 0.95, 1))])
     expected.append(["type": "LWPOLYLINE", "layer": "NF-FURNITURE", "geom": [0.0, 0.0, 1000.0, 0.0, 1000.0, 1000.0],
                      "closed": true, "lineweight": 13, "linetype": "CONTINUOUS"])
     items.append(LayeredPrimitive(.furniture, .polyline([Point2(2, 0), Point2(3, 0), Point2(3, 1)], closed: false,
                                                         stroke: nil, fill: DrawColor(0.5, 0.5, 0.5))))
     expected.append(["type": "HATCH", "layer": "NF-FURNITURE", "geom": [2000.0, 0.0, 3000.0, 0.0, 3000.0, 1000.0],
-                     "color": DXFColor.nearestACI(DrawColor(0.5, 0.5, 0.5)), "true_color": DXFColor.trueColor(DrawColor(0.5, 0.5, 0.5))])
+                     "color": DXFColor.nearestACI(DrawColor(0.5, 0.5, 0.5))])
     items.append(LayeredPrimitive(.furniture, .polyline([Point2(4, 0), Point2(5, 0)], closed: true, stroke: dashed,
                                                         fill: nil)))
     expected.append(["type": "LWPOLYLINE", "layer": "NF-FURNITURE", "geom": [4000.0, 0.0, 5000.0, 0.0], "closed": false,
@@ -1553,7 +2195,8 @@ private let dxfValidatorScript = #"""
 
 usage: validate_dxf.py <directory holding NAME.dxf and NAME.expect.json pairs>
 
-Exit status 0 when every case passes. Rendering to NAME.png needs matplotlib and is optional.
+Exit status 0 when every case passes. Rendering to NAME.png needs matplotlib and is optional. The LibreCAD
+print check is slow and runs only when the environment variable NEXAFIX_EXTERNAL_LIBRECAD is 1.
 """
 import glob
 import json
@@ -1589,7 +2232,7 @@ def near_list(a, b, tol=TOL):
 
 # ---------------------------------------------------------------- raw text level
 
-def raw_checks(case, path):
+def raw_checks(case, path, expect):
     """Independent re-parse of the group structure: ASCII, pairs, handles, references, seed."""
     data = open(path, "rb").read()
     try:
@@ -1620,6 +2263,8 @@ def raw_checks(case, path):
         tags.append((code, lines[i + 1]))
     if tags[0] != (0, "SECTION") or tags[-1] != (0, "EOF"):
         fail(case, "file must start with SECTION and end with EOF")
+    if expect["version"] == "AC1015" and any(code == 420 for code, _ in tags):
+        fail(case, "group 420 (true colour) is written into a release 2000 file")
     if re.search(r"(?i)\b(nan|inf|infinity)\b", text):
         fail(case, "non-finite number in file")
     section = None
@@ -1747,6 +2392,42 @@ def check_entity(case, doc, index, entity, x):
                 fail(case, "%s: boundary not closed" % where)
 
 
+def check_note(case, doc, entities, note, expect):
+    """The provenance note: TEXT lines on NF-NOTES, left-aligned under the plan, with the required wording."""
+    if len(entities) < 3:
+        fail(case, "provenance note has %d lines" % len(entities))
+        return
+    height = note["text_height"]
+    texts = []
+    previous = None
+    for entity in entities:
+        if entity.dxftype() != "TEXT" or entity.dxf.layer != "NF-NOTES":
+            fail(case, "note entity is %s on %s" % (entity.dxftype(), entity.dxf.layer))
+            continue
+        raw = entity.dxf.text
+        if not raw.isascii():
+            fail(case, "note text is not ASCII: %r" % raw)
+        texts.append(plain_text(ezdxf.decode_dxf_unicode(raw)))
+        insert = entity.dxf.insert
+        if not near(entity.dxf.height, height, 1e-9):
+            fail(case, "note text height %s, expected %s" % (entity.dxf.height, height))
+        if entity.dxf.get("halign", 0) != 0 or entity.dxf.get("valign", 0) != 0 or entity.dxf.get("rotation", 0) != 0:
+            fail(case, "note text must be left aligned on the baseline and unrotated")
+        if not near(insert[0], expect["extmin"][0], 1e-6):
+            fail(case, "note starts at x=%s, plan extents start at %s" % (insert[0], expect["extmin"][0]))
+        if insert[1] > expect["extmin"][1] - 2.5 * height + 1e-6:
+            fail(case, "note line at y=%s overlaps the plan (bottom %s)" % (insert[1], expect["extmin"][1]))
+        if previous is not None and not near(previous - insert[1], 1.8 * height, 1e-6):
+            fail(case, "note line spacing %s, expected %s" % (previous - insert[1], 1.8 * height))
+        previous = insert[1]
+    joined = " ".join(texts)
+    for needle in note["must_contain"]:
+        if needle not in joined:
+            fail(case, "note does not say %r" % needle)
+    if previous is not None and not near(doc.header["$EXTMIN"][1], previous, 1e-6):
+        fail(case, "header extents end at y=%s, the last note line is at %s" % (doc.header["$EXTMIN"][1], previous))
+
+
 def ezdxf_checks(case, path, expect):
     try:
         doc = ezdxf.readfile(path)
@@ -1771,8 +2452,9 @@ def ezdxf_checks(case, path, expect):
         fail(case, "recover mode reads a different number of entities")
 
     header = doc.header
-    if doc.dxfversion != "AC1015" or header["$ACADVER"] != "AC1015":
-        fail(case, "not AC1015")
+    if doc.dxfversion != expect["version"] or header["$ACADVER"] != expect["version"]:
+        fail(case, "version %s, expected %s" % (doc.dxfversion, expect["version"]))
+    note = expect.get("note")
     if header["$INSUNITS"] != expect["units"]:
         fail(case, "$INSUNITS %s, expected %s" % (header["$INSUNITS"], expect["units"]))
     if header["$MEASUREMENT"] != 1:
@@ -1780,11 +2462,17 @@ def ezdxf_checks(case, path, expect):
     if expect["extmin"] is None:
         if tuple(header["$EXTMIN"]) != (1e20, 1e20, 1e20) or tuple(header["$EXTMAX"]) != (-1e20, -1e20, -1e20):
             fail(case, "empty drawing must carry the +/-1e20 extents marker")
-    else:
+    elif note is None:
         if not near_list(list(header["$EXTMIN"])[:2], expect["extmin"]) or \
                 not near_list(list(header["$EXTMAX"])[:2], expect["extmax"]):
             fail(case, "extents %s %s, expected %s %s" % (header["$EXTMIN"], header["$EXTMAX"],
                                                           expect["extmin"], expect["extmax"]))
+    else:
+        # The note hangs below the plan: same left edge and top, extended downwards (and possibly to the right).
+        lo, hi = list(header["$EXTMIN"])[:2], list(header["$EXTMAX"])[:2]
+        if not near(lo[0], expect["extmin"][0]) or not near(hi[1], expect["extmax"][1]) or \
+                lo[1] > expect["extmin"][1] - 2.5 * note["text_height"] or hi[0] < expect["extmax"][0] - 1e-6:
+            fail(case, "extents with note %s %s, plan extents %s %s" % (lo, hi, expect["extmin"], expect["extmax"]))
 
     # Tables.
     for name, color_and_weight in expect["layers"].items():
@@ -1815,8 +2503,10 @@ def ezdxf_checks(case, path, expect):
         fail(case, "DASHED pattern %s, expected %s" % (dashed, expect["dash"]))
 
     # Entities, in file order.
-    entities = list(doc.modelspace())
+    all_entities = list(doc.modelspace())
     expected = expect["entities"]
+    # The provenance note, when there is one, is written after the last plan entity.
+    entities, note_entities = (all_entities[:len(expected)], all_entities[len(expected):]) if note else (all_entities, [])
     if len(entities) != len(expected):
         fail(case, "%d entities, expected %d" % (len(entities), len(expected)))
         got, want = Counter((e.dxf.layer, e.dxftype()) for e in entities), Counter((x["layer"], x["type"]) for x in expected)
@@ -1824,6 +2514,8 @@ def ezdxf_checks(case, path, expect):
     else:
         for index, (entity, x) in enumerate(zip(entities, expected)):
             check_entity(case, doc, index, entity, x)
+    if note:
+        check_note(case, doc, note_entities, note, expect)
     length = 0.0
     for entity in entities:
         if entity.dxftype() == "LINE":
@@ -1861,6 +2553,9 @@ def ogr_checks(case, path, expect):
     expected = expect["entities"]
     if not expected:
         return
+    note_lines = 0
+    if expect.get("note"):
+        note_lines = len(list(ezdxf.readfile(path).modelspace())) - len(expected)
     try:
         meta, _, geoms, fields = raw.read(path, layer="entities")
     except Exception as exc:
@@ -1868,11 +2563,11 @@ def ogr_checks(case, path, expect):
         return
     names = list(meta["fields"])
     layers, subclasses = fields[names.index("Layer")], fields[names.index("SubClasses")]
-    if len(layers) != len(expected):
-        fail(case, "OGR sees %d features, expected %d" % (len(layers), len(expected)))
+    if len(layers) != len(expected) + note_lines:
+        fail(case, "OGR sees %d features, expected %d" % (len(layers), len(expected) + note_lines))
         return
     shapes = shapely.from_wkb(geoms)
-    if sorted(layers) != sorted(x["layer"] for x in expected):
+    if sorted(layers) != sorted([x["layer"] for x in expected] + ["NF-NOTES"] * note_lines):
         fail(case, "OGR layer names differ")
     line_total = sum(shapes[i].length for i in range(len(shapes)) if subclasses[i] == "AcDbEntity:AcDbLine")
     if not near(line_total, expect["line_length"], 1e-6 * max(1.0, expect["line_length"])):
@@ -1885,7 +2580,7 @@ def ogr_checks(case, path, expect):
     for sub, kind in (("AcDbEntity:AcDbLine", "LINE"), ("AcDbEntity:AcDbPolyline", "LWPOLYLINE"),
                       ("AcDbEntity:AcDbHatch", "HATCH"), ("AcDbEntity:AcDbText:AcDbText", "TEXT"),
                       ("AcDbEntity:AcDbCircle", "CIRCLE"), ("AcDbEntity:AcDbCircle:AcDbArc", "ARC")):
-        n = sum(1 for x in expected if x["type"] == kind)
+        n = sum(1 for x in expected if x["type"] == kind) + (note_lines if kind == "TEXT" else 0)
         if kinds.get(sub, 0) != n:
             fail(case, "OGR counts %d %s, expected %d" % (kinds.get(sub, 0), kind, n))
 
@@ -1910,7 +2605,7 @@ def librecad_print(directory, name, path):
         os.remove(pdf)
     try:
         subprocess.run([librecad_state["exe"], "dxf2pdf", "-a", "-t", out_dir, path], env=env,
-                       capture_output=True, text=True, timeout=240)
+                       capture_output=True, text=True, timeout=120)
     except Exception:
         return None
     return pdf if os.path.exists(pdf) else None
@@ -1919,6 +2614,9 @@ def librecad_print(directory, name, path):
 def librecad_checks(case, path, expect, directory):
     """LibreCAD (libdxfrw) must open the file and print it to a sensible page with content."""
     import shutil
+    if os.environ.get("NEXAFIX_EXTERNAL_LIBRECAD") != "1":
+        notes.append("LibreCAD cross-check skipped (set NEXAFIX_EXTERNAL_LIBRECAD=1 to run it)")
+        return
     if librecad_state["ok"] is None:
         librecad_state["exe"] = shutil.which("librecad")
         librecad_state["ok"] = False
@@ -1984,7 +2682,7 @@ def main(directory):
         case = expect["case"]
         path = os.path.join(directory, case + ".dxf")
         before = len(failures)
-        raw_checks(case, path)
+        raw_checks(case, path, expect)
         rdoc = ezdxf_checks(case, path, expect)
         ogr_checks(case, path, expect)
         librecad_checks(case, path, expect, directory)
@@ -2002,27 +2700,30 @@ if __name__ == "__main__":
     sys.exit(main(sys.argv[1]))
 """#
 
+/// Opens the exported files with independent readers (ezdxf, and GDAL and LibreCAD when installed).
+///
+/// Opt-in, because it starts Python and can take a while: run
+/// `NEXAFIX_EXTERNAL_DXF=1 swift test --filter DXFExternalValidationTests` (needs python3 with ezdxf).
+/// `NEXAFIX_EXTERNAL_LIBRECAD=1` adds a print of every file through LibreCAD, and `NEXAFIX_DXF_OUT=/some/folder`
+/// keeps the files in a new subfolder there; otherwise they live in a fresh temporary folder that is removed.
 final class DXFExternalValidationTests: XCTestCase {
 
-    /// Where the validation files go: `NEXAFIX_DXF_OUT` if set, else the agreed scratch folder when it can be
-    /// created, else a temporary directory.
-    private func outputDirectory() throws -> URL {
-        let fm = FileManager.default
-        var candidates: [String] = []
-        if let env = ProcessInfo.processInfo.environment["NEXAFIX_DXF_OUT"], !env.isEmpty { candidates.append(env) }
-        let scratch = "/tmp/claude-0/-home-user-NexaFix/d5c65b3d-5583-5bcd-b5e1-c0b608db4473/scratchpad/work/dxf"
-        if fm.fileExists(atPath: scratch) { candidates.append(scratch + "/out") }
-        candidates.append(NSTemporaryDirectory() + "nexafix-dxf-out")
-        for path in candidates {
-            do {
-                try fm.createDirectory(atPath: path, withIntermediateDirectories: true)
-                return URL(fileURLWithPath: path, isDirectory: true)
-            } catch { continue }
+    /// A new, empty folder for this run, so nothing that exists already is touched or removed.
+    private func makeRunDirectory() throws -> (url: URL, keep: Bool) {
+        let environment = ProcessInfo.processInfo.environment
+        let keep = !(environment["NEXAFIX_DXF_OUT"] ?? "").isEmpty
+        let base = keep ? URL(fileURLWithPath: environment["NEXAFIX_DXF_OUT"] ?? "", isDirectory: true)
+                        : URL(fileURLWithPath: NSTemporaryDirectory(), isDirectory: true)
+        let url = base.appendingPathComponent("nexafix-dxf-" + UUID().uuidString, isDirectory: true)
+        do {
+            try FileManager.default.createDirectory(at: url, withIntermediateDirectories: true)
+        } catch {
+            throw XCTSkip("no writable output directory")
         }
-        throw XCTSkip("no writable output directory")
+        return (url, keep)
     }
 
-    private func write(_ name: String, plan: PlanDrawing, options: DXFExporter.Options = DXFExporter.Options(),
+    private func write(_ name: String, plan: PlanDrawing, options: DXFExporter.Options = dxfMappingOptions,
                        expectation: [String: Any]? = nil, to directory: URL) throws {
         let text = DXFExporter.export(plan, options: options)
         try Data(text.utf8).write(to: directory.appendingPathComponent(name + ".dxf"))
@@ -2031,23 +2732,58 @@ final class DXFExternalValidationTests: XCTestCase {
         try json.write(to: directory.appendingPathComponent(name + ".expect.json"))
     }
 
+    #if os(macOS) || os(Linux)
+    /// Runs python3 with the output going to a log file (a pipe could fill up and stall a chatty child) and stops
+    /// the process when it has not finished by `timeout` seconds.
+    private func runPython(_ arguments: [String], timeout: TimeInterval, logIn directory: URL) throws
+        -> (status: Int32, output: String, timedOut: Bool) {
+        let log = directory.appendingPathComponent("python-" + UUID().uuidString + ".log")
+        _ = FileManager.default.createFile(atPath: log.path, contents: nil)
+        let handle = try FileHandle(forWritingTo: log)
+        defer { try? handle.close() }
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/usr/bin/env")
+        process.arguments = ["python3"] + arguments
+        process.standardOutput = handle
+        process.standardError = handle
+        try process.run()
+        let deadline = Date().addingTimeInterval(timeout)
+        while process.isRunning && Date() < deadline { Thread.sleep(forTimeInterval: 0.05) }
+        let timedOut = process.isRunning
+        if timedOut {
+            process.terminate()
+            process.waitUntilExit()
+        }
+        try? handle.synchronize()
+        let output = (try? String(contentsOf: log, encoding: .utf8)) ?? ""
+        return (process.terminationStatus, output, timedOut)
+    }
+    #endif
+
     func testExportedFilesPassExternalValidation() throws {
         #if os(macOS) || os(Linux)
-        let dir = try outputDirectory()
-        // Fresh run: remove stale cases from earlier runs.
-        for file in (try? FileManager.default.contentsOfDirectory(atPath: dir.path)) ?? [] where
-            file.hasSuffix(".expect.json") { try? FileManager.default.removeItem(at: dir.appendingPathComponent(file)) }
+        guard ProcessInfo.processInfo.environment["NEXAFIX_EXTERNAL_DXF"] == "1" else {
+            throw XCTSkip("external DXF validation is opt-in: set NEXAFIX_EXTERNAL_DXF=1 (needs python3 with ezdxf)")
+        }
+        let run = try makeRunDirectory()
+        if !run.keep { addTeardownBlock { try? FileManager.default.removeItem(at: run.url) } }
+        let dir = run.url
 
+        func mapping(_ edit: (inout DXFExporter.Options) -> Void = { _ in }) -> DXFExporter.Options {
+            var options = dxfMappingOptions
+            edit(&options)
+            return options
+        }
+
+        // The mapping of plan primitives to entities, without the note.
         let sample = DXFFixtures.samplePlan()
         try write("sample_mm", plan: sample, to: dir)
-        var metres = DXFExporter.Options(); metres.units = .metres
-        try write("sample_metres", plan: sample, options: metres, to: dir)
-        var trueColor = DXFExporter.Options(); trueColor.colorMode = .trueColor
-        try write("sample_truecolor", plan: sample, options: trueColor, to: dir)
-        var aci = DXFExporter.Options(); aci.colorMode = .nearestACI; aci.windowsLineEndings = true
-        try write("sample_aci_crlf", plan: sample, options: aci, to: dir)
-        var geometry = DXFExporter.Options(); geometry.includeTextLayers = false; geometry.includeFills = false
-        try write("sample_geometry_only", plan: sample, options: geometry, to: dir)
+        try write("sample_metres", plan: sample, options: mapping { $0.units = .metres }, to: dir)
+        try write("sample_truecolor", plan: sample, options: mapping { $0.colorMode = .trueColor }, to: dir)
+        try write("sample_aci_crlf", plan: sample,
+                  options: mapping { $0.colorMode = .nearestACI; $0.windowsLineEndings = true }, to: dir)
+        try write("sample_geometry_only", plan: sample,
+                  options: mapping { $0.includeTextLayers = false; $0.includeFills = false }, to: dir)
         try write("sample_offset_100m", plan: DXFFixtures.samplePlan(origin: Point2(100, 100)), to: dir)
         try write("sample_offset_far", plan: DXFFixtures.samplePlan(origin: Point2(1_000_000, -2_000_000)), to: dir)
         var scaled = DXFFixtures.samplePlan(); scaled.options.scale = 100
@@ -2057,31 +2793,38 @@ final class DXFExternalValidationTests: XCTestCase {
         try write("bulk_3000", plan: dxfBulkPlan(), to: dir)
         let edge = dxfEdgeCasePlan()
         let edgeExpectation: [String: Any] = [
-            "case": "edge_cases", "units": 4, "layers": DXFExpectation.layers, "entities": edge.expected,
-            "line_length": edge.lineLength,
+            "case": "edge_cases", "units": 4, "version": "AC1015", "layers": DXFExpectation.layers,
+            "entities": edge.expected, "line_length": edge.lineLength,
             "extmin": [-1000.0, -1000.0], "extmax": [6000.0, 6000.0], "dash": [150.0, -75.0],
         ]
         try write("edge_cases", plan: edge.plan, expectation: edgeExpectation, to: dir)
 
+        // Plans from the real builder, with the default options: status colours kept in BYLAYER mode, no group
+        // 420 in a release 2000 file, and the provenance note under the plan.
+        try write("real_plan_default", plan: dxfRealPlan(), options: DXFExporter.Options(), to: dir)
+        try write("real_plan_unmarked", plan: dxfRealPlan(markVerified: false), options: DXFExporter.Options(), to: dir)
+        try write("real_plan_truecolor", plan: dxfRealPlan(), options: DXFExporter.Options(colorMode: .trueColor), to: dir)
+        try write("real_plan_aci_metres", plan: dxfRealPlan(scale: 100),
+                  options: DXFExporter.Options(units: .metres, colorMode: .nearestACI), to: dir)
+        // The demo floor exactly as the export engine builds it (caption included), the plan the review reproduced.
+        let demo = DemoProperty.make(now: Date(timeIntervalSince1970: 1_700_000_000))
+        if let floor = demo.floors.first {
+            let drawing = ExportEngine.cadDrawing(for: floor, in: demo, scale: 50, units: .default)
+            try write("demo_engine_mm", plan: drawing, options: DXFExporter.Options(units: .millimetres), to: dir)
+            try write("demo_engine_metres_true", plan: drawing,
+                      options: DXFExporter.Options(units: .metres, colorMode: .trueColor), to: dir)
+        }
+        try write("sample_note_mm", plan: sample, options: DXFExporter.Options(), to: dir)
+        try write("sample_note_text_off", plan: sample, options: DXFExporter.Options(includeTextLayers: false), to: dir)
+
         let script = dir.appendingPathComponent("validate_dxf.py")
         try Data(dxfValidatorScript.utf8).write(to: script)
 
-        func run(_ arguments: [String]) throws -> (status: Int32, output: String) {
-            let process = Process()
-            process.executableURL = URL(fileURLWithPath: "/usr/bin/env")
-            process.arguments = ["python3"] + arguments
-            let pipe = Pipe()
-            process.standardOutput = pipe
-            process.standardError = pipe
-            try process.run()
-            let data = pipe.fileHandleForReading.readDataToEndOfFile()
-            process.waitUntilExit()
-            return (process.terminationStatus, String(decoding: data, as: UTF8.self))
-        }
-        guard let probe = try? run(["-c", "import ezdxf"]), probe.status == 0 else {
+        guard let probe = try? runPython(["-c", "import ezdxf"], timeout: 60, logIn: dir), probe.status == 0 else {
             throw XCTSkip("python3 with ezdxf is not available; external DXF validation skipped")
         }
-        let result = try run([script.path, dir.path])
+        let result = try runPython([script.path, dir.path], timeout: 600, logIn: dir)
+        XCTAssertFalse(result.timedOut, "external validation did not finish in 600 s:\n\(result.output)")
         XCTAssertEqual(result.status, 0, "external validation failed:\n\(result.output)")
         XCTAssertTrue(result.output.contains("failures: 0"), result.output)
         print(result.output)

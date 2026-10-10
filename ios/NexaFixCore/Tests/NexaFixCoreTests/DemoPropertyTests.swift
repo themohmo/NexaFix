@@ -63,7 +63,7 @@ final class DemoPropertyTests: XCTestCase {
     func testPropertyIdentity() {
         XCTAssertEqual(property.name, "Marina Gate 2 - Unit 2304")
         XCTAssertEqual(property.client, "Mr. Ahmed Khan")
-        XCTAssertEqual(property.reference, "NF-2026-1009-01")
+        XCTAssertEqual(property.reference, "DEMO-NF-2026-1009-01", "the demo's job number is visibly not a real one")
         XCTAssertEqual(property.kind, .apartment)
         XCTAssertEqual(property.createdAt, now)
         XCTAssertEqual(property.updatedAt, now)
@@ -455,6 +455,108 @@ final class DemoPropertyTests: XCTestCase {
                 }
             }
         }
+    }
+
+
+    // MARK: Self-labelling
+
+    func testTheDemoLabelsItselfAsSyntheticWhereverItCouldLeak() throws {
+        XCTAssertTrue(property.reference.hasPrefix("DEMO-"))
+        XCTAssertFalse(property.reference.hasPrefix("NF-"), "must not look like a real NexaFix job number")
+        XCTAssertEqual(DemoProperty.reference, property.reference)
+        XCTAssertTrue(property.notes.contains(DemoProperty.syntheticNote), property.notes)
+        XCTAssertTrue(property.notes.lowercased().contains("not a real site"))
+
+        // Every laser "verification" in the demo says it is made up.
+        var measureds: [(String, Measured)] = []
+        for r in rooms {
+            measureds.append(("\(r.name) ceiling", r.ceilingHeight))
+            for w in r.walls { measureds.append(("\(r.name) wall length", w.length)); measureds.append(("\(r.name) wall height", w.height)) }
+            for o in r.openings {
+                measureds.append(("\(r.name) \(o.kind) width", o.width)); measureds.append(("\(r.name) \(o.kind) height", o.height))
+                measureds.append(("\(r.name) \(o.kind) sill", o.sillHeight))
+            }
+            for m in r.customMeasurements { measureds.append(("\(r.name) \(m.label)", m.length)) }
+        }
+        let verified = measureds.filter { $0.1.isVerified }
+        XCTAssertGreaterThanOrEqual(verified.count, 6)
+        for (what, m) in verified {
+            XCTAssertTrue(m.verification?.note?.hasPrefix(DemoProperty.syntheticNote) == true, "\(what): \(m.verification?.note ?? "nil")")
+        }
+
+        // And the exports carry the labels: the scan JSON has them on every verified value, the costing spec has the reference.
+        let scan = String(decoding: try ScanExport.json(property: property, generatedAt: now), as: UTF8.self)
+        XCTAssertEqual(scan.components(separatedBy: DemoProperty.syntheticNote).count - 1, verified.count + 1,
+                       "one label per verified value plus the property notes")
+        XCTAssertTrue(scan.contains("DEMO-NF-2026-1009-01"))
+        XCTAssertFalse(scan.contains("\"NF-2026-1009-01\""), "the real-looking reference never appears on its own")
+        let costing = String(decoding: try CostingSpecExport.json(property: property), as: UTF8.self)
+        XCTAssertTrue(costing.contains("DEMO-NF-2026-1009-01"))
+        XCTAssertFalse(costing.contains("\"NF-2026-1009-01\""))
+    }
+
+    // MARK: Furniture
+
+    /// Interiors of two convex polygons overlap (separating-axis test, independent of the production code).
+    private func convexOverlap(_ a: [Point2], _ b: [Point2]) -> Bool {
+        func axes(_ p: [Point2]) -> [Point2] {
+            p.indices.map { i in (p[(i + 1) % p.count] - p[i]).perpendicularCCW.normalized }
+        }
+        for axis in axes(a) + axes(b) {
+            let pa = a.map { $0.dot(axis) }, pb = b.map { $0.dot(axis) }
+            if pa.max()! <= pb.min()! + 1e-6 || pb.max()! <= pa.min()! + 1e-6 { return false }
+        }
+        return true
+    }
+
+    func testFurnitureNeverOverlapsAndNeverBlocksADoor() {
+        for r in rooms {
+            // No two pieces occupy the same space: footprints that overlap must be at different heights.
+            for i in r.objects.indices {
+                for j in (i + 1)..<r.objects.count {
+                    let a = r.objects[i], b = r.objects[j]
+                    guard convexOverlap(a.footprint, b.footprint) else { continue }
+                    let apart = a.elevation + a.height <= b.elevation + 1e-9 || b.elevation + b.height <= a.elevation + 1e-9
+                    XCTAssertTrue(apart, "\(r.name): \(a.kind) at \(a.center) overlaps \(b.kind) at \(b.center)")
+                }
+            }
+            // Every door has its 0.8 m swing / access zone on the room side free of anything that could block it.
+            for o in r.openings where o.kind == .door {
+                guard let id = o.wallID, let wall = r.wall(withID: id) else { continue }
+                let (p, q) = o.planSegment(on: wall)
+                let n = wall.inwardNormal
+                let zone = [p, q, q + n * 0.8, p + n * 0.8]
+                for obj in r.objects where obj.elevation < o.height.scanned {
+                    XCTAssertFalse(convexOverlap(zone, obj.footprint),
+                                   "\(r.name): \(obj.kind) at (\(obj.center.x), \(obj.center.y)) stands in the zone of the door at (\(p.x), \(p.y))")
+                }
+            }
+        }
+        // Spot checks of the specific problems the review found.
+        let kitchen = room("Kitchen")
+        let fridge = kitchen.objects.first { $0.kind == .refrigerator }!
+        let cabinets = kitchen.objects.first { $0.kind == .storage && $0.elevation > 1 }!
+        XCTAssertFalse(convexOverlap(fridge.footprint, cabinets.footprint), "wall cabinets clear the refrigerator")
+        let cabinetEnd = cabinets.center.x + cabinets.width / 2, fridgeStart = fridge.center.x - fridge.width / 2
+        XCTAssertLessThan(cabinetEnd, fridgeStart - 0.05)
+    }
+
+    func testTheBedroomsAreDeliberatelyTight() {
+        // Bedroom 2's west wall leans towards the master bedroom: about 10 cm at the closest, tighter than the 12-20 cm of
+        // the other pairs. SceneGeometryTests relies on this squeeze (it thins those two rooms' walls), so it is a
+        // documented property of the demo rather than an accident.
+        let g = gap(room("Master Bedroom").outline, room("Bedroom 2").outline)
+        XCTAssertGreaterThanOrEqual(g, 0.09)
+        XCTAssertLessThan(g, 0.12, "\(g)")
+        for (a, b) in [("Living Room", "Kitchen"), ("Living Room", "Corridor"), ("Corridor", "Master Bedroom"), ("Corridor", "Bedroom 2")] {
+            let other = gap(room(a).outline, room(b).outline)
+            XCTAssertTrue(other >= 0.12 && other <= 0.21, "\(a) / \(b): \(other)")
+        }
+        // Their doors still line up with the corridor's.
+        let corridor = room("Corridor"), b2 = room("Bedroom 2")
+        let b2Door = b2.openings.first { $0.kind == .door }!
+        let doorMid = planMidpoint(of: b2Door, in: b2)!
+        XCTAssertTrue(corridor.openings.contains { $0.kind == .door && planMidpoint(of: $0, in: corridor)!.distance(to: doorMid) < 0.25 })
     }
 
     // MARK: Time and Codable

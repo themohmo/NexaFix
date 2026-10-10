@@ -25,16 +25,23 @@ extension RoomBuilder {
 
     // MARK: Openings
 
+    /// A parent wall must be at most this much (metres) farther from the opening than the nearest wall.
+    static let parentTieSlack = 0.05
+    /// A solid wall at most this much (metres) farther than a virtual one is preferred to it.
+    static let solidTieSlack = 0.02
+
     /// Attach doors, windows and openings to the final walls.
     ///
-    /// * `wallID`: the wall `parentID` points at (through `surfaceToWall`, so merged walls work)
-    ///   while the opening is within `openingParentTrustDistance` of it; otherwise the nearest solid
-    ///   wall by distance from the opening centre; farther than `openingMatchDistance` from every
-    ///   wall -> nil and a warning.
+    /// * `wallID`: the wall `parentID` points at (through `surfaceToWall`, so merged walls work) while
+    ///   it is also the NEAREST wall to the opening centre (within `parentTieSlack`) and within
+    ///   `openingParentTrustDistance`; otherwise the nearest wall of all by distance from the opening
+    ///   centre, a solid wall winning a near-tie (`solidTieSlack`) against a virtual one; farther than
+    ///   `openingMatchDistance` from every wall -> nil and a warning.
     /// * `offsetFromWallStart`: along the FINAL (counter-clockwise) wall from `wall.start` to the
     ///   opening's near edge, clamped so the opening stays on the wall.
     /// * `width = dimensions.x` (clamped to the wall length), `height = dimensions.y`,
     ///   `sillHeight = (centre.y - height/2) - floorElevation`, floored at 0 and snapped to 0 below 3 cm.
+    /// * An opening that had to be moved or narrowed is reported with the amounts; more than 10 cm is a caution.
     static func buildOpenings(capture: RawCapture, walls: [Wall], surfaceToWall: [UUID: UUID],
                               floorElevation: Double, options: Options) -> OpeningResult {
         struct Item {
@@ -61,27 +68,26 @@ extension RoomBuilder {
                 var sill = (c.y - height / 2) - floorElevation
                 if !(sill >= 0.03) { sill = 0 }
 
-                // Which wall?
+                // Which wall? Distances from the opening centre to every wall.
+                let distances = walls.map { distance(from: p, to: $0) }
+                let nearestOverall = distances.min()
                 var wallIndex: Int?
                 if let pid = s.parentID, let wid = surfaceToWall[pid],
                    let idx = walls.firstIndex(where: { $0.id == wid }),
-                   distance(from: p, to: walls[idx]) <= options.openingParentTrustDistance {
+                   distances[idx] <= options.openingParentTrustDistance,
+                   distances[idx] <= (nearestOverall ?? .infinity) + parentTieSlack {
                     wallIndex = idx
                 }
-                var nearest: Double?
-                if wallIndex == nil {
-                    for solidPass in [true, false] {
-                        var bestIdx: Int?
-                        var bestD = Double.infinity
-                        for (i, w) in walls.enumerated() where (w.kind == .solid) == solidPass {
-                            let d = distance(from: p, to: w)
-                            if d < bestD - 1e-9 { bestD = d; bestIdx = i }
-                        }
-                        if let bi = bestIdx {
-                            nearest = min(nearest ?? .infinity, bestD)
-                            if bestD <= options.openingMatchDistance { wallIndex = bi; break }
-                        }
+                let nearest = nearestOverall
+                if wallIndex == nil, let nearestOverall {
+                    var bestIdx = distances.indices.min { distances[$0] != distances[$1] ? distances[$0] < distances[$1] : $0 < $1 }
+                    if let bi = bestIdx, walls[bi].kind == .virtual {
+                        // A solid wall that is practically as near as the virtual one wins the tie.
+                        let solid = distances.indices.filter { walls[$0].kind == .solid && distances[$0] <= nearestOverall + solidTieSlack }
+                            .min { distances[$0] != distances[$1] ? distances[$0] < distances[$1] : $0 < $1 }
+                        if let solid { bestIdx = solid }
                     }
+                    if let bi = bestIdx, distances[bi] <= options.openingMatchDistance { wallIndex = bi }
                 }
 
                 guard let wi = wallIndex else {
@@ -101,8 +107,9 @@ extension RoomBuilder {
                 let width = min(s.dimensions.x, len)
                 let wanted = along - width / 2
                 let near = min(max(0, wanted), max(0, len - width))
-                if width < s.dimensions.x - 0.01 || abs(near - wanted) > 0.01 {
-                    warnings.append(.openingAdjusted(id: id, kind: kind))
+                let narrowedBy = s.dimensions.x - width, movedBy = abs(near - wanted)
+                if narrowedBy > 0.01 || movedBy > 0.01 {
+                    warnings.append(.openingAdjusted(id: id, kind: kind, movedBy: movedBy, narrowedBy: narrowedBy))
                 }
                 items.append(Item(opening: Opening(id: id, kind: kind, wallID: wall.id, offsetFromWallStart: near,
                                                    width: Measured(scanned: width), height: Measured(scanned: height),

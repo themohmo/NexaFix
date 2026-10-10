@@ -40,7 +40,7 @@ public struct VerificationChecklist: Sendable {
         public var target: MeasureTarget
         /// "Wall A", "Door 1", "Ceiling height", a custom label.
         public var title: String
-        /// "Length", "Width - Wall B", nil for the ceiling.
+        /// "Length", "Width \u{00B7} Wall B" (middle dot U+00B7), nil for the ceiling. See `Room.detail(for:)`.
         public var detail: String?
         /// "Wall A length", "Door 1 width": title and quantity in one string.
         public var fullTitle: String

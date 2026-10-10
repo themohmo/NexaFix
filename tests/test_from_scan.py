@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import copy
 import json
+import os
 import subprocess
 import sys
 from pathlib import Path
@@ -461,3 +462,284 @@ def test_runs_from_any_directory(tmp_path):
     assert (tmp_path / "spec.json").exists()
     r = subprocess.run([sys.executable, str(SCRIPTS / "from_scan.py"), "--help"], capture_output=True, text=True)
     assert r.returncode == 0 and "--starter" in r.stdout
+
+
+# ---------------------------------------------------------------- --strict fails closed
+def verified(spec: dict) -> dict:
+    """The fixture with a scan block that proves everything joinery-critical was verified."""
+    scan = spec["x_nexafix_scan"]
+    scan["unverified_joinery"] = []
+    scan["warning"] = None
+    scan["joinery_verified_count"] = scan["joinery_measurement_count"]
+    return spec
+
+
+def _drop_block(s):
+    del s["x_nexafix_scan"]
+
+
+def _drop_list(s):
+    verified(s)
+    del s["x_nexafix_scan"]["unverified_joinery"]
+
+
+def _list_empty_counts_say_unverified(s):
+    s["x_nexafix_scan"].update(unverified_joinery=[], warning=None)     # joinery_verified_count stays below the total
+
+
+def _counts_missing(s):
+    verified(s)
+    del s["x_nexafix_scan"]["joinery_verified_count"]
+
+
+def _counts_zero(s):
+    verified(s)
+    s["x_nexafix_scan"].update(joinery_measurement_count=0, joinery_verified_count=0)
+
+
+def _counts_overclaim(s):
+    verified(s)
+    s["x_nexafix_scan"]["joinery_verified_count"] = s["x_nexafix_scan"]["joinery_measurement_count"] + 3
+
+
+def _counts_not_numbers(s):
+    verified(s)
+    s["x_nexafix_scan"]["joinery_verified_count"] = "all"
+
+
+def _counts_disagree_with_list(s):
+    s["x_nexafix_scan"]["joinery_verified_count"] -= 2                  # list now has too few entries for the counts
+
+
+def _block_is_not_an_object(s):
+    s["x_nexafix_scan"] = ["verified"]
+
+
+def _all_verified_but_list_not_empty(s):
+    verified(s)
+    s["x_nexafix_scan"]["unverified_joinery"] = [{"room": "X", "item": "Wall A length", "scanned_m": 3.0}]
+
+
+@pytest.mark.parametrize("mutate, why", [
+    (_drop_block, "no `x_nexafix_scan` block"),
+    (_drop_list, "`x_nexafix_scan.unverified_joinery` is missing"),
+    (_list_empty_counts_say_unverified, "joinery-critical dimensions are verified"),
+    (_counts_missing, "are missing or not whole numbers"),
+    (_counts_zero, "counts no joinery-critical dimensions"),
+    (_counts_overclaim, "claims"),
+    (_counts_not_numbers, "are missing or not whole numbers"),
+    (_counts_disagree_with_list, "disagree"),
+    (_block_is_not_an_object, "no `x_nexafix_scan` block"),
+    (_all_verified_but_list_not_empty, "listed as unverified"),
+])
+def test_strict_fails_closed_when_verification_is_unknown_or_inconsistent(tmp_path, mutate, why):
+    spec = fixture()
+    mutate(spec)
+    out = tmp_path / "o.json"
+    r = run(write_spec(tmp_path, spec), "--starter", "--out", out, "--strict")
+    assert r.returncode == 3, r.stderr
+    assert "--strict" in r.stderr and why in r.stderr, r.stderr
+    assert out.exists()                       # still written: the estimator can budget with it, the exit code is the gate
+    # Without --strict the same file is accepted (the gate is opt-in).
+    r = run(write_spec(tmp_path, spec, "again.json"), "--starter", "--out", tmp_path / "o2.json")
+    assert r.returncode == 0, r.stderr
+
+
+def test_strict_passes_only_when_the_scan_proves_everything_is_verified(tmp_path):
+    r = run(write_spec(tmp_path, verified(fixture())), "--starter", "--out", tmp_path / "o.json", "--strict")
+    assert r.returncode == 0, r.stderr
+    assert "ERROR" not in r.stderr and "WARNING" not in r.stderr
+    # The strict gate also applies when the spec goes to stdout.
+    r = run(write_spec(tmp_path, verified(fixture())), "--starter", "--strict")
+    assert r.returncode == 0 and json.loads(r.stdout)["scope"]
+
+
+def test_strict_problems_function_lists_every_reason():
+    spec = fixture()
+    problems = from_scan.strict_problems(spec, [])
+    assert len(problems) == 1 and "dimension(s) are LiDAR-scanned only" in problems[0]
+    # Counts that contradict the list are a second, separate reason.
+    spec["x_nexafix_scan"]["joinery_verified_count"] = 0
+    problems = from_scan.strict_problems(spec, [])
+    assert len(problems) == 2 and "disagree" in problems[1]
+    del spec["x_nexafix_scan"]
+    assert from_scan.strict_problems(spec, []) == ["no `x_nexafix_scan` block, so nothing says which dimensions were verified on site"]
+    assert from_scan.strict_problems(verified(fixture()), []) == []
+
+
+# ---------------------------------------------------------------- the engine's name guessing
+def finding_spec() -> dict:
+    """Four rooms as the app exports them (tags from the room KIND), with names that make the engine change three."""
+    def room(name, length, width, tags, wet=None):
+        r = {"name": name, "length": length, "width": width, "height": 2.8, "doors": [[0.9, 2.1]], "windows": [], "tags": tags}
+        if wet is not None:
+            r["wet"] = wet
+        return r
+    spec = verified(fixture())
+    spec["rooms"] = [room("Living Room", 6, 4, ["living"], False),
+                     room("Corridor to Balcony", 5, 1.2, ["circulation"], False),
+                     room("Master Bedroom Terrace Side", 4, 4, ["bedroom"], False),
+                     room("Showcase Area", 4, 3, [])]                      # kind "other": `wet` is left to the engine
+    return spec
+
+
+def test_the_engine_really_reclassifies_these_rooms():
+    """Independent of the code under test: what the engine's own parser does to the four rooms."""
+    living, corridor, master, showcase = rooms_of(finding_spec())
+    assert corridor.tags == {"circulation", "outdoor"} and not corridor.matches("all") and not corridor.matches("dry")
+    assert master.tags == {"bedroom", "outdoor"} and not master.matches("dry")
+    assert showcase.tags == {"bathroom"} and showcase.wet and not showcase.matches("dry") and showcase.matches("all")
+    assert living.matches("dry") and living.matches("all")
+
+
+def test_reclassified_rooms_are_reported_with_their_areas(tmp_path):
+    spec = finding_spec()
+    rooms = rooms_of(spec)
+    changes = from_scan.engine_reclassifications(spec, rooms)
+    assert [c["room"] for c in changes] == ["Corridor to Balcony", "Master Bedroom Terrace Side", "Showcase Area"]
+    assert all(c["excluded"] for c in changes)
+    assert changes[0]["added"] == ["outdoor"] and changes[0]["area"] == pytest.approx(6.0)
+    assert changes[2]["became_wet"] is True and changes[2]["added"] == ["bathroom"]
+    assert "6.0 m2" in changes[0]["message"] and "outdoor" in changes[0]["message"]
+    assert "wet area" in changes[2]["message"]
+
+    p = write_spec(tmp_path, spec)
+    r = run(p, "--starter", "--check", "--out", tmp_path / "o.json")
+    assert r.returncode == 0, r.stderr                      # a warning, not a failure, without --strict
+    assert "engine dry run: ok" in r.stderr
+    assert "WARNING: THE COSTING ENGINE LEAVES 3 ROOM(S) OUT BECAUSE OF THEIR NAMES" in r.stderr
+    for name in ("Corridor to Balcony (6.0 m2)", "Master Bedroom Terrace Side (16.0 m2)", "Showcase Area (12.0 m2)"):
+        assert name in r.stderr
+    assert "Living Room" not in r.stderr.split("LEAVES")[1].split("Rename the room")[0]
+    # What it costs: flooring covers the living room only (24 m2) although three indoor rooms are dry.
+    est = estimate(tmp_path / "o.json", tmp_path / "out")
+    flooring = next(l for l in est["scope"][0]["internal"]["lines"] if l["ref"] == "spc_plank")
+    assert flooring["calc"].startswith("24 m"), flooring["calc"]
+
+
+def test_strict_refuses_a_scan_the_engine_would_under_quote(tmp_path):
+    r = run(write_spec(tmp_path, finding_spec()), "--starter", "--out", tmp_path / "o.json", "--strict")
+    assert r.returncode == 3, r.stderr                     # every dimension is verified, but three rooms drop out
+    assert "--strict: the engine leaves out of the `all` / `dry` selectors" in r.stderr
+    assert "Corridor to Balcony" in r.stderr.split("--strict:")[1]
+    # Renaming the rooms fixes it.
+    spec = finding_spec()
+    for r_, new in zip(spec["rooms"], ["Living Room", "Passage", "Main Suite", "Display Area"]):
+        r_["name"] = new
+    r = run(write_spec(tmp_path, spec, "renamed.json"), "--starter", "--out", tmp_path / "o2.json", "--strict")
+    assert r.returncode == 0, r.stderr
+    assert "LEAVES" not in r.stderr
+
+
+def test_a_tag_added_without_dropping_the_room_is_only_a_note(tmp_path):
+    # "Living / Kitchen" is a living room whose name adds `kitchen`: informational, and --strict still passes.
+    r = run(write_spec(tmp_path, verified(fixture())), "--starter", "--out", tmp_path / "o.json", "--strict")
+    assert r.returncode == 0, r.stderr
+    assert "NOTE: Living / Kitchen (20.9 m2): the engine also tags it `kitchen` from its name" in r.stderr
+    assert "WARNING: THE COSTING ENGINE" not in r.stderr
+
+
+def test_unchanged_rooms_produce_no_reclassification_output():
+    spec = fixture()
+    for r in spec["rooms"]:
+        r["name"] = {"Living / Kitchen": "Main Area", "Bathroom": "Bathroom", "Balcony": "Balcony"}[r["name"]]
+    assert from_scan.engine_reclassifications(spec) == []
+
+
+def test_reclassification_when_the_file_has_no_wet_flag_for_a_dry_looking_room():
+    spec = fixture()
+    spec["rooms"][0]["name"] = "Wc Lobby"
+    spec["rooms"][0].pop("wet", None)
+    spec["rooms"][0]["tags"] = []
+    [c] = [c for c in from_scan.engine_reclassifications(spec) if c["room"] == "Wc Lobby"]
+    assert c["became_wet"] and c["excluded"] and set(c["added"]) == {"bathroom", "circulation"}
+
+
+# The same table as DataExportTests.engineGuessTable on the Swift side. The Swift mirror of the engine's
+# name guessing is only a heads-up in the exported notes; this proves it and the engine agree.
+ENGINE_GUESS_TABLE = [
+    ("Corridor to Balcony", ["circulation", "outdoor"]), ("Master Bedroom Terrace Side", ["outdoor"]),
+    ("Showcase Area", ["bathroom"]), ("Bedroom 2 Ensuite", ["bathroom"]), ("Living Room", ["living"]),
+    ("Maid's Room", ["utility"]), ("Master Bath", ["bathroom"]), ("Master", ["bedroom"]), ("Hall", ["circulation"]),
+    ("Wallpaper Store", ["utility"]), ("Store Room", ["utility"]), ("Majlis", ["living"]), ("Kitchenette", ["kitchen"]),
+    ("غرفة المعيشة", []), ("", []),
+    ("BALCONY", ["outdoor"]), ("Dining", ["living"]), ("Powder Room", ["bathroom"]), ("Entrance", ["circulation"]),
+    ("Lobby / Foyer", ["circulation"]), ("Study", []), ("Terrace", ["outdoor"]), ("Master Bedroom", ["bedroom"]),
+    ("Walk-in WC", ["bathroom"]), ("Bedroom", ["bedroom"]), ("Hallway Bedroom", ["bedroom", "circulation"]),
+    ("Entry", ["circulation"]), ("Kitchen", ["kitchen"]), ("Laundry", ["utility"]), ("Storage", []), ("Office", []),
+    ("Reception", []), ("Meeting Room", []), ("Room", []), ("Living", ["living"]), ("Cinema Room", []),
+    ("Master Suite Balcony", ["outdoor"]), ("Master Laundry", ["utility"]),
+]
+
+
+@pytest.mark.parametrize("name, expected", ENGINE_GUESS_TABLE)
+def test_swift_name_guess_table_matches_the_engine(name, expected):
+    from nexa_costing.spec import _guess_tags
+    assert sorted(_guess_tags(name)) == expected
+
+
+def test_malformed_room_fields_are_reported_not_crashed(tmp_path):
+    spec = fixture()
+    spec["rooms"][0]["tags"] = 5                           # the engine's parser raises TypeError on this
+    out = tmp_path / "o.json"
+    r = run(write_spec(tmp_path, spec), "--starter", "--out", out)
+    assert r.returncode == 2, r.stderr
+    assert "Traceback" not in r.stderr and "cannot be read" in r.stderr and "Living / Kitchen" in r.stderr
+    assert not out.exists()
+
+
+# ---------------------------------------------------------------- output encoding, file mode, floors
+def test_stdout_is_utf8_even_when_the_console_cannot_encode_it(tmp_path):
+    spec = fixture()
+    spec["rooms"][0]["name"] = "غرفة المعيشة / Majlis"
+    spec["project"]["client"] = "السيد أحمد"
+    env = {**os.environ, "PYTHONIOENCODING": "ascii", "PYTHONUTF8": "0"}
+    r = subprocess.run([sys.executable, str(SCRIPTS / "from_scan.py"), str(write_spec(tmp_path, spec)), "--starter"],
+                       capture_output=True, env=env)
+    assert r.returncode == 0, r.stderr.decode("utf-8", "replace")
+    assert b"Traceback" not in r.stderr and b"UnicodeEncodeError" not in r.stderr
+    parsed = json.loads(r.stdout.decode("utf-8"))
+    assert parsed["rooms"][0]["name"] == spec["rooms"][0]["name"]
+    assert parsed["project"]["client"] == spec["project"]["client"]
+    assert len(parsed["scope"]) == 2
+
+
+@pytest.mark.skipif(os.name == "nt", reason="POSIX permission bits")
+def test_out_file_gets_the_normal_mode_not_the_temp_file_mode(tmp_path):
+    old = os.umask(0o022)
+    try:
+        out = tmp_path / "spec.json"
+        r = run(FIXTURE, "--starter", "--out", out)
+        assert r.returncode == 0, r.stderr
+        assert (out.stat().st_mode & 0o777) == 0o644          # 0666 minus the umask, not mkstemp's 0600
+        # Overwriting keeps whatever mode the file already had.
+        out.chmod(0o640)
+        r = run(FIXTURE, "--starter", "--out", out)
+        assert r.returncode == 0, r.stderr
+        assert (out.stat().st_mode & 0o777) == 0o640
+        # A stricter umask is honoured for a new file.
+        os.umask(0o077)
+        other = tmp_path / "private.json"
+        assert run(FIXTURE, "--starter", "--out", other).returncode == 0
+        assert (other.stat().st_mode & 0o777) == 0o600
+    finally:
+        os.umask(old)
+
+
+def test_unverified_list_names_the_floor_when_the_property_has_several():
+    spec = fixture()
+    items = spec["x_nexafix_scan"]["unverified_joinery"]
+    for i, item in enumerate(items):
+        item["floor"] = "Ground" if i % 2 == 0 else "First"
+    lines = "\n".join(from_scan.unverified_block(spec))
+    assert f"  - {items[0]['room']} (Ground): {items[0]['item']}" in lines
+    assert f"  - {items[1]['room']} (First): {items[1]['item']}" in lines
+    # One floor only: no clutter.
+    for item in items:
+        item["floor"] = "Ground"
+    assert "(Ground)" not in "\n".join(from_scan.unverified_block(spec))
+    # The same name on two floors stays distinguishable.
+    twins = [{"room": "Bedroom", "floor": f, "item": "Wall A length", "scanned_m": 4.0, "typical_tolerance_m": 0.06} for f in ("Ground", "First")]
+    spec["x_nexafix_scan"]["unverified_joinery"] = twins
+    text = "\n".join(from_scan.unverified_block(spec))
+    assert "Bedroom (Ground): Wall A length" in text and "Bedroom (First): Wall A length" in text

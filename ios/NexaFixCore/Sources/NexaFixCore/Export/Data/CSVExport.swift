@@ -13,6 +13,11 @@ import Foundation
 //  - Column names carry the unit (`length_mm`, `floor_area_m2`). Every measured dimension is three
 //    columns in a row: the value to use (`length_mm`), what LiDAR read (`length_scanned_mm`) and
 //    whether a person checked it on site (`length_verified`, yes / no) plus who (`length_source`).
+//  - Figures derived from several walls (perimeters, a rectangle's length and width, the effective
+//    floor area) follow the same pattern: the value, the LiDAR-only figure and a `_verified` flag
+//    that is `yes` only when every wall behind the figure was checked. A blend of verified and
+//    scanned walls is `no`: it is neither measurement. Floor area and volume of an irregular room
+//    come from scanned corner coordinates and are never `yes`.
 //  - Text that a spreadsheet would run as a formula (starts with = + - @, tab or CR) gets a leading
 //    apostrophe, the standard defence against CSV injection. Numbers are never touched.
 //  - Row order is the model order: floors, rooms, walls in loop order, openings by wall then
@@ -132,11 +137,22 @@ public enum CSVExport {
     // Rows are built with explicit `[String]` arrays and `append` / `+=` of one array at a time.
     // Long `+` chains of mixed array literals make the Swift type checker take tens of seconds.
 
+    /// `yes` / `no` for a flag; empty when the figure does not exist (a room that is not a rectangle).
+    private static func yesNo(_ flag: Bool?) -> String {
+        guard let flag else { return "" }
+        return flag ? "yes" : "no"
+    }
+
     private static func rooms(_ property: Property, _ q: Quantities) -> String {
         var header: [String] = ["floor", "level", "room_id", "room", "kind", "scanned_at"]
-        header += ["floor_area_\(q.a)", "effective_floor_area_\(q.a)", "perimeter_\(q.l)", "wall_perimeter_\(q.l)"]
+        header += ["floor_area_\(q.a)", "effective_floor_area_\(q.a)", "effective_floor_area_scanned_\(q.a)", "effective_floor_area_verified"]
+        header += ["perimeter_\(q.l)", "perimeter_scanned_\(q.l)", "perimeter_verified"]
+        header += ["wall_perimeter_\(q.l)", "wall_perimeter_scanned_\(q.l)", "wall_perimeter_verified"]
         header += q.measuredHeaders("ceiling_height")
-        header += ["is_rectangular", "length_\(q.l)", "width_\(q.l)", "volume_\(q.v)"]
+        header += ["is_rectangular"]
+        header += ["length_\(q.l)", "length_scanned_\(q.l)", "length_verified"]
+        header += ["width_\(q.l)", "width_scanned_\(q.l)", "width_verified"]
+        header += ["volume_\(q.v)"]
         header += ["gross_wall_area_\(q.a)", "opening_area_\(q.a)", "net_wall_area_\(q.a)"]
         header += ["verified_count", "measurement_count", "joinery_verified_count", "joinery_measurement_count"]
         header += ["walls", "openings", "objects", "notes"]
@@ -145,15 +161,18 @@ public enum CSVExport {
         for floor in property.floors {
             for room in floor.rooms {
                 let m = room.metrics
+                let d = DataDerived(room: room, metrics: m)
                 let c = DataMeasureList.counts(for: room)
                 var cells: [String] = [safeText(floor.name), String(floor.level), room.id.uuidString, safeText(room.name)]
                 cells += [room.kind.rawValue, DataDates.iso8601Millis(room.scannedAt)]
-                cells += [q.area(m.floorArea), q.area(m.effectiveFloorArea)]
-                cells += [q.length(m.perimeter), q.length(m.wallPerimeter)]
+                cells.append(q.area(m.floorArea))
+                cells += [q.area(m.effectiveFloorArea), q.area(d.effectiveAreaScanned), yesNo(d.effectiveAreaVerified)]
+                cells += [q.length(m.perimeter), q.length(d.perimeterScanned), yesNo(d.perimeterVerified)]
+                cells += [q.length(m.wallPerimeter), q.length(d.wallPerimeterScanned), yesNo(d.wallPerimeterVerified)]
                 cells += q.measuredCells(room.ceilingHeight)
                 cells.append(m.isRectangular ? "yes" : "no")
-                cells.append(m.isRectangular ? q.optionalLength(m.length) : "")
-                cells.append(m.isRectangular ? q.optionalLength(m.width) : "")
+                cells += [m.isRectangular ? q.optionalLength(m.length) : "", q.optionalLength(d.lengthScanned), yesNo(d.lengthVerified)]
+                cells += [m.isRectangular ? q.optionalLength(m.width) : "", q.optionalLength(d.widthScanned), yesNo(d.widthVerified)]
                 cells += [q.volume(m.volume), q.area(m.grossWallArea), q.area(m.openingArea), q.area(m.netWallArea)]
                 cells += [String(c.verified), String(c.total), String(c.joineryVerified), String(c.joineryTotal)]
                 cells += [String(room.walls.count), String(room.openings.count), String(room.objects.count)]
@@ -203,7 +222,8 @@ public enum CSVExport {
                     let fromEnd: Double? = wall.map { $0.geometricLength - o.offsetFromWallStart - o.width.scanned }
                     let wallLabel: String = ref.wallIndex.map { DataLabels.wall($0) } ?? ""
                     var cells: [String] = [safeText(floor.name), room.id.uuidString, safeText(room.name), o.id.uuidString]
-                    cells += [ref.label, o.kind.rawValue, o.wallID?.uuidString ?? "", wallLabel]
+                    // A wall id that is not a wall of this room is a dangling reference: left empty, like no wall.
+                    cells += [ref.label, o.kind.rawValue, wall?.id.uuidString ?? "", wallLabel]
                     cells += [q.length(o.offsetFromWallStart), q.optionalLength(fromEnd)]
                     cells += q.measuredCells(o.width)
                     cells += q.measuredCells(o.height)

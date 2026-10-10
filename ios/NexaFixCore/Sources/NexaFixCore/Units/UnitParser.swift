@@ -31,11 +31,23 @@ import Foundation
 ///   metric `m` then `cm` then `mm` (`3 m 24 cm 5 mm`), imperial `ft` then `in`
 ///   (`10 ft 7 in`, `10'-7 3/4"`). Mixing systems (`3m 2cm 4in`), repeating a unit
 ///   (`3m 2m`) or going up (`7 in 2 ft`) is rejected.
+///   - **Each part after the first must be smaller than what carries into the part before it:**
+///     inches below 12 after feet, centimetres below 100 after metres, millimetres below 10 after
+///     centimetres and below 1000 after metres. `10' 75` (a mistyped `10' 7.5"`), `10' 71/2"`
+///     (a missing space), `3 m 150 cm` and `3 m 2000 mm` are rejected, never read as a longer length.
+///     A part that stands alone or leads is not limited: `127"` and `150 cm` are fine.
+///   - **Only the last part may be fractional or decimal** (`10 ft 7.5 in`); `10.5' 7"` has no
+///     sensible reading and is rejected.
+///   - An architectural hyphen after the foot mark (`10'-7"`, `10' - 7"`) must be spaced the same
+///     on both sides. A hyphen touching only the number (`10' -7"`) is a minus sign and is rejected.
 /// - **Digits** may be Western or Arabic-Indic.
+/// - **Invisible formatting characters** (direction marks, zero-width spaces, a byte-order mark and
+///   the rest of Unicode category Cf) are dropped before parsing, because numbers pasted from
+///   WhatsApp, Notes or an Arabic keyboard often carry them.
 /// - Rejected: empty text, zero (unless `allowZero`), negative or `+`-signed numbers, a number
 ///   ending in a separator (`5.`), anything that is not a number with a recognised unit
-///   (`abc`, `1e3`, `inf`, `nan`), a unit with no number, input over 120 characters, and any
-///   result over `maximumLengthMetres`.
+///   (`abc`, `1e3`, `inf`, `nan`), a unit with no number, input over 120 characters, any
+///   result over `maximumLengthMetres` and any non-zero result under `minimumLengthMetres`.
 ///
 /// A parsed value says nothing about plausibility: `3,245` typed into a millimetre field is
 /// 3.245 mm. Callers that want a safety net can compare against `suspiciouslySmallMetres`.
@@ -47,6 +59,22 @@ public enum UnitParser {
     /// A result below this many metres (1 cm) is legal but probably a unit mistake;
     /// UI can ask the user to confirm.
     public static let suspiciouslySmallMetres = 0.01
+
+    /// Non-zero lengths below this many metres (0.1 mm) are rejected: no tape or laser reads
+    /// that, so such a number is a unit slip. Zero is decided by `allowZero` alone.
+    public static let minimumLengthMetres = 0.0001
+
+    /// Whether `metres` is a length a person could have measured: finite, no more than
+    /// `maximumLengthMetres`, and either at least `minimumLengthMetres` or exactly zero with
+    /// `allowZero`. The parser and `Room.setVerification(_:for:)` both use this, so a value the
+    /// parser accepts is never refused by the model, and one the parser refuses cannot reach the
+    /// model by another route.
+    public static func isPlausibleLength(_ metres: Double, allowZero: Bool = false) -> Bool {
+        guard metres.isFinite else { return false }
+        if metres == 0 { return allowZero }
+        // A relative slack of 1e-9 keeps "0.1 mm" (0.1 / 1000 is not exactly 0.0001) legal.
+        return metres >= minimumLengthMetres * (1 - 1e-9) && metres <= maximumLengthMetres
+    }
 
     /// Input longer than this many characters is rejected without parsing.
     private static let maximumInputLength = 120
@@ -95,10 +123,14 @@ public enum UnitParser {
                 }
             }
             segments.append((value, unit))
+            let spaceBeforeHyphen = cursor.peek == " "
             cursor.skipSpaces()
-            // Architectural style 10'-7": a hyphen may follow a feet mark.
+            // Architectural style 10'-7": a hyphen may follow a feet mark, spaced the same on both
+            // sides. "10' -7" has a minus sign on the number, which is never a length.
             if unit == .foot, cursor.peek == "-" {
                 cursor.advance()
+                let spaceAfterHyphen = cursor.peek == " "
+                guard spaceBeforeHyphen == spaceAfterHyphen else { return nil }
                 cursor.skipSpaces()
                 pendingSeparator = true
             }
@@ -122,15 +154,20 @@ public enum UnitParser {
                 guard let u = unit else { return nil }
                 if let p = previous {
                     guard p.isMetric == u.isMetric, u.rank < p.rank else { return nil }
+                    // The part must not reach a whole unit of the one before it: "10' 75" is a
+                    // typo for 10' 7.5", not 16 ft 3 in, and "3 m 150 cm" is not 4.5 m.
+                    guard let carry = u.countPer(p), segment.value < carry else { return nil }
+                }
+                // Every part but the last carries a whole number ("10.5' 7" has no sensible reading).
+                if index < segments.count - 1, segment.value != segment.value.rounded(.towardZero) {
+                    return nil
                 }
                 previous = u
                 total += u.metres(segment.value)
             }
         }
 
-        guard total.isFinite, total <= maximumLengthMetres else { return nil }
-        if total > 0 { return total }
-        return (allowZero && total == 0) ? 0 : nil
+        return isPlausibleLength(total, allowZero: allowZero) ? total : nil
     }
 
     /// Parse an angle in degrees: `90`, `90.5`, `90,5`, `90.5 deg`, `90.5 degrees`, `90.5\u{00B0}`.
@@ -157,13 +194,20 @@ public enum UnitParser {
 
     // MARK: Normalisation
 
-    /// Lower-cases, maps typographic punctuation, vulgar fractions and Arabic-Indic digits to
-    /// ASCII, collapses whitespace to single spaces and trims. nil for over-long input.
+    /// Drops invisible formatting characters, lower-cases, maps typographic punctuation, vulgar
+    /// fractions and Arabic-Indic digits to ASCII, collapses whitespace to single spaces and trims.
+    /// nil for over-long input (measured as pasted, invisible characters included).
     private static func normalise(_ text: String) -> UnitParserCursor? {
         guard text.count <= maximumInputLength else { return nil }
+        // Drop Unicode "format" characters (LRM, RLM, ALM, ZWSP, ZWJ, BOM, bidi embeddings and
+        // isolates, soft hyphen ...) on SCALARS, before grapheme clustering: ZWJ and ZWNJ would
+        // otherwise glue themselves to the digit before them and make it look like another character.
+        let visible = String(String.UnicodeScalarView(text.unicodeScalars.filter {
+            $0.properties.generalCategory != .format
+        }))
         var out: [Character] = []
-        out.reserveCapacity(text.count + 4)
-        for ch in text {
+        out.reserveCapacity(visible.count + 4)
+        for ch in visible {
             if ch.isWhitespace {
                 out.append(" ")
                 continue
@@ -262,6 +306,19 @@ private enum UnitParserDimension {
         case .millimetre, .inch: return 1
         case .centimetre, .foot: return 2
         case .metre: return 3
+        }
+    }
+
+    /// How many of this unit make one `larger` unit of the same system: 100 cm to a metre,
+    /// 1000 mm to a metre, 10 mm to a centimetre, 12 in to a foot. nil for a pair that is not a
+    /// smaller unit under a larger one of the same system.
+    func countPer(_ larger: UnitParserDimension) -> Double? {
+        switch (larger, self) {
+        case (.metre, .centimetre): return 100
+        case (.metre, .millimetre): return 1000
+        case (.centimetre, .millimetre): return 10
+        case (.foot, .inch): return 12
+        default: return nil
         }
     }
 
