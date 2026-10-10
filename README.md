@@ -46,6 +46,22 @@ python scripts/rates.py placeholders    # prices still to confirm
 python scripts/rates.py set materials.spc_plank.cost 38
 ```
 
+## NexaFix Scan: the site-survey iPhone app
+
+[`ios/`](ios/README.md) holds an internal iPhone app that scans a property room by room with the LiDAR
+sensor and produces the room sizes this tool prices. It maps the rooms in 3D, shows wall lengths and corner
+angles on a floor plan and in AR, lets you verify each dimension with a laser, and exports a PDF plan, a
+CAD drawing (DXF), a 3D model (USDZ), JSON/CSV data and a **costing spec**:
+
+```bash
+python skills/nexa-costing/scripts/from_scan.py NexaFix_<property>_costing-spec.json --starter --out spec.json
+python skills/nexa-costing/scripts/estimate.py spec.json
+```
+
+LiDAR is typically within 1–2 %, which is a budget, not a cutting list: the bridge reports which joinery
+dimensions have not been laser-verified (`--strict` refuses to proceed while any are open). Setup guide:
+[`ios/README.md`](ios/README.md).
+
 ## Feeding your data once
 
 `rates.toml` ships with **researched UAE market prices (2025–26)** so the tool

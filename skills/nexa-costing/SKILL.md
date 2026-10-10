@@ -19,6 +19,7 @@ skill/
   rates.toml                 the rate book (single source of truth)
   scripts/estimate.py        spec -> estimate.json + Quotation PDF + Cost Sheet PDF + summary
   scripts/rates.py           show / set / add / confirm rates, list placeholders
+  scripts/from_scan.py       NexaFix Scan app export (*_costing-spec.json) -> engine spec (adds the scope)
   references/spec-format.md  every item type and field (read before writing a spec)
   references/intake.md       what to pull out of floor plans / briefs, defaults, what to ask
   references/takeoff.md      the formulas behind each quantity (for explaining numbers)
@@ -46,6 +47,13 @@ site photos, a scope list, a previous quote. Follow `references/intake.md`.
 - **No drawings yet?** Use a typology for a rough estimate:
   `project: {typology: 2br, total_area: 115}`. Say clearly that it is a
   rough budget until dimensions arrive.
+- **A scan file from the NexaFix Scan app** (`NexaFix_<Property>_<date>_costing-spec.json`)?
+  The rooms, areas, perimeters, ceiling heights, doors and windows are already measured: do not re-read
+  them off a plan. Turn it into a spec with `scripts/from_scan.py` (add the scope with `--scope`, or
+  `--starter` for a rough budget) and read `intake.md` section 5. The scan is LiDAR (typically within
+  1-2 %): anything joinery is cut from must be laser-verified in the app first. The script lists
+  the unverified joinery dimensions on stderr; show that list to the owner, call the result a budget until it is
+  empty, and use `--strict` for anything client-facing.
 
 Don't interrogate. If the brief is thin, make sensible assumptions from
 `intake.md` and list them. Ask only for what would swing the price
