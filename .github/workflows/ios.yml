@@ -1,0 +1,140 @@
+# Builds the iPhone app on GitHub's own Macs, with Apple's real SDKs.
+#
+# What it does on every push to the iOS branch (and on demand):
+#   1. Generates the Xcode project from ios/project.yml with XcodeGen.
+#   2. Runs the Core unit tests on macOS.
+#   3. Compiles the app for an iPhone (device SDK) and for the Simulator, WITHOUT code signing.
+#   4. If both builds pass, commits the generated project (ios/NexaFixScan.xcodeproj and ios/Config/Info.plist)
+#      back to the branch, so 'Clone Git Repository' in Xcode (or a ZIP download) opens a ready-to-run project
+#      with no XcodeGen or Homebrew on your Mac.
+#
+# The repository is public, so GitHub-hosted macOS runners are free. No secrets are used; the only token is the
+# built-in GITHUB_TOKEN, limited to this repository.
+name: iOS build
+
+on:
+  push:
+    branches: [claude/gallant-ride-jzhsjk]
+    paths:
+      - 'ios/**'
+      - '.github/workflows/ios.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: ios-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: Xcode on ${{ matrix.runner }}
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 75
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: macos-26      # stable image with Xcode 26.x
+            publish: true
+          - runner: xcode-27      # public-preview image with Xcode 27 (the version the app is written for)
+            publish: false
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Select the newest Xcode and show versions
+        run: |
+          ls -d /Applications/Xcode*.app || true
+          XC="$(ls -d /Applications/Xcode_*.app 2>/dev/null | sort -V | tail -n 1)"
+          if [ -n "$XC" ]; then sudo xcode-select -s "$XC/Contents/Developer"; fi
+          xcodebuild -version
+          swift --version
+          echo "iphoneos SDK: $(xcrun --sdk iphoneos --show-sdk-version)"
+          echo "iphonesimulator SDK: $(xcrun --sdk iphonesimulator --show-sdk-version)"
+
+      - name: Install XcodeGen
+        run: brew install xcodegen
+
+      - name: Generate the Xcode project
+        working-directory: ios
+        run: xcodegen generate
+
+      - name: Core unit tests on macOS
+        id: core
+        continue-on-error: true
+        working-directory: ios/NexaFixCore
+        run: |
+          set -o pipefail
+          swift test 2>&1 | tee "$GITHUB_WORKSPACE/core-tests.log" | tail -n 40
+
+      - name: Build the app for iPhone (device SDK, no signing)
+        id: device
+        continue-on-error: true
+        working-directory: ios
+        run: |
+          set -o pipefail
+          xcodebuild -project NexaFixScan.xcodeproj -scheme NexaFixScan -configuration Debug \
+            -destination 'generic/platform=iOS' \
+            CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY="" \
+            build 2>&1 | tee "$GITHUB_WORKSPACE/build-device.log" | tail -n 5
+
+      - name: Build the app for the Simulator
+        id: sim
+        continue-on-error: true
+        working-directory: ios
+        run: |
+          set -o pipefail
+          xcodebuild -project NexaFixScan.xcodeproj -scheme NexaFixScan -configuration Debug \
+            -destination 'generic/platform=iOS Simulator' \
+            CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY="" \
+            build 2>&1 | tee "$GITHUB_WORKSPACE/build-simulator.log" | tail -n 5
+
+      - name: Errors and warnings (read this first)
+        if: always()
+        run: |
+          echo "RESULT runner=${{ matrix.runner }} device=${{ steps.device.outcome }} simulator=${{ steps.sim.outcome }} coreTests=${{ steps.core.outcome }}"
+          for f in build-device.log build-simulator.log; do
+            if [ -f "$f" ]; then
+              echo
+              echo "=================== $f: ERRORS (unique) ==================="
+              grep -E ' error: |error:' "$f" | sed -E 's#^/Users/runner/work/[^/]+/[^/]+/##' | sort -u | head -n 300
+              echo "=================== $f: WARNINGS (unique, first 60) ==================="
+              grep -E ' warning: ' "$f" | sed -E 's#^/Users/runner/work/[^/]+/[^/]+/##' | sort -u | head -n 60
+              echo "=================== $f: last lines ==================="
+              tail -n 6 "$f"
+            fi
+          done
+          if [ -f core-tests.log ]; then
+            echo
+            echo "=================== core tests ==================="
+            grep -E 'error:|failed \(|Executed [0-9]+ tests' core-tests.log | sort -u | tail -n 40
+          fi
+
+      - name: Upload logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: logs-${{ matrix.runner }}
+          path: |
+            build-device.log
+            build-simulator.log
+            core-tests.log
+
+      - name: Commit the generated Xcode project
+        if: matrix.publish && steps.device.outcome == 'success' && steps.sim.outcome == 'success'
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -f ios/NexaFixScan.xcodeproj ios/Config/Info.plist
+          if git diff --cached --quiet; then
+            echo "The generated Xcode project is already up to date."
+            exit 0
+          fi
+          git commit -m "Update generated Xcode project [skip ci]"
+          for attempt in 1 2 3; do
+            git fetch origin "$GITHUB_REF_NAME"
+            git rebase "origin/$GITHUB_REF_NAME"
+            if git push origin "HEAD:refs/heads/$GITHUB_REF_NAME"; then break; fi
+            sleep 5
+          done

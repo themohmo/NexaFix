@@ -473,9 +473,13 @@ try:
         return subprocess.run(["git", "-C", str(REPO), "check-ignore", "-q", path],
                               stdout=subprocess.DEVNULL).returncode == 0
 
-    for path in ["ios/NexaFixScan.xcodeproj", "ios/NexaFixScan.xcodeproj/project.pbxproj", "ios/Config/Info.plist",
-                 "ios/Config/Local.xcconfig", "ios/NexaFixCore/.build/x", "ios/build/x", "ios/NexaFixCore/Package.resolved"]:
+    for path in ["ios/Config/Local.xcconfig", "ios/NexaFixCore/.build/x", "ios/build/x", "ios/NexaFixCore/Package.resolved",
+                 "ios/NexaFixScan.xcodeproj/xcuserdata/x"]:
         (ok if ignored(path) else fail)(f"{path} is " + ("ignored" if ignored(path) else "NOT ignored"))
+    # The generated project and Info.plist are committed on purpose (the macOS CI workflow generates and commits
+    # them so that Xcode's Clone opens a ready project): they must NOT be ignored.
+    for path in ["ios/NexaFixScan.xcodeproj/project.pbxproj", "ios/Config/Info.plist"]:
+        (fail if ignored(path) else ok)(f"{path} is " + ("IGNORED but must be tracked" if ignored(path) else "not ignored (tracked by CI)"))
     must_track = ["ios/project.yml", "ios/Config/Signing.xcconfig", "ios/Config/Local.xcconfig.example",
                   "ios/NexaFixCore/Package.swift", "ios/NexaFixScan/Resources/PrivacyInfo.xcprivacy",
                   "ios/NexaFixScan/Resources/Assets.xcassets/Contents.json",
@@ -485,8 +489,8 @@ try:
     (fail if bad else ok)("source files are not ignored" if not bad else f"source files ignored by .gitignore: {bad}")
     tracked = subprocess.run(["git", "-C", str(REPO), "ls-files", "ios/Config", "ios/NexaFixScan.xcodeproj"],
                              capture_output=True, text=True).stdout.split()
-    if "ios/Config/Info.plist" in tracked or any(".xcodeproj" in t for t in tracked):
-        fail("generated files are tracked by git: " + ", ".join(t for t in tracked if "Info.plist" in t or ".xcodeproj" in t))
+    if "ios/Config/Info.plist" not in tracked or not any(t.endswith("project.pbxproj") for t in tracked):
+        warn("the generated Xcode project / Info.plist are not committed yet (the iOS CI workflow commits them after a green build)")
     if not any(t.startswith("ios/Config/") for t in tracked):
         warn("no file under ios/Config is tracked yet (git add ios/Config so a fresh clone has the folder)")
 except FileNotFoundError:
