@@ -170,6 +170,24 @@ public protocol EnvironmentKey {
     static var defaultValue: Self.Value { get }
 }
 
+// MARK: - Preferences
+
+// doc: SwiftUI/PreferenceKey
+public protocol PreferenceKey {
+    // doc: SwiftUI/PreferenceKey/Value
+    associatedtype Value
+    // doc: SwiftUI/PreferenceKey/defaultValue
+    static var defaultValue: Self.Value { get }
+    // doc: SwiftUI/PreferenceKey/reduce(value:nextValue:)
+    static func reduce(value: inout Self.Value, nextValue: () -> Self.Value)
+}
+extension View {
+    // doc: SwiftUI/View/onPreferenceChange(_:perform:)
+    public nonisolated func onPreferenceChange<K>(_ key: K.Type = K.self, perform action: @escaping (K.Value) -> Void) -> some View where K : PreferenceKey, K.Value : Equatable { self }
+    // doc: SwiftUI/View/preference(key:value:)
+    public nonisolated func preference<K>(key: K.Type = K.self, value: K.Value) -> some View where K : PreferenceKey { self }
+}
+
 // MARK: - UIKit bridging
 
 // doc: SwiftUI/UIViewRepresentable

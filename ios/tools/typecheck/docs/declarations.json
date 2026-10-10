@@ -25381,6 +25381,67 @@
   "relationships": {},
   "role": "Initializer"
  },
+ "SwiftUI/PreferenceKey": {
+  "decls": [
+   "protocol PreferenceKey"
+  ],
+  "iOS": {
+   "beta": false,
+   "deprecated": false,
+   "introduced": "13.0",
+   "unavailable": false
+  },
+  "page": "SwiftUI/PreferenceKey",
+  "relationships": {
+   "Conforming Types": [
+    "SwiftUI/PreferredColorSchemeKey",
+    "SwiftUI/Text/LayoutKey"
+   ]
+  },
+  "role": "Protocol"
+ },
+ "SwiftUI/PreferenceKey/Value": {
+  "decls": [
+   "associatedtype Value"
+  ],
+  "iOS": {
+   "beta": false,
+   "deprecated": false,
+   "introduced": "13.0",
+   "unavailable": false
+  },
+  "page": "SwiftUI/PreferenceKey/Value",
+  "relationships": {},
+  "role": "Associated Type"
+ },
+ "SwiftUI/PreferenceKey/defaultValue": {
+  "decls": [
+   "static var defaultValue: Self.Value { get }"
+  ],
+  "iOS": {
+   "beta": false,
+   "deprecated": false,
+   "introduced": "13.0",
+   "unavailable": false
+  },
+  "page": "SwiftUI/PreferenceKey/defaultValue",
+  "relationships": {},
+  "role": "Type Property"
+ },
+ "SwiftUI/PreferenceKey/reduce(value:nextValue:)": {
+  "decls": [
+   "static func reduce(value: inout Self.Value, nextValue: () -> Self.Value)"
+  ],
+  "iOS": {
+   "beta": false,
+   "deprecated": false,
+   "introduced": "13.0",
+   "unavailable": false
+  },
+  "page": "SwiftUI/PreferenceKey/reduce(value:nextValue:)",
+  "relationships": {},
+  "role": "Type Method"
+ },
  "SwiftUI/PreferredColorSchemeKey": {
   "decls": [
    "struct PreferredColorSchemeKey"
@@ -39130,6 +39191,20 @@
   "relationships": {},
   "role": "Instance Method"
  },
+ "SwiftUI/View/onPreferenceChange(_:perform:)": {
+  "decls": [
+   "nonisolated func onPreferenceChange<K>(_ key: K.Type = K.self, perform action: @escaping (K.Value) -> Void) -> some View where K : PreferenceKey, K.Value : Equatable"
+  ],
+  "iOS": {
+   "beta": false,
+   "deprecated": false,
+   "introduced": "13.0",
+   "unavailable": false
+  },
+  "page": "SwiftUI/View/onPreferenceChange(_:perform:)",
+  "relationships": {},
+  "role": "Instance Method"
+ },
  "SwiftUI/View/onSubmit(of:_:)": {
   "decls": [
    "nonisolated func onSubmit(of triggers: SubmitTriggers = .text, _ action: @escaping () -> Void) -> some View"
@@ -39323,6 +39398,20 @@
    "unavailable": false
   },
   "page": "SwiftUI/View/position(x:y:)",
+  "relationships": {},
+  "role": "Instance Method"
+ },
+ "SwiftUI/View/preference(key:value:)": {
+  "decls": [
+   "nonisolated func preference<K>(key: K.Type = K.self, value: K.Value) -> some View where K : PreferenceKey"
+  ],
+  "iOS": {
+   "beta": false,
+   "deprecated": false,
+   "introduced": "13.0",
+   "unavailable": false
+  },
+  "page": "SwiftUI/View/preference(key:value:)",
   "relationships": {},
   "role": "Instance Method"
  },

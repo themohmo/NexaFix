@@ -1032,8 +1032,8 @@ final class EndToEndTests: XCTestCase {
         XCTAssertEqual(readiness.verified, readiness.total)
         XCTAssertEqual(readiness.joineryVerified, readiness.joineryTotal)
         XCTAssertFalse(readiness.hasUnverifiedJoinery)
-        XCTAssertEqual(readiness.banner, "All \(readiness.total) dimensions checked on site.",
-                       "the drawing-sourced ceiling keeps the banner from saying \"with a laser\"")
+        XCTAssertEqual(readiness.banner, "All \(readiness.total) dimensions checked.",
+                       "a drawing-sourced check keeps the banner from saying \"with a laser\" or \"on site\"")
 
         let reloaded = try PropertyStore(rootURL: scratch).load(id: done.id)
         XCTAssertEqual(reloaded, done)

@@ -970,20 +970,30 @@ final class ScanSessionController {
         // The AR map, so AR review can line up with this scan later.
         var worldMap: Data?
         if !isSimulated {
-            mergeStep = .savingMap
-            let status = arSession.currentFrame?.worldMappingStatus
-            do {
-                worldMap = try await archivedWorldMap(timeout: 8)
-                if status == .limited || status == .notAvailable {
-                    warnings.append("ARKit had only a thin map of this floor, so AR labels may drift when you review it later. Next time, walk the whole floor slowly before you finish.")
-                }
-            } catch {
-                warnings.append("The AR map could not be saved, so AR labels may not line up when you review this floor later. Scan the floor again on site to fix this.")
-            }
+            // The map is read from the live session, so it describes the space ARKit is tracking now. A room
+            // scanned before a tracking restart is in a different space, from this map and from the rooms after
+            // it: AR review would draw it in the wrong place. One map serves the whole level, so a level with any
+            // such room is saved without a map (no archive is made, nothing is waited for). The plans,
+            // measurements and the 3D model are not affected.
             let latest = spaceEpoch
-            let stale = entries.filter { (records[$0.id]?.epoch ?? latest) != latest }.map(\.name)
-            if !stale.isEmpty {
-                warnings.append("AR review will only line up for the rooms scanned after tracking restarted. These were scanned before it: \(stale.joined(separator: ", ")).")
+            let hasStaleRoom = entries.contains { (records[$0.id]?.epoch ?? latest) != latest }
+            if hasStaleRoom {
+                // When rooms are split between two spaces the 3D model warning above has already said why.
+                let alreadyExplained = Set(entries.compactMap { records[$0.id]?.epoch }).count > 1
+                warnings.append(alreadyExplained
+                    ? "AR review is off for this level as well. Scan the level again in one go to use AR."
+                    : "Tracking restarted partway through, so AR review is off for this level. Scan the level again in one go to use AR.")
+            } else {
+                mergeStep = .savingMap
+                let status = arSession.currentFrame?.worldMappingStatus
+                do {
+                    worldMap = try await archivedWorldMap(timeout: 8)
+                    if status == .limited || status == .notAvailable {
+                        warnings.append("ARKit had only a thin map of this floor, so AR labels may drift when you review it later. Next time, walk the whole floor slowly before you finish.")
+                    }
+                } catch {
+                    warnings.append("The AR map could not be saved, so AR labels may not line up when you review this floor later. Scan the floor again on site to fix this.")
+                }
             }
         }
         guard !Task.isCancelled, flow.state == .merging else { return }

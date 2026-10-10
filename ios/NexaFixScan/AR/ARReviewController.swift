@@ -487,8 +487,19 @@ final class ARReviewController {
         }
     }
 
+    /// `UIAccessibility.post` belongs to the main actor, and this class is not annotated with it (see the note at
+    /// the top), so the call goes through the main actor explicitly. Every caller is on the main thread (the
+    /// session delegate runs on the main queue, and the views call in from SwiftUI), and then it happens right
+    /// away; from any other thread it waits for the next turn of the main queue instead of trapping.
     private func announce(_ text: String) {
-        UIAccessibility.post(notification: .announcement, argument: text)
+        let post: @MainActor @Sendable () -> Void = {
+            UIAccessibility.post(notification: .announcement, argument: text)
+        }
+        if Thread.isMainThread {
+            MainActor.assumeIsolated(post)
+        } else {
+            DispatchQueue.main.async { MainActor.assumeIsolated(post) }
+        }
     }
 
     // MARK: Session events (called by the delegate proxy, on the main queue)

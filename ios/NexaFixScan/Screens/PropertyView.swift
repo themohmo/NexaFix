@@ -22,6 +22,9 @@ struct PropertyView: View {
     @State private var renaming: RoomTarget?
     @State private var renameText = ""
     @State private var drawingCache = PlanDrawingCache()
+    /// How tall the selection card over the bottom of the plan is, including the space under it, as measured on
+    /// screen (`SelectionCardHeightKey`). The plan keeps clear of it while a card is showing.
+    @State private var selectionCardHeight: CGFloat = 0
     /// The cube on the 3D tab grows with the text size, like the words under it.
     @ScaledMetric(relativeTo: .largeTitle) private var cubeSize: CGFloat = 44
     /// Set just before the property is deleted, so this screen stops reading it while it slides away.
@@ -261,24 +264,33 @@ struct PropertyView: View {
     @MainActor @ViewBuilder
     private func planTab(_ property: Property, floor: Floor?, units: DisplayUnits) -> some View {
         if let floor, !floor.rooms.isEmpty {
+            let card = selection.flatMap { SelectionCardInfo.make(selection: $0, in: property) }
             ZStack(alignment: .bottom) {
+                // The plan is fitted, panned and zoomed above the card, so nothing on it is hidden under the card.
                 PlanCanvasView(rooms: floor.rooms,
                                drawing: drawingCache.drawing(for: floor, in: property, units: units),
                                units: units,
                                selection: $selection,
-                               hapticsEnabled: model.settings.hapticsEnabled)
+                               hapticsEnabled: model.settings.hapticsEnabled,
+                               bottomInset: card == nil ? 0 : selectionCardHeight)
                     .id(floor.id)
-                if let selection, let info = SelectionCardInfo.make(selection: selection, in: property) {
+                if let info = card {
                     SelectionCard(info: info, units: units,
                                   onVerify: { target in sheet = .verify(VerifyRequest(roomID: info.roomID, target: target)) },
                                   onOpenRoom: { openRoom(info.roomID) },
                                   onClose: { self.selection = nil })
                         .padding(.horizontal, Spacing.l)
                         .padding(.bottom, Spacing.s)
+                        .background {
+                            GeometryReader { proxy in
+                                Color.clear.preference(key: SelectionCardHeightKey.self, value: proxy.size.height)
+                            }
+                        }
                         .transition(.sheetRise)
                 }
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .onPreferenceChange(SelectionCardHeightKey.self) { selectionCardHeight = $0 }
             .motion(value: selection != nil)
         } else {
             noRoomsOnLevel
@@ -737,6 +749,15 @@ private struct RoomListRow: View {
 }
 
 // MARK: - Selection card
+
+/// The height of the selection card with the space under it, reported by a `GeometryReader` behind the card.
+/// (A preference works on every iOS the app supports; `onGeometryChange` is newer.)
+private struct SelectionCardHeightKey: PreferenceKey {
+    static let defaultValue: CGFloat = 0
+    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
+        value = nextValue()
+    }
+}
 
 /// The card that rises from the bottom of the plan when a wall, corner, opening, object or room is tapped:
 /// its value, where that value came from, and **Verify**. Glass, because it floats over the drawing.

@@ -1,4 +1,5 @@
 import SwiftUI
+import Accessibility
 import Observation
 import NexaFixCore
 
@@ -8,6 +9,9 @@ import NexaFixCore
 // Screens below ask the `AppRouter` to do things ("scan this level", "open this property") instead of
 // presenting each other, so a sheet can finish dismissing before the camera comes up. Each screen adds
 // `.statusBanners()` so the unsaved-work banner and the scan notice sit under its own navigation bar.
+//
+// When the app opens it also looks for a scan that was cut short (the app was closed between rooms) and offers
+// to put its rooms back: `ScanRecoveryCoordinator` decides, `ScanRecoverySheet` shows.
 
 // MARK: - Routes
 
@@ -26,7 +30,7 @@ struct ScanRequest: Identifiable, Equatable {
 
 /// The sheets that belong to the home screen.
 enum RootSheet: String, Identifiable {
-    case newProperty, settings
+    case newProperty, settings, recovery
     var id: String { rawValue }
 }
 
@@ -103,6 +107,7 @@ final class AppRouter {
 struct RootView: View {
     @Environment(AppModel.self) private var model
     @State private var router = AppRouter()
+    @State private var recovery = ScanRecoveryCoordinator()
 
     var body: some View {
         NavigationStack(path: $router.path) {
@@ -116,16 +121,27 @@ struct RootView: View {
                     }
                 }
         }
-        .sheet(item: $router.sheet, onDismiss: { router.sheetDidDismiss() }) { sheet in
+        .sheet(item: $router.sheet, onDismiss: { sheetDidDismiss() }) { sheet in
             switch sheet {
             case .newProperty:
                 NewPropertySheet(mode: .create)
             case .settings:
                 SettingsView()
+            case .recovery:
+                ScanRecoverySheet(coordinator: recovery)
             }
         }
-        .fullScreenCover(item: $router.scan) { request in
+        .fullScreenCover(item: $router.scan, onDismiss: { showRecoveryIfReady() }) { request in
             scanScreen(request)
+        }
+        // Once per launch, after the home screen is up. The folders are read off the main thread.
+        .task { await recovery.look(model: model) }
+        .onChange(of: recovery.phase) { _, phase in
+            if phase == .idle {
+                if router.sheet == .recovery { router.sheet = nil }
+            } else {
+                showRecoveryIfReady()
+            }
         }
         .alert(model.presentedError?.title ?? "", isPresented: errorIsPresented, presenting: model.presentedError) { error in
             if error.severity == .dataAtRisk {
@@ -152,6 +168,7 @@ struct RootView: View {
             ScanFlowView(
                 configuration: ScanConfiguration(
                     propertyName: property.name,
+                    propertyID: request.propertyID,
                     existingRoomNames: property.allRooms.map(\.name),
                     units: model.settings.units,
                     hapticsEnabled: model.settings.hapticsEnabled,
@@ -175,9 +192,33 @@ struct RootView: View {
         router.notice = ScanNotice(summary: "Saving the scan", warnings: [], saved: true, inProgress: true)
         Task { @MainActor in
             let outcome = await ScanIntake.commit(result, to: request.propertyID, model: model)
-            if outcome.saved { Haptics.success() }
+            if outcome.saved {
+                Haptics.success()
+                // The safety copy has done its job. Only now: a scan whose save failed keeps it, and the app
+                // offers it again the next time it opens.
+                if let scanID = result.recoveryID {
+                    Task.detached(priority: .utility) { ScanRecoveryStore.discard(scanID: scanID) }
+                }
+            }
             router.notice = ScanNotice(summary: outcome.summary, warnings: outcome.warnings, saved: outcome.saved)
         }
+    }
+
+    // MARK: Unfinished scans
+
+    /// A sheet has finished closing: do what it queued, then see whether an unfinished scan is waiting.
+    @MainActor
+    private func sheetDidDismiss() {
+        router.sheetDidDismiss()
+        showRecoveryIfReady()
+    }
+
+    /// Offers an unfinished scan when nothing else is on screen. Called whenever something that was in the way
+    /// goes (a sheet, the camera) and when a scan is found.
+    @MainActor
+    private func showRecoveryIfReady() {
+        guard recovery.phase != .idle, router.sheet == nil, router.scan == nil else { return }
+        router.sheet = .recovery
     }
 
     // MARK: Errors
@@ -385,6 +426,282 @@ private struct ScanNoticeBanner: View {
             try? await Task.sleep(nanoseconds: 5_000_000_000)
             if !Task.isCancelled { dismiss() }
         }
+    }
+}
+
+// MARK: - Unfinished scan
+
+/// The sheet that offers the rooms of a scan the app lost, and shows what putting them back did. It only reads the
+/// coordinator and calls its actions; the coordinator decides what happens and when the copy may go.
+@MainActor
+private struct ScanRecoverySheet: View {
+    let coordinator: ScanRecoveryCoordinator
+    @Environment(AppModel.self) private var model
+    @Environment(AppRouter.self) private var router
+    @State private var isConfirmingDiscard = false
+
+    var body: some View {
+        NavigationStack {
+            ScrollView {
+                content
+                    .padding(.horizontal, Spacing.l)
+                    .padding(.vertical, Spacing.l)
+                    .frame(maxWidth: 560, alignment: .leading)
+                    .frame(maxWidth: .infinity)
+            }
+            .screenBackground()
+            .navigationTitle(ScanRecoveryPrompt.sheetTitle)
+            .navigationBarTitleDisplayMode(.inline)
+            .safeAreaInset(edge: .bottom, spacing: 0) { actions }
+            .motion(value: coordinator.phase)
+        }
+        .presentationDetents([.medium, .large])
+        .presentationDragIndicator(.visible)
+        // Rebuilding the rooms and saving them cannot be taken back; closing the sheet then would hide how it went.
+        .interactiveDismissDisabled(coordinator.isWorking)
+        // Swiping the sheet away is the same as Not now: the copy stays.
+        .onDisappear { coordinator.sheetClosed() }
+        .onChange(of: coordinator.phase) { _, phase in react(to: phase) }
+        .confirmationDialog("Discard this scan?", isPresented: $isConfirmingDiscard, titleVisibility: .visible) {
+            Button(offered?.discardConfirmationButton ?? ScanRecoveryPrompt.discardTitle, role: .destructive) {
+                Task { @MainActor in await coordinator.discard() }
+            }
+            Button(ScanRecoveryPrompt.keepTitle, role: .cancel) {}
+        } message: {
+            Text(verbatim: offered?.discardConfirmationMessage ?? "")
+        }
+    }
+
+    /// The scan the person is being asked about.
+    private var offered: ScanRecoveryPrompt? {
+        switch coordinator.phase {
+        case .asking(let prompt), .failed(let prompt, _): return prompt
+        case .idle, .working, .done: return nil
+        }
+    }
+
+    // MARK: Content
+
+    @MainActor @ViewBuilder
+    private var content: some View {
+        switch coordinator.phase {
+        case .idle:
+            EmptyView()
+        case .asking(let prompt):
+            offer(prompt, failure: nil)
+        case .failed(let prompt, let failure):
+            offer(prompt, failure: failure)
+        case .working:
+            working
+        case .done(_, let report):
+            result(report)
+        }
+    }
+
+    private func offer(_ prompt: ScanRecoveryPrompt, failure: ScanRecoveryCoordinator.Failure?) -> some View {
+        VStack(alignment: .leading, spacing: Spacing.l) {
+            Text(verbatim: prompt.headline())
+                .font(.title3.weight(.semibold))
+                .foregroundStyle(Palette.ink)
+                .fixedSize(horizontal: false, vertical: true)
+                .accessibilityAddTraits(.isHeader)
+            if let failure {
+                RecoveryFailureCard(failure: failure)
+            }
+            Text(verbatim: prompt.explanation)
+                .font(.body)
+                .foregroundStyle(Palette.ink)
+                .fixedSize(horizontal: false, vertical: true)
+            VStack(alignment: .leading, spacing: Spacing.s) {
+                RecoveryNote(systemImage: "info.circle", text: ScanRecoveryPrompt.limits)
+                RecoveryNote(systemImage: "info.circle", text: ScanRecoveryPrompt.keptNote)
+            }
+        }
+    }
+
+    private var working: some View {
+        VStack(spacing: Spacing.m) {
+            ProgressView()
+                .accessibilityHidden(true)
+            Text(verbatim: ScanRecoveryPrompt.workingTitle)
+                .font(.headline)
+                .foregroundStyle(Palette.ink)
+            Text(verbatim: ScanRecoveryPrompt.workingDetail)
+                .font(.subheadline)
+                .foregroundStyle(Palette.muted)
+                .multilineTextAlignment(.center)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.top, Spacing.xxl)
+        .accessibilityElement(children: .combine)
+    }
+
+    private func result(_ report: ScanRecoveryCoordinator.Report) -> some View {
+        VStack(alignment: .leading, spacing: Spacing.m) {
+            HStack(alignment: .firstTextBaseline, spacing: Spacing.s) {
+                // Not a green check: that look belongs to values somebody checked with a laser.
+                Image(systemName: "cube.transparent")
+                    .foregroundStyle(Palette.accent)
+                    .accessibilityHidden(true)
+                Text(verbatim: report.summary)
+                    .font(.headline)
+                    .foregroundStyle(Palette.ink)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .accessibilityAddTraits(.isHeader)
+            }
+            ForEach(Array(report.warnings.enumerated()), id: \.offset) { _, warning in
+                RecoveryNote(systemImage: "exclamationmark.triangle.fill", tint: Palette.caution, isWarning: true,
+                             text: warning)
+            }
+        }
+    }
+
+    // MARK: Buttons
+
+    @MainActor @ViewBuilder
+    private var actions: some View {
+        switch coordinator.phase {
+        case .idle, .working:
+            EmptyView()
+        case .asking:
+            choices(primary: ScanRecoveryPrompt.recoverTitle)
+        case .failed:
+            choices(primary: ScanRecoveryPrompt.retryTitle)
+        case .done:
+            doneActions
+        }
+    }
+
+    private func choices(primary: String) -> some View {
+        VStack(spacing: Spacing.s) {
+            Button {
+                Task { @MainActor in await coordinator.recover(model: model) }
+            } label: {
+                Text(verbatim: primary)
+            }
+            .buttonStyle(.primaryFullWidth)
+            .accessibilityHint("Adds the saved rooms to the property.")
+
+            Button { isConfirmingDiscard = true } label: {
+                Text(verbatim: ScanRecoveryPrompt.discardTitle)
+                    .foregroundStyle(Palette.critical)
+            }
+            .buttonStyle(.secondaryFullWidth)
+            .accessibilityHint("Asks first, then deletes the saved rooms from this iPhone.")
+
+            Button { coordinator.notNow() } label: {
+                Text(verbatim: ScanRecoveryPrompt.notNowTitle)
+                    .font(.headline)
+                    .foregroundStyle(Palette.ink)
+                    .frame(maxWidth: .infinity, minHeight: 44)
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.pressable)
+            .accessibilityHint("Keeps the saved rooms. The app asks again next time it opens.")
+        }
+        .padding(.horizontal, Spacing.l)
+        .padding(.top, Spacing.s)
+        .padding(.bottom, Spacing.s)
+        .frame(maxWidth: .infinity)
+        .background { Palette.background.opacity(0.94).ignoresSafeArea() }
+    }
+
+    private var doneActions: some View {
+        let nothingElseWaiting = coordinator.waiting.isEmpty
+        return VStack(spacing: Spacing.s) {
+            Button {
+                let property = coordinator.acknowledge()
+                if let property { router.openAfterSheet(property) }
+            } label: {
+                Text(verbatim: nothingElseWaiting ? "Open property" : "Next unfinished scan")
+            }
+            .buttonStyle(.primaryFullWidth)
+
+            if nothingElseWaiting {
+                Button { coordinator.acknowledge() } label: {
+                    Text(verbatim: "Close")
+                }
+                .buttonStyle(.secondaryFullWidth)
+            }
+        }
+        .padding(.horizontal, Spacing.l)
+        .padding(.top, Spacing.s)
+        .padding(.bottom, Spacing.s)
+        .frame(maxWidth: .infinity)
+        .background { Palette.background.opacity(0.94).ignoresSafeArea() }
+    }
+
+    // MARK: Feedback
+
+    /// Says aloud, and feels, what the buttons just did: the new text may be off screen for VoiceOver.
+    private func react(to phase: ScanRecoveryCoordinator.Phase) {
+        switch phase {
+        case .working:
+            AccessibilityNotification.Announcement(ScanRecoveryPrompt.workingTitle).post()
+        case .done(_, let report):
+            Haptics.success()
+            AccessibilityNotification.Announcement(([report.summary] + report.warnings).joined(separator: " ")).post()
+        case .failed(_, let failure):
+            Haptics.warning()
+            AccessibilityNotification.Announcement(failure.message + " " + failure.recovery).post()
+        case .idle, .asking:
+            break
+        }
+    }
+}
+
+/// A glyph and a sentence under the main text of the recovery sheet.
+private struct RecoveryNote: View {
+    let systemImage: String
+    var tint: Color = Palette.muted
+    /// A warning is read at full strength; an explanation is quieter.
+    var isWarning = false
+    let text: String
+
+    var body: some View {
+        HStack(alignment: .firstTextBaseline, spacing: Spacing.s) {
+            Image(systemName: systemImage)
+                .font(.footnote)
+                .foregroundStyle(tint)
+                .accessibilityHidden(true)
+            Text(verbatim: text)
+                .font(.footnote)
+                .foregroundStyle(isWarning ? Palette.ink : Palette.muted)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .accessibilityElement(children: .combine)
+    }
+}
+
+/// What went wrong while putting the rooms back, and what to do. The copy of the scan is still there.
+private struct RecoveryFailureCard: View {
+    let failure: ScanRecoveryCoordinator.Failure
+
+    var body: some View {
+        let shape = RoundedRectangle(cornerRadius: Radius.row, style: .continuous)
+        VStack(alignment: .leading, spacing: Spacing.xs) {
+            HStack(alignment: .firstTextBaseline, spacing: Spacing.s) {
+                Image(systemName: "exclamationmark.triangle.fill")
+                    .foregroundStyle(Palette.critical)
+                    .accessibilityHidden(true)
+                Text(verbatim: failure.message)
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(Palette.ink)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            Text(verbatim: failure.recovery)
+                .font(.subheadline)
+                .foregroundStyle(Palette.muted)
+                .fixedSize(horizontal: false, vertical: true)
+                .padding(.leading, Spacing.xl)
+        }
+        .padding(Spacing.m)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background { shape.fill(Palette.surface) }
+        .overlay { shape.strokeBorder(Palette.critical, lineWidth: Hairline.emphasized) }
+        .accessibilityElement(children: .combine)
     }
 }
 

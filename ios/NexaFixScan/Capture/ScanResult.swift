@@ -45,7 +45,9 @@ struct ScanResult {
     var capturedRoomJSON: [UUID: Data]
     /// One USDZ model of the whole floor, when the rooms could be joined and exported.
     var structureUSDZ: Data?
-    /// The archived `ARWorldMap` that lets AR review line up with the scan later, when ARKit gave one.
+    /// The archived `ARWorldMap` that lets AR review line up with the scan later, when ARKit gave one. nil when
+    /// any room was scanned before a tracking restart: that room is in another space than the map, so AR review
+    /// is off for the whole level and a warning says so.
     var worldMapData: Data?
     var story: Int
     /// Plain-language things the person should know, such as "the AR map could not be saved".

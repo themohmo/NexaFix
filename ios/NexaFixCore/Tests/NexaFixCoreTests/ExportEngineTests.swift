@@ -225,6 +225,75 @@ final class ExportEngineTests: XCTestCase {
         }
     }
 
+    // MARK: Scale notes
+
+    func testNoteSaysWhenThePlanIsShownAtASmallerScaleThanAskedFor() throws {
+        // The demo apartment is about 12 m wide: 1:20 would need 600 mm of paper, so the renderer steps down.
+        var r = request(demo(), [.planPDF])
+        r.scale = 20
+        r.paper = "a4"
+        XCTAssertEqual(try ExportEngine.runDetailed(r).notes, ["Plan shown at 1:75 because 1:20 does not fit on A4."])
+        r.paper = "a3"
+        XCTAssertEqual(try ExportEngine.runDetailed(r).notes, ["Plan shown at 1:50 because 1:20 does not fit on A3."])
+        // The note names the scale the title block of the PDF shows.
+        let pages = PlanPDFRenderer.pageInfos(property: r.property, options: ExportEngine.pdfOptions(for: r))
+        XCTAssertEqual(pages.first { $0.kind == .plan }?.scaleLabel, "1:50")
+    }
+
+    func testNoNoteWhenThePlanFitsAtTheRequestedScaleOrNoScaleWasAsked() throws {
+        var r = request(demo(), [.planPDF])
+        r.paper = "a3"
+        XCTAssertEqual(try ExportEngine.runDetailed(r).notes, [], "auto scale: nothing was asked for")
+        r.scale = 50
+        XCTAssertEqual(try ExportEngine.runDetailed(r).notes, [], "1:50 fits A3, so it is used")
+        r.scale = 0
+        XCTAssertEqual(try ExportEngine.runDetailed(r).notes, [], "an unusable scale means auto")
+        // Only the PDF has a scale to explain.
+        r.scale = 20
+        r.formats = [.dataJSON, .cadDXF]
+        XCTAssertEqual(try ExportEngine.runDetailed(r).notes, [])
+    }
+
+    func testNoteNamesTheLevelWhenOnlyOneOfSeveralPlansCouldNotKeepTheScale() throws {
+        let level1 = Floor(id: id(10), name: "Level 1", level: 1, rooms: [small(name: "Hall")])
+        let level2 = Floor(id: id(11), name: "Level 2", level: 2, rooms: [Room.rectangle(name: "Loft", width: 14, depth: 9)])
+        var r = request(property(floors: [level1, level2]), [.planPDF])
+        r.scale = 20
+        r.paper = "a3"
+        XCTAssertEqual(try ExportEngine.runDetailed(r).notes,
+                       ["Level 2: plan shown at 1:50 because 1:20 does not fit on A3."])
+        // Every plan that stepped down gets its own sentence.
+        r.property.floors[0].rooms[0] = Room.rectangle(name: "Hall", width: 14, depth: 9)
+        let notes = try ExportEngine.runDetailed(r).notes
+        XCTAssertEqual(notes.count, 2)
+        XCTAssertTrue(notes[0].hasPrefix("Level 1: plan shown at "), notes[0])
+        XCTAssertTrue(notes[1].hasPrefix("Level 2: plan shown at "), notes[1])
+    }
+
+    func testScaleNoteComesBeforeTheRendererWarnings() throws {
+        // Arabic cannot be printed by the PDF fonts, which the renderer reports; the scale is explained first.
+        let kitchen = Room.rectangle(name: "\u{0645}\u{0637}\u{0628}\u{062E}", width: 14, depth: 9)
+        var r = request(property(floors: [Floor(id: id(10), name: "Level 1", level: 1, rooms: [kitchen])]), [.planPDF])
+        r.scale = 20
+        r.paper = "a3"
+        let notes = try ExportEngine.runDetailed(r).notes
+        XCTAssertEqual(notes.count, 2)
+        XCTAssertEqual(notes[0], "Plan shown at 1:50 because 1:20 does not fit on A3.")
+        XCTAssertTrue(notes[1].contains("cannot print"), notes[1])
+    }
+
+    func testScaleNotesNeedAFixedScale() {
+        let p = demo()
+        XCTAssertEqual(ExportEngine.scaleNotes(for: p, options: PlanPDFOptions(paper: .a4, scale: .auto)), [])
+        XCTAssertEqual(ExportEngine.scaleNotes(for: p, options: PlanPDFOptions(paper: .a4, scale: .fixed(.nan))), [])
+        XCTAssertEqual(ExportEngine.scaleNotes(for: p, options: PlanPDFOptions(paper: .a4, scale: .fixed(-5))), [])
+        XCTAssertEqual(ExportEngine.scaleNotes(for: p, options: PlanPDFOptions(paper: .a4, scale: .fixed(20))),
+                       ["Plan shown at 1:75 because 1:20 does not fit on A4."])
+        // A floor with nothing to draw is shown at exactly the scale asked for.
+        let empty = property(floors: [Floor(id: id(10), name: "Level 1", level: 1, rooms: [])])
+        XCTAssertEqual(ExportEngine.scaleNotes(for: empty, options: PlanPDFOptions(paper: .a4, scale: .fixed(20))), [])
+    }
+
     func testPDFCarriesTheUnits() {
         var r = request(oneRoom())
         r.units = DisplayUnits(length: .feetAndInches, area: .squareFeet)

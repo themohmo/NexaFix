@@ -75,7 +75,7 @@ enum DeviceCapability: Equatable {
     }
 
     /// The reassurance shown with the camera request.
-    static let privacyNote = "Scans stay on this device. Nothing leaves it unless you export."
+    static let privacyNote = "Your scans stay on this iPhone, and in its backup if you back it up. Nothing is sent anywhere unless you export it."
 
     /// What RoomPlan needs to join the rooms of a floor into one 3D model: Apple recommends good lighting of 50 lux
     /// or more and a total area of at most about 186 m² (2,000 sq ft) (WWDC23 session 10192). A bigger floor

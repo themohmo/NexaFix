@@ -1,8 +1,10 @@
 import Foundation
+import Observation
 import NexaFixCore
 
 // Everything the screens do to a property that is not drawing: duplicate, rename, delete, change a
-// room, record a check, take in a finished scan, and the plain numbers and words the screens show.
+// room, record a check, take in a finished scan (or an unfinished one found again after a restart), and the
+// plain numbers and words the screens show.
 // Plain Swift on Foundation, NexaFixCore and the app's own plain-Swift types, so it is type-checked on
 // Linux. The views stay thin and call these.
 //
@@ -144,6 +146,9 @@ enum ScanIntake {
         var floorID: UUID?
         /// The property with the new floor reached storage.
         var saved: Bool
+        /// Nothing was added because the property already holds every room of the scan (the same scan was
+        /// applied before). `saved` is false then, since nothing was written now.
+        var roomsAlreadyInProperty = false
     }
 
     /// One file to write, with its bytes. Plain values, so the writing can happen off the main thread.
@@ -175,7 +180,8 @@ enum ScanIntake {
         let plan = ScanCommit.apply(rooms: result.rooms, story: result.story, scannedAt: now, to: property,
                                     available: available)
         guard let floorID = plan.floorID else {
-            return Outcome(summary: plan.summary, warnings: result.warnings, floorID: nil, saved: false)
+            return Outcome(summary: plan.summary, warnings: result.warnings, floorID: nil, saved: false,
+                           roomsAlreadyInProperty: !plan.skippedRoomIDs.isEmpty)
         }
 
         // Files first, off the main thread.
@@ -238,6 +244,321 @@ enum ScanIntake {
         case .capturedRoom:
             return "One room\u{2019}s detailed scan data could not be saved. The room itself was kept."
         }
+    }
+}
+
+// MARK: - Unfinished scans found at launch
+
+/// One unfinished scan found on disk (`ScanRecoveryStore`) and the words the recovery sheet uses for it. Plain
+/// values, so the wording and the choices are checked on Linux.
+struct ScanRecoveryPrompt: Equatable, Identifiable {
+    let scan: ScanRecoveryStore.RecoverableScan
+    /// The property the rooms go back into. nil when it is no longer on this iPhone: recovering then makes a new
+    /// property with the old name.
+    var propertyID: UUID?
+    /// The property's name now, or the name it had when the scan began if it is gone or has no name.
+    let propertyName: String
+
+    var id: UUID { scan.scanID }
+
+    /// Prompts for `scans`, newest first. `currentName` gives the name of a property that is on this iPhone (an
+    /// empty string when it cannot be read) and nil for one that is not.
+    static func prompts(for scans: [ScanRecoveryStore.RecoverableScan],
+                        currentName: (UUID) -> String?) -> [ScanRecoveryPrompt] {
+        scans.sorted { $0.updatedAt > $1.updatedAt }.map { scan in
+            let current = scan.propertyID.flatMap(currentName)
+            let name = trimmed(current ?? "")
+            return ScanRecoveryPrompt(scan: scan,
+                                      propertyID: current == nil ? nil : scan.propertyID,
+                                      propertyName: name.isEmpty ? trimmed(scan.propertyName) : name)
+        }
+    }
+
+    private static func trimmed(_ text: String) -> String {
+        text.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    // MARK: Words
+
+    static let sheetTitle = "Recover a scan"
+    static let recoverTitle = "Recover rooms"
+    static let retryTitle = "Try again"
+    static let discardTitle = "Discard"
+    static let notNowTitle = "Not now"
+    static let keepTitle = "Keep it"
+    static let workingTitle = "Recovering rooms"
+    static let workingDetail = "Rebuilding each room from the saved scan. This can take a moment."
+    /// What a recovered level never has, said before the person chooses so nobody expects it.
+    static let limits = "The 3D model and the AR map cannot be recovered. Scan the level again on site to get them."
+    /// Said when the person leaves the prompt with the copy kept.
+    static let keptNote = "Not now keeps it on this iPhone, and the app asks again next time it opens."
+
+    var roomCountText: String { scan.roomCount == 1 ? "1 room" : "\(scan.roomCount) rooms" }
+
+    /// "Level 1": the name the recovered rooms get in the property.
+    var levelName: String { ScanCommit.levelName(scan.story) }
+
+    /// True when the property is gone and Recover rooms makes a new one.
+    var willCreateProperty: Bool { propertyID == nil }
+
+    /// The property name in curly quotes, or "this property" when it has none.
+    var quotedName: String { propertyName.isEmpty ? "this property" : "\u{201C}\(propertyName)\u{201D}" }
+
+    /// "9 Oct, 14:32": when the last room of the scan was saved.
+    func dateText(timeZone: TimeZone = .current) -> String {
+        ScanRecoveryPrompt.dateText(scan.updatedAt, timeZone: timeZone)
+    }
+
+    static func dateText(_ date: Date, timeZone: TimeZone = .current) -> String {
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.timeZone = timeZone
+        formatter.dateFormat = "d MMM, HH:mm"
+        return formatter.string(from: date)
+    }
+
+    /// "Unfinished scan found: 3 rooms from 9 Oct, 14:32 (Marina Gate 2)."
+    func headline(timeZone: TimeZone = .current) -> String {
+        var text = "Unfinished scan found: \(roomCountText) from \(dateText(timeZone: timeZone))"
+        if !propertyName.isEmpty { text += " (\(propertyName))" }
+        return text + "."
+    }
+
+    /// What happened, and what Recover rooms does with the rooms.
+    var explanation: String {
+        if willCreateProperty {
+            let which = propertyName.isEmpty ? "The property this scan belonged to" : quotedName
+            let made = propertyName.isEmpty ? "a new property" : "a new property with that name"
+            return "\(which) is no longer on this iPhone. Recover rooms makes \(made) and adds the rooms to it as \(levelName)."
+        }
+        if scan.delivered {
+            return "The app closed while this level was being saved, so it may be saved already. If its rooms are not in \(quotedName) yet, Recover rooms adds them as \(levelName). Rooms that are already saved are not added twice."
+        }
+        return "The app closed before this level was finished, so its rooms were never added to \(quotedName). Recover rooms adds them as \(levelName)."
+    }
+
+    var discardConfirmationTitle: String { "Discard this scan?" }
+
+    var discardConfirmationMessage: String {
+        "The \(roomCountText) from \(dateText()) will be deleted from this iPhone. This cannot be undone."
+    }
+
+    var discardConfirmationButton: String {
+        scan.roomCount == 1 ? "Discard 1 room" : "Discard \(scan.roomCount) rooms"
+    }
+}
+
+/// Finds unfinished scans when the app starts and puts them back when the person asks. It holds no views: the
+/// recovery sheet reads `phase` and calls the actions, one scan at a time, newest first.
+///
+/// The copy of a scan (`ScanRecoveryStore`) is only deleted once the rooms are really in the property on disk
+/// (or were already there), or the person chose to discard it. Every other end keeps it and says what to do.
+@MainActor
+@Observable
+final class ScanRecoveryCoordinator {
+
+    /// What went wrong, in two parts: what happened and what to do. The copy is always still there.
+    struct Failure: Equatable {
+        let message: String
+        let recovery: String
+    }
+
+    /// What a recovery achieved.
+    struct Report: Equatable {
+        /// "Added 3 rooms to Level 1."
+        let summary: String
+        /// Including that the recovered level has no 3D model and no AR map.
+        let warnings: [String]
+        let propertyID: UUID
+    }
+
+    enum Phase: Equatable {
+        /// Nothing to show.
+        case idle
+        /// Offering the scan on screen.
+        case asking(ScanRecoveryPrompt)
+        /// Rebuilding the rooms and saving them.
+        case working(ScanRecoveryPrompt)
+        /// The rooms are in the property and the copy is gone.
+        case done(ScanRecoveryPrompt, Report)
+        /// Something did not work; the copy is kept.
+        case failed(ScanRecoveryPrompt, Failure)
+
+        /// The scan the phase is about.
+        var promptID: UUID? {
+            switch self {
+            case .idle: return nil
+            case .asking(let prompt), .working(let prompt), .done(let prompt, _), .failed(let prompt, _):
+                return prompt.id
+            }
+        }
+    }
+
+    private(set) var phase: Phase = .idle
+    /// Unfinished scans after the one on screen, newest first.
+    private(set) var waiting: [ScanRecoveryPrompt] = []
+
+    @ObservationIgnored private let root: URL
+    @ObservationIgnored private var hasLooked = false
+
+    /// - Parameter root: Where the scan copies are (tests pass a temporary folder).
+    init(root: URL = ScanRecoveryStore.defaultRoot) {
+        self.root = root
+    }
+
+    var isWorking: Bool {
+        if case .working = phase { return true }
+        return false
+    }
+
+    // MARK: Finding
+
+    /// Looks for unfinished scans, once. Dropping copies that are too old and reading the rest happen off the
+    /// main thread. If there are any, `phase` becomes `.asking` for the newest.
+    func look(model: AppModel) async {
+        guard !hasLooked else { return }
+        hasLooked = true
+        let root = self.root
+        let found = await Task.detached(priority: .utility) { () -> [ScanRecoveryStore.RecoverableScan] in
+            ScanRecoveryStore.prune(root: root)
+            return ScanRecoveryStore.recoverableScans(root: root)
+        }.value
+        guard phase == .idle else { return }
+        let prompts = ScanRecoveryPrompt.prompts(for: found) { ScanRecoveryCoordinator.currentName(of: $0, in: model) }
+        guard let first = prompts.first else { return }
+        waiting = Array(prompts.dropFirst())
+        phase = .asking(first)
+    }
+
+    /// The name of a property that is on this iPhone (empty when it cannot be read), or nil when it is not.
+    /// Looks at the list only: `AppModel.property(_:)` reports an error for a property that is gone.
+    private static func currentName(of id: UUID, in model: AppModel) -> String? {
+        if let summary = model.summaries.first(where: { $0.id == id }) {
+            return summary.health == .unreadable ? "" : summary.name
+        }
+        return model.memoryOnlyProperties.first { $0.id == id }?.name
+    }
+
+    // MARK: Choosing
+
+    /// Recover rooms (or Try again): rebuilds the rooms off the main thread, adds them to the property they belong
+    /// to (a new one if that is gone) and, only if that reached storage, deletes the copy.
+    func recover(model: AppModel, now: Date = Date()) async {
+        let offered: ScanRecoveryPrompt
+        switch phase {
+        case .asking(let prompt), .failed(let prompt, _): offered = prompt
+        case .idle, .working, .done: return
+        }
+        phase = .working(offered)
+        let scanID = offered.scan.scanID
+        let root = self.root
+
+        // Every room is rebuilt, which takes a while on a big level.
+        let result: ScanResult
+        do {
+            result = try await Task.detached(priority: .userInitiated) {
+                try ScanRecoveryStore.recoveredResult(scanID: scanID, root: root)
+            }.value
+        } catch {
+            phase = .failed(offered, Failure(
+                message: "The saved rooms could not be read back.",
+                recovery: "The copy is still on this iPhone. Try again. If it keeps failing, discard it and scan the level again."))
+            return
+        }
+
+        // The property it belongs to, or a new one named like it. A retry finds the new one: it is remembered.
+        var target = offered
+        let propertyID: UUID
+        if let existing = offered.propertyID {
+            propertyID = existing
+            // Held back by an earlier failed save: write that first, or the rooms would only join what is in memory.
+            if model.unsavedPropertyIDs.contains(existing) { model.retryUnsavedSaves() }
+        } else {
+            let created = model.createProperty(name: offered.propertyName, client: "", address: "", reference: "",
+                                               kind: .apartment)
+            propertyID = created.id
+            target.propertyID = created.id
+        }
+
+        let outcome = await ScanIntake.commit(result, to: propertyID, model: model, now: now)
+        let stillUnsaved = model.unsavedPropertyIDs.contains(propertyID)
+
+        if outcome.saved {
+            await removeCopy(scanID)
+            phase = .done(target, Report(summary: outcome.summary, warnings: outcome.warnings, propertyID: propertyID))
+        } else if outcome.roomsAlreadyInProperty, !stillUnsaved {
+            // Saved by the scan itself, and only the clean-up was missed.
+            await removeCopy(scanID)
+            phase = .done(target, Report(
+                summary: "These rooms are already saved in \(target.quotedName), so nothing was added.",
+                warnings: [], propertyID: propertyID))
+        } else {
+            phase = .failed(target, ScanRecoveryCoordinator.failure(for: outcome, stillUnsaved: stillUnsaved))
+        }
+    }
+
+    /// The words for a recovery that did not reach storage. The copy is still there.
+    static func failure(for outcome: ScanIntake.Outcome, stillUnsaved: Bool) -> Failure {
+        let kept = "The recovered copy is still on this iPhone."
+        if outcome.floorID == nil, !outcome.roomsAlreadyInProperty, !stillUnsaved {
+            return Failure(message: "The property could not be opened, so the rooms were not added.",
+                           recovery: "\(kept) Restart the app, then try again.")
+        }
+        return Failure(message: "The rooms could not be saved to the property.",
+                       recovery: "\(kept) Check that this iPhone has free space, then try again. Keep the app open until it has saved.")
+    }
+
+    /// Discard, after the person has confirmed: deletes the copy and moves on to the next scan.
+    func discard() async {
+        let prompt: ScanRecoveryPrompt
+        switch phase {
+        case .asking(let offered), .failed(let offered, _): prompt = offered
+        case .idle, .working, .done: return
+        }
+        await removeCopy(prompt.scan.scanID)
+        // A second tap while the first was deleting must not skip a scan.
+        guard phase.promptID == prompt.id else { return }
+        moveOn()
+    }
+
+    /// Not now: nothing is deleted, and the app asks again next time it opens.
+    func notNow() {
+        guard !isWorking else { return }
+        phase = .idle
+        waiting = []
+    }
+
+    /// The sheet went away. Same as Not now, unless a recovery is running: that carries on.
+    func sheetClosed() {
+        notNow()
+    }
+
+    /// The person has read the result. With another scan waiting, offers it and returns nil; otherwise ends and
+    /// returns the property to open.
+    @discardableResult
+    func acknowledge() -> UUID? {
+        guard case .done(_, let report) = phase else { return nil }
+        if waiting.isEmpty {
+            phase = .idle
+            return report.propertyID
+        }
+        moveOn()
+        return nil
+    }
+
+    private func moveOn() {
+        if waiting.isEmpty {
+            phase = .idle
+        } else {
+            phase = .asking(waiting.removeFirst())
+        }
+    }
+
+    private func removeCopy(_ scanID: UUID) async {
+        let root = self.root
+        await Task.detached(priority: .utility) {
+            ScanRecoveryStore.discard(scanID: scanID, root: root)
+        }.value
     }
 }
 
